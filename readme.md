@@ -82,6 +82,7 @@
 
 ## TODO:やること，課題
 
+- gpuとcpuの2つに分けるとき、インターフェースに依存させる。(linerGPU.pyを別途追加か)
 - CUDAを使いましょう。**行列計算**が対象で、お手軽実装。>>クラウドで動かす意味が出てくる。
 - おそらくtime_step毎にgpuへデータを転送する処理のために，gpuを指定した方がcpuより遅くなる場合がある
 - Prioritized Experience Replay を実装したい

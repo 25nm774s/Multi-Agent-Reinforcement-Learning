@@ -111,6 +111,12 @@ class Linear:
 
     def _prepare_true_state_value(self, model_path, b):
         """真の行動価値を基に状態価値を計算し，ファイルに保存する"""
+        # TODO: この計算は状態空間が大きくなると非常に重くなる。効率化を検討する必要がある。
+        # 考えられる改善策：
+        # - サンプリングベースのアプローチ（例：モンテカルロ法、経験に基づいた計算）
+        # - より効率的な関数近似手法の検討（例：ニューラルネットワーク）
+        # - 増分的な更新処理の導入
+
         # Q→Vに置き換えたファイルパス
         v_path = model_path.replace('Q', 'V', 1)
 
@@ -126,8 +132,8 @@ class Linear:
 
             states = self.generate_states()        # 全エージェントの全状態
             my_state = self.generate_my_states()   # 自エージェントのみの全状態
-            state_combinations = list(itertools.product(states, repeat=self.agents_num))
-            state_combinations = [list(map(list, comb)) for comb in state_combinations]
+            # state_combinations = list(itertools.product(states, repeat=self.agents_num))
+            # state_combinations = [list(map(list, comb)) for comb in state_combinations]
 
             # 行動価値から状態価値を算出して保存（大きな計算になる可能性あり）
             #for idx in range(b**self.agents_num):
@@ -135,7 +141,7 @@ class Linear:
             #        tmp_states = state_combinations[idx].copy()
             #        tmp_states.pop(j)
 
-            # 軽くなりそうなやつ
+            # 軽くなりそうなやつ（効率的に組み合わせを生成）
             for idx, comb in enumerate(itertools.product(states, repeat=self.agents_num)):
                 temp_states = list(map(list, comb))
                 for j in range(self.agents_num):

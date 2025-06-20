@@ -26,7 +26,7 @@ class GridWorld:
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
         self.window_width = args.window_width
         self.window_height = args.window_height
-        self.cell_num = args.grid_size
+        self.grid_size = args.grid_size
         self.agents_num = args.agents_number
         self.goals_num = args.goals_number
         self.reward_mode = args.reward_mode
@@ -40,17 +40,17 @@ class GridWorld:
         self.agents = []
 
         # レンダラーのインスタンスを生成
-        self.renderer = GridRenderer(self.window_width, self.window_height, self.cell_num)
+        self.renderer = GridRenderer(self.window_width, self.window_height, self.grid_size)
 
 
-    def generate_unique_positions(self, num_positions, object_positions, cell_num):
+    def generate_unique_positions(self, num_positions, object_positions, grid_size):
         """
         渡された既存座標と重ならないように，
         (num_positions)個のランダム座標を生成して返す
         """
         positions = []
         while len(positions) < num_positions:
-            pos = (np.random.randint(0, cell_num), np.random.randint(0, cell_num))
+            pos = (np.random.randint(0, grid_size), np.random.randint(0, grid_size))
             if pos not in object_positions:
                 positions.append(pos)
                 object_positions.append(pos)
@@ -68,11 +68,11 @@ class GridWorld:
         for idx, action in enumerate(actions):
             if action == 0 and agents_pos[idx][1] > 0:                # UP
                 new_positions[idx][1] -= 1
-            elif action == 1 and agents_pos[idx][1] < self.cell_num - 1:  # DOWN
+            elif action == 1 and agents_pos[idx][1] < self.grid_size - 1:  # DOWN
                 new_positions[idx][1] += 1
             elif action == 2 and agents_pos[idx][0] > 0:                # LEFT
                 new_positions[idx][0] -= 1
-            elif action == 3 and agents_pos[idx][0] < self.cell_num - 1:  # RIGHT
+            elif action == 3 and agents_pos[idx][0] < self.grid_size - 1:  # RIGHT
                 new_positions[idx][0] += 1
             elif action == 4:
                 pass  # STAY

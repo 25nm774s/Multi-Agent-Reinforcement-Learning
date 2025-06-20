@@ -1,6 +1,6 @@
 """
 このファイルを実行して学習する．
-python main.py --cell_num 10 のようにして各種設定を変更可能.
+python main.py --grid_size 10 のようにして各種設定を変更可能.
 主要なハイパーパラメータは parse_args() で管理.
 
 ゴール位置は初期に一度だけランダム生成し，エージェント位置のみエピソード毎に再生成するように修正済み。
@@ -31,8 +31,8 @@ class Main:
         self.episode_num = args.episode_number
         self.max_ts = args.max_timestep
         self.agents_num = args.agents_number
-        self.goals_num = args.goals_num
-        self.cell_num = args.cell_number
+        self.goals_num = args.goals_number
+        self.grid_size = args.grid_size
         self.dir_path = args.dir_path
         self.load_model = args.load_model
         self.mask = args.mask
@@ -40,7 +40,7 @@ class Main:
         # 保存ファイル名
         self.f_name = (
             f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-            f"_env[{self.cell_num}*{self.cell_num}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
+            f"_env[{self.grid_size}*{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
         )
 
         # モデル保存先のパス生成
@@ -108,7 +108,7 @@ class Main:
         # ------------------------------------------------------------------
         object_positions_goals = []
         self.env.goals = self.env.generate_unique_positions(
-            self.goals_num, object_positions_goals, self.cell_num
+            self.goals_num, object_positions_goals, self.grid_size
         )
 
         total_step = 0
@@ -137,7 +137,7 @@ class Main:
 
             # エージェントの位置をランダム生成(ゴール座標との重複回避)
             self.env.agents = self.env.generate_unique_positions(
-                self.agents_num, object_positions, self.cell_num
+                self.agents_num, object_positions, self.grid_size
             )
 
             # states にはゴール + エージェントが一続きに入る
@@ -219,7 +219,7 @@ class Main:
             self.plot_results.draw()
 
         if self.save_agent_states:
-            self.plot_results.draw_heatmap(self.cell_num)
+            self.plot_results.draw_heatmap(self.grid_size)
 
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
@@ -265,7 +265,7 @@ if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
         parser.add_argument('--dir_path', default='/Users/ryohei_nakano/Desktop/研究コード/orig_rl_ver4.3')
-        parser.add_argument('--cell_number', default=8, type=int)
+        parser.add_argument('--grid_size', default=8, type=int)
         parser.add_argument('--agents_number', default=2, type=int)
         parser.add_argument('--goals_number', default=2, type=int)
         parser.add_argument('--learning_mode', choices=['V', 'Q', 'DQN'], default='DQN')

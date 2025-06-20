@@ -26,7 +26,7 @@ class GridWorld:
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
         self.window_width = args.window_width
         self.window_height = args.window_height
-        self.cell_num = args.cell_number
+        self.cell_num = args.grid_size
         self.agents_num = args.agents_number
         self.goals_num = args.goals_number
         self.reward_mode = args.reward_mode

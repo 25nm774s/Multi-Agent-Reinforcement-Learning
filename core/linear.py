@@ -21,7 +21,7 @@ class Linear:
         self.agents_num = args.agents_number
         self.gamma = args.gamma
         self.lr = args.learning_rate
-        self.cell_num = args.cell_number
+        self.grid_size = args.grid_size
         self.action_size = action_size
         self.batch_size = args.batch_size
         self.load_model = args.load_model
@@ -29,7 +29,7 @@ class Linear:
         self.learning_mode = args.learning_mode
 
         # スケール調整用
-        self.norm_factor = np.array([1, self.cell_num]).reshape(-1, 1)
+        self.norm_factor = np.array([1, self.grid_size]).reshape(-1, 1)
 
         self.loss = []
         self.episode_data = []
@@ -37,7 +37,7 @@ class Linear:
         self.index_cache = {}
 
         # グリッド全セル数
-        b = self.cell_num ** 2
+        b = self.grid_size ** 2
 
         # 価値共有用のクラス変数を初期化
         if Linear.common_theta_list is None:
@@ -49,8 +49,8 @@ class Linear:
         # 基底関数用の中心 (mu) を計算
         self.mu_array = np.zeros((2, b))
         cnt = 0
-        for i in range(self.cell_num):
-            for j in range(self.cell_num):
+        for i in range(self.grid_size):
+            for j in range(self.grid_size):
                 self.mu_array[0, cnt] = i
                 self.mu_array[1, cnt] = j
                 cnt += 1
@@ -181,14 +181,14 @@ class Linear:
             if depth == 0:
                 states.append(current)
                 return
-            for i in range(self.cell_num):
+            for i in range(self.grid_size):
                 _dfs(current + [i], depth - 1)
         _dfs([], self.agents_num)
         return states
 
     def generate_my_states(self):
         """自エージェントのみの全2次元座標を生成"""
-        return [[i, j] for i in range(self.cell_num) for j in range(self.cell_num)]
+        return [[i, j] for i in range(self.grid_size) for j in range(self.grid_size)]
 
     def rbfs(self, state):
         """RBF (ガウス基底関数) を計算して返す"""
@@ -231,8 +231,8 @@ class Linear:
 
         index = 0
         for i, (x, y) in enumerate(states):
-            power = (self.cell_num ** (2 * (len(states) - i - 1)))
-            index += (x * self.cell_num + y) * power
+            power = (self.grid_size ** (2 * (len(states) - i - 1)))
+            index += (x * self.grid_size + y) * power
         self.index_cache[state_key] = index
         return index
 
@@ -298,7 +298,7 @@ class Linear:
                     for j_c in range(self.agents_num):
                         tmp = combos[idx_c].copy()
                         tmp.pop(j_c)
-                        for l in range(self.cell_num**2):
+                        for l in range(self.grid_size**2):
                             tv = self.getTrueV(tmp, my_state_all[l])
                             cv = self.getV(tmp, my_state_all[l])
                             self.loss.append(tv - cv)               # 学習用

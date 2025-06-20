@@ -31,7 +31,7 @@ class Main:
         self.episode_num = args.episode_number
         self.max_ts = args.max_timestep
         self.agents_num = args.agents_number
-        self.goals_num = args.goals_number
+        self.goals_num = args.goals_num
         self.cell_num = args.cell_number
         self.dir_path = args.dir_path
         self.load_model = args.load_model
@@ -273,7 +273,7 @@ if __name__ == '__main__':
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=1, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--device', choices=['cpu', 'cuda', 'mps'], default='cpu')
+        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
         parser.add_argument('--episode_number', default=5000, type=int)
         parser.add_argument('--max_timestep', default=100, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
@@ -288,6 +288,18 @@ if __name__ == '__main__':
         return parser.parse_args()
 
     args = parse_args()
+
+    # auto選択時のデバイス決定ロジックを追加
+    if args.device == 'auto':
+        if torch.cuda.is_available():
+            args.device = 'cuda'
+        elif torch.backends.mps.is_available():
+            args.device = 'mps'
+        else:
+            args.device = 'cpu'
+        print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
+
+
     main = Main(args)
     agents = [Agent(args, main.model_path[b_idx]) for b_idx in range(args.agents_number)]
     main.run(agents)

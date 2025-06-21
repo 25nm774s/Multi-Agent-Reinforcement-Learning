@@ -13,11 +13,11 @@ BLUE   = (0, 0, 255)
 GRAY   = (128, 128, 128)
 
 class GridRenderer:
-    def __init__(self, window_width, window_height, cell_num):
+    def __init__(self, window_width, window_height, grid_size):
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
         self.window_width = window_width
         self.window_height = window_height
-        self.cell_num = cell_num
+        self.grid_size = grid_size
 
         pygame.init()
         self.screen = pygame.display.set_mode((self.window_width, self.window_height))
@@ -38,19 +38,19 @@ class GridRenderer:
 
     def _draw_grid(self):
         """マス目を描画"""
-        cell_w = self.window_width / self.cell_num
-        cell_h = self.window_height / self.cell_num
+        cell_w = self.window_width / self.grid_size
+        cell_h = self.window_height / self.grid_size
         self.screen.fill(GRAY)
 
-        for x in range(self.cell_num):
-            for y in range(self.cell_num):
+        for x in range(self.grid_size):
+            for y in range(self.grid_size):
                 rect = pygame.Rect(x * cell_w, y * cell_h, cell_w, cell_h)
                 pygame.draw.rect(self.screen, BLACK, rect, 1)
 
     def _draw_goals_and_agents(self, goals, agents):
         """ゴールとエージェントを描画"""
-        cell_w = self.window_width / self.cell_num
-        cell_h = self.window_height / self.cell_num
+        cell_w = self.window_width / self.grid_size
+        cell_h = self.window_height / self.grid_size
 
         # ゴールの描画
         for goal in goals:

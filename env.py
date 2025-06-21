@@ -5,7 +5,6 @@
 - レンダリング処理は GridRenderer クラスに分離済み．
 - 環境のロジック（状態管理，状態遷移，報酬計算など）も，
   将来的に必要に応じて別のクラスに分離する可能性あり．
-  -ブランチ作成
 """
 
 import numpy as np
@@ -25,24 +24,20 @@ np.random.seed(0)
 class GridWorld:
     def __init__(self, args):
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
-        self.window_width = args.window_width
-        self.window_height = args.window_height
         self.grid_size = args.grid_size
         self.agents_num = args.agents_number
         self.goals_num = args.goals_number
         self.reward_mode = args.reward_mode
 
-        # pygame.init() # レンダラーに移動
-        # self.screen = pygame.display.set_mode((self.window_width, self.window_height)) # レンダラーに移動
-        # self.font = pygame.font.SysFont(None, 36) # レンダラーに移動
-
         # ゴールとエージェントの位置を保持
         self.goals = []
         self.agents = []
 
-        # レンダラーのインスタンスを生成
-        if self.reward_mode:
-            self.renderer = GridRenderer(self.window_width, self.window_height, self.grid_size)
+        # レンダラーのインスタンスを生成 (args.render_modeに基づいて)
+        if args.render_mode:
+            self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size)
+        else:
+            self.renderer = None
 
     def generate_unique_positions(self, num_positions, object_positions, grid_size):
         """
@@ -119,9 +114,11 @@ class GridWorld:
 
     def render(self, states, episode_num=0, time_step=0):
         """pygame を用いて環境を描画 (レンダラーに処理を委譲)"""
-        goals_pos = list(states[:self.goals_num])
-        agents_pos = list(states[self.goals_num:])
-        self.renderer.render(goals_pos, agents_pos, episode_num, time_step)
+        # レンダラーが存在する場合のみ描画処理を行う
+        if self.renderer:
+            goals_pos = list(states[:self.goals_num])
+            agents_pos = list(states[self.goals_num:])
+            self.renderer.render(goals_pos, agents_pos, episode_num, time_step)
 
     # レンダリング関連のメソッドは削除
     # def _draw_grid(self):

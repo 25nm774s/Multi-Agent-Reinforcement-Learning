@@ -45,7 +45,7 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 
 import sys
 import argparse
-import pygame
+#import pygame
 import torch
 import os
 import csv
@@ -107,7 +107,7 @@ class Main:
             os.makedirs(dir_for_agents_states)
 
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
-        self.clock = pygame.time.Clock()
+        #self.clock = pygame.time.Clock()
 
         # エージェントの状態をcsvに保存するかどうか
         self.save_agent_states = args.save_agent_states
@@ -180,9 +180,9 @@ class Main:
             # states にはゴール + エージェントが一続きに入る
             states = tuple(object_positions)
 
-            if self.render_mode:
-                self.env.render(episode_num)
-                self.clock.tick(50)
+            #if self.render_mode:
+                #self.env.render(episode_num)
+                #self.clock.tick(50)
 
             done = False
             step_count = 0
@@ -227,9 +227,9 @@ class Main:
                 step_count += 1
                 total_step += 1
 
-                if self.render_mode:
-                    self.env.render(episode_num, step_count)
-                    self.clock.tick(50)
+                #if self.render_mode:
+                #    self.env.render(episode_num, step_count)
+                #    self.clock.tick(50)
 
             # エピソード終了後，状態価値の更新 (V 学習時のみ)
             if self.learning_mode == 'V':
@@ -246,7 +246,7 @@ class Main:
             avg_step_temp += step_count
 
         print()  # 終了時に改行
-        pygame.quit()
+        #pygame.quit()
 
         # モデル保存やプロット
         if self.load_model == 0:

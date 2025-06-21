@@ -9,7 +9,7 @@
 """
 
 import numpy as np
-import pygame
+#import pygame
 from grid_renderer import GridRenderer
 
 # 乱数の初期化（初期位置固定用）
@@ -41,8 +41,8 @@ class GridWorld:
         self.agents = []
 
         # レンダラーのインスタンスを生成
-        self.renderer = GridRenderer(self.window_width, self.window_height, self.grid_size)
-
+        if self.reward_mode:
+            self.renderer = GridRenderer(self.window_width, self.window_height, self.grid_size)
 
     def generate_unique_positions(self, num_positions, object_positions, grid_size):
         """

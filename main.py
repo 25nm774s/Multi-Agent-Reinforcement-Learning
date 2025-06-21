@@ -276,7 +276,7 @@ class Main:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
-        model_dir_path = os.path.join(self.dir_path, 'model_weights', self.save_dir)
+        model_dir_path = os.path.join(self.dir_path, self.save_dir,'model_weights')
         if not os.path.exists(model_dir_path):
             os.makedirs(model_dir_path)
 

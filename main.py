@@ -45,7 +45,7 @@ class Main:
         # 保存ファイル名
         self.f_name = (
             f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-            f"_env[{self.grid_size}*{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
+            f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
         )
 
         # モデル保存先のパス生成

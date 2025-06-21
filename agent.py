@@ -45,9 +45,11 @@ class Agent:
             else:
                 new_model_path = model_path
             self.loading_model(new_model_path)
-        
+
         if self.learning_mode == 'V' or self.learning_mode == 'Q':
-            self.linear = Linear(args, self.action_size, new_model_path)
+            #print(f"model_path:{self.model_path}")
+            #self.linear = Linear(args, self.action_size, new_model_path)
+            self.linear = Linear(args, self.action_size, self.model_path)
         elif self.learning_mode == 'DQN':
             #from core.dqn import DQN
             self.model = DQN(args, self.action_size, self.model_path)
@@ -67,7 +69,7 @@ class Agent:
             print(f"学習済みモデル {RED}{model_path}{RESET} が見つかりません.")
             print('学習する場合, load_model=0 に変更してください.\n')
             sys.exit()
-    
+
     def get_action(self, i, states):
         if self.learning_mode == 'V' or self.learning_mode == 'Q':
             return self.linear_greedy_actor(i, states)
@@ -76,7 +78,7 @@ class Agent:
 
     # 線形関数近似のε-greedy
     def linear_greedy_actor(self, i, states):
-        goals_pos = [list(pos) for pos in states[:self.goals_num]]
+        goals_pos = [list(pos) for pos in states[:self.goals_num]]#なぜか不使用変数
         agents_pos = [list(pos) for pos in states[self.goals_num:]]
         agent_pos = agents_pos[i]
 
@@ -122,13 +124,14 @@ class Agent:
         # 線形関数近似器
         if self.learning_mode == 'V' or self.learning_mode == 'Q':
             if self.load_model == 1:
-                scalar_loss = None
+                scalar_loss = None # 学習済みモデル使用時, 更新しない
             else:
                 scalar_loss = []
-                for j in range(self.batch_size): # ここではバッチサイズ分のlossを平均
+                # 修正：ループ範囲を実際のバッチサイズ len(states) に変更
+                for j in range(len(states)): # ここではバッチサイズ分のlossを平均
                     scalar_loss.append(self.linear.update(i, states[j], action[j], reward[j], next_state[j], done[j], step))
                 scalar_loss = np.mean(scalar_loss)
-        
+
         # NNモデル使用時
         else:
             if self.load_model == 1:

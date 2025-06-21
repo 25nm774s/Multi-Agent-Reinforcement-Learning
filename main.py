@@ -103,8 +103,8 @@ class Main:
                 )
 
         # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.dir_path, self.save_dir, f"{self.save_dir}_scores.csv")
-        self.agents_states_path = os.path.join(self.dir_path, self.save_dir, f"{self.save_dir}_agents_states.csv")
+        self.scores_path = os.path.join(self.dir_path, self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(self.dir_path, self.save_dir, "agents_states.csv")
 
         # ディレクトリがなければ作成
         dir_for_agents_states = os.path.dirname(self.agents_states_path)

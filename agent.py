@@ -41,10 +41,10 @@ class Agent:
         # モデルのロード
         if self.load_model == 1 or self.load_model == 2:
             if self.learning_mode == 'V':
-                new_model_path = model_path.replace('V', 'Q')
+                self.model_path = model_path.replace('V', 'Q')
             else:
-                new_model_path = model_path
-            self.loading_model(new_model_path)
+                self.model_path = model_path
+            self.loading_model(self.model_path)
 
         if self.learning_mode == 'V' or self.learning_mode == 'Q':
             #print(f"model_path:{self.model_path}")

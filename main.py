@@ -155,7 +155,7 @@ class Main:
         # メインループ（各エピソード）
         # ----------------------------------
         for episode_num in range(1, self.episode_num + 1):
-            print('■', end='')  # 進捗表示
+            print('■', end='',flush=True)  # 進捗表示
 
             # 100エピソードごとに平均を出力
             if episode_num % 100 == 0:

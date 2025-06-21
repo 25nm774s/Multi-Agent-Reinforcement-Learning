@@ -91,15 +91,15 @@ class Main:
             if self.learning_mode in ['V', 'Q']:
                 if self.mask:
                     self.model_path.append(
-                        os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, f"{b_idx}.csv")
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', f"{b_idx}.csv")
                     )
                 else:
                     self.model_path.append(
-                        os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, "common.csv")
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', "common.csv")
                     )
             else:
                 self.model_path.append(
-                    os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, f"{b_idx}.pth")
+                    os.path.join(self.dir_path, self.save_dir, 'model_weights', f"{b_idx}.pth")
                 )
 
         # 結果保存先のパス生成

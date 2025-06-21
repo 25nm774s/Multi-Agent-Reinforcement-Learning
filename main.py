@@ -75,31 +75,36 @@ class Main:
         self.mask = args.mask
 
         # 保存ファイル名
-        self.f_name = (
+        #self.f_name = (
+        #    f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
+        #    f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
+        #)
+        # OutputFile
+        self.save_dir = (
             f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
             f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
         )
 
-        # モデル保存先のパス生成
+        # モデル保存先のパス生成(あとでクラス分けしてここはなかったことになる)
         self.model_path = []
         for b_idx in range(self.agents_num):
             if self.learning_mode in ['V', 'Q']:
                 if self.mask:
                     self.model_path.append(
-                        os.path.join(self.dir_path, 'model_weights', self.f_name, f"{b_idx}.csv")
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, f"{b_idx}.csv")
                     )
                 else:
                     self.model_path.append(
-                        os.path.join(self.dir_path, 'model_weights', self.f_name, "common.csv")
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, "common.csv")
                     )
             else:
                 self.model_path.append(
-                    os.path.join(self.dir_path, 'model_weights', self.f_name, f"{b_idx}.pth")
+                    os.path.join(self.dir_path, self.save_dir, 'model_weights', self.save_dir, f"{b_idx}.pth")
                 )
 
         # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.dir_path, 'results', f"{self.f_name}_scores.csv")
-        self.agents_states_path = os.path.join(self.dir_path, 'results', 'positions', f"{self.f_name}_agents_states.csv")
+        self.scores_path = os.path.join(self.dir_path, self.save_dir, f"{self.save_dir}_scores.csv")
+        self.agents_states_path = os.path.join(self.dir_path, self.save_dir, f"{self.save_dir}_agents_states.csv")
 
         # ディレクトリがなければ作成
         dir_for_agents_states = os.path.dirname(self.agents_states_path)
@@ -271,7 +276,7 @@ class Main:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
-        model_dir_path = os.path.join(self.dir_path, 'model_weights', self.f_name)
+        model_dir_path = os.path.join(self.dir_path, 'model_weights', self.save_dir)
         if not os.path.exists(model_dir_path):
             os.makedirs(model_dir_path)
 

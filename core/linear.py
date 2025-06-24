@@ -15,7 +15,7 @@ class Linear:
     common_theta_list = None
     common_state_theta_list = None
 
-    def __init__(self, args, action_size, model_path):
+    def __init__(self, args, action_size, model_path, learning_mode):
         self.max_ts = args.max_timestep
         self.goals_num = args.goals_number
         self.agents_num = args.agents_number
@@ -26,7 +26,7 @@ class Linear:
         self.batch_size = args.batch_size
         self.load_model = args.load_model
         self.mask = args.mask
-        self.learning_mode = args.learning_mode
+        self.learning_mode = learning_mode
 
         # スケール調整用
         self.norm_factor = np.array([1, self.grid_size]).reshape(-1, 1)

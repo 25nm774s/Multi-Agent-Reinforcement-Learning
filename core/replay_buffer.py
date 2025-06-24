@@ -11,11 +11,11 @@ import numpy as np
 
 # NNモデル使用時
 class ReplayBuffer:
-    def __init__(self, args):
-        self.learning_mode = args.learning_mode
-        self.buffer = deque(maxlen=args.buffer_size)
-        self.batch_size = args.batch_size
-        self.device = args.device
+    def __init__(self, learning_mode, buffer_size, batch_size, device):
+        self.learning_mode = learning_mode
+        self.buffer = deque(maxlen=buffer_size)
+        self.batch_size = batch_size
+        self.device = device
 
 
     def add(self, state, action, reward, next_state, done):

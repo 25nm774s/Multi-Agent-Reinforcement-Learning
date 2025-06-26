@@ -3,8 +3,6 @@
 python main.py --grid_size 10 のようにして各種設定を変更可能.
 主要なハイパーパラメータは parse_args() で管理.
 
-ゴール位置は初期に一度だけランダム生成し，エージェント位置のみエピソード毎に再生成するように修正済み。
-
 --- リファクタリングに関する議論のまとめ (2024/05/20) ---
 現在の Main クラスの処理を、よりオブジェクト指向的に構造化する方向性を議論。
 主要な提案は以下の通り：
@@ -22,37 +20,6 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
       全体を制御するクラスで、どの学習モードのクラスを使うかを選択する形にする。
 
 """
-
-# --- プログレスバー（進捗表示）に関する注意点と解決策 ---
-# Colab環境ではリアルタイムに表示されるプログレスバー（例: '■'）が、
-# ローカルPython環境で実行すると、処理が完了した後に一気に表示されてしまう場合があります。
-# これは、Pythonの標準出力がパフォーマンス向上のために「バッファリング」されるためです。
-
-# この問題を解決し、ローカル環境でもリアルタイムにプログレスバーを表示するための方法は以下の通りです。
-
-# 1. print()関数の 'flush=True' 引数を使用する (最もシンプル)
-#    - print()関数に 'flush=True' を追加すると、出力が即座に画面に書き出されます。
-#    - 例: print('■', end='', flush=True)
-
-# 2. sys.stdout.flush() を使用する (より柔軟な制御が必要な場合)
-#    - print()以外の方法で出力している場合や、特定のタイミングでまとめてフラッシュしたい場合に有効です。
-#    - import sys をファイルの先頭に追加し、出力後に sys.stdout.flush() を呼び出します。
-#    - 例:
-#      import sys
-#      sys.stdout.write('■')
-#      sys.stdout.flush()
-
-# 3. tqdm ライブラリを使用する (推奨: より高機能で美しいプログレスバー)
-#    - プログレスバーの表示に特化した外部ライブラリです。
-#    - 内部で適切なフラッシュ処理が行われるため、Colabでもローカルでも期待通りに動作します。
-#    - 残り時間推定などの追加機能も提供されます。
-#    - インストール: pip install tqdm
-#    - 使用例:
-#      from tqdm import tqdm
-#      for item in tqdm(iterable_object):
-#          # 処理内容
-#          pass
-# --------------------------------------------------------
 
 import sys
 import argparse
@@ -190,10 +157,6 @@ class Main:
             # states にはゴール + エージェントが一続きに入る
             states = tuple(object_positions)
 
-            #if self.render_mode:
-                #self.env.render(episode_num)
-                #self.clock.tick(50)
-
             done = False
             step_count = 0
             ep_reward = 0
@@ -252,7 +215,6 @@ class Main:
             avg_step_temp += step_count
 
         print()  # 終了時に改行
-        #pygame.quit()
 
         # モデル保存やプロット
         if self.load_model == 0:

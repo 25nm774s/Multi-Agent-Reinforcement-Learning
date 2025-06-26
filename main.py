@@ -317,7 +317,7 @@ class Main:
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
-        parser.add_argument('--dir_path', default='/Users/ryohei_nakano/Desktop/研究コード/orig_rl_ver4.3')
+        parser.add_argument('--dir_path', default='./')
         parser.add_argument('--grid_size', default=8, type=int)
         parser.add_argument('--agents_number', default=2, type=int)
         parser.add_argument('--goals_number', default=2, type=int)

@@ -11,7 +11,7 @@ import sys
 #from core.linear import Linear
 #from core.replay_buffer import ReplayBuffer
 #from core.dqn import DQN
-from DQN.replay_buffer import ReplayBuffer
+from utils.replay_buffer import ReplayBuffer
 from DQN.dqn import DQN
 
 np.random.seed(0)

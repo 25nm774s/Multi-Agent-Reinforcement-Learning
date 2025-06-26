@@ -8,9 +8,11 @@ import numpy as np
 import os
 import sys
 
-from core.linear import Linear
-from core.replay_buffer import ReplayBuffer
-from core.dqn import DQN
+#from core.linear import Linear
+#from core.replay_buffer import ReplayBuffer
+#from core.dqn import DQN
+from Q_learn.linear import Linear
+from utils.replay_buffer import ReplayBuffer
 
 np.random.seed(0)
 torch.manual_seed(0)

@@ -9,8 +9,10 @@ import os
 import sys
 
 #from core.linear import Linear
-from core.replay_buffer import ReplayBuffer
-from core.dqn import DQN
+#from core.replay_buffer import ReplayBuffer
+#from core.dqn import DQN
+from DQN.replay_buffer import ReplayBuffer
+from DQN.dqn import DQN
 
 np.random.seed(0)
 torch.manual_seed(0)

@@ -62,16 +62,17 @@ import csv
 import numpy as np
 
 from env import GridWorld
-from Agent_DQN import Agent_DQN
-from plot_results import PlotResults
+#from agent import Agent
+from utils.plot_results import PlotResults as pr
 
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-class MultiAgent_DQN:
+class Main:
     def __init__(self, args):
         self.env = GridWorld(args)
+        self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
@@ -79,34 +80,43 @@ class MultiAgent_DQN:
         self.agents_num = args.agents_number
         self.goals_num = args.goals_number
         self.grid_size = args.grid_size
+        self.dir_path = "output"
         self.load_model = args.load_model
         self.mask = args.mask
 
-        self.OUT_FOLDER_NAME = "output"
-
         # OutputFile
         self.save_dir = (
-            f"DQN_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-            f"_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
+            f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
+            f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
         )
 
         # モデル保存先のパス生成(あとでクラス分けしてここはなかったことになる)
         self.model_path = []
         for b_idx in range(self.agents_num):
-            self.model_path.append(
-                os.path.join(self.OUT_FOLDER_NAME, self.save_dir, 'model_weights', f"{b_idx}.pth")
-            )
+            if self.learning_mode in ['V', 'Q']:
+                if self.mask:
+                    self.model_path.append(
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', f"{b_idx}.csv")
+                    )
+                else:
+                    self.model_path.append(
+                        os.path.join(self.dir_path, self.save_dir, 'model_weights', "common.csv")
+                    )
+            else:
+                self.model_path.append(
+                    os.path.join(self.dir_path, self.save_dir, 'model_weights', f"{b_idx}.pth")
+                )
 
         # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "scores.csv")
-        self.agents_states_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "agents_states.csv")
+        self.scores_path = os.path.join(self.dir_path, self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(self.dir_path, self.save_dir, "agents_states.csv")
 
         # ディレクトリがなければ作成
         dir_for_agents_states = os.path.dirname(self.agents_states_path)
         if not os.path.exists(dir_for_agents_states):
             os.makedirs(dir_for_agents_states)
 
-        self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
+        self.plot_results = pr(self.scores_path, self.agents_states_path)
         #self.clock = pygame.time.Clock()
 
         # エージェントの状態をcsvに保存するかどうか
@@ -124,9 +134,21 @@ class MultiAgent_DQN:
         if self.agents_num < self.goals_num:
             print('goals_num <= agents_num に設定してください.\n')
             sys.exit()
+        if self.load_model == 0 and self.learning_mode == 'V':
+            print('load_model == 0 と learning_mode == V の組み合わせは未実装です.\n')
+            sys.exit()
+        if self.load_model == 2 and self.learning_mode == 'V' and self.mask:
+            print('mask == 0 に設定してください.\n')
+            sys.exit()
 
         # 学習開始メッセージ
-        print(f"{GREEN}DQN{RESET} で学習中...\n")
+        if self.load_model in [0, 2]:
+            if self.learning_mode == 'Q':
+                print(f"{GREEN}{'IQL' if self.mask else 'CQL'} で学習中{RESET}\n")
+            elif self.learning_mode == 'V' and self.load_model == 2:
+                print('状態価値関数を価値共有で学習中\n')
+            else:
+                print(f"{GREEN}{self.learning_mode}{RESET} で学習中...\n")
 
         # ------------------------------------------------------------------
         # ゴールの位置は最初の一度だけ生成して固定 (object_positions_goals に保持)
@@ -168,6 +190,10 @@ class MultiAgent_DQN:
             # states にはゴール + エージェントが一続きに入る
             states = tuple(object_positions)
 
+            #if self.render_mode:
+                #self.env.render(episode_num)
+                #self.clock.tick(50)
+
             done = False
             step_count = 0
             ep_reward = 0
@@ -178,7 +204,13 @@ class MultiAgent_DQN:
             while not done and step_count < self.max_ts:
                 actions = []
                 for i, agent in enumerate(agents):
-                    agent.decay_epsilon(total_step)
+                    # load_model == 1 → 学習済みモデル (epsilon=0.1)
+                    if self.load_model == 1:
+                        agent.epsilon = 0.1
+                    elif self.learning_mode == 'V':
+                        agent.epsilon = 1.0
+                    else:
+                        agent.decay_epsilon(total_step)
 
                     actions.append(agent.get_action(i, states))
 
@@ -190,13 +222,14 @@ class MultiAgent_DQN:
                 # 環境にステップを与えて状態を更新
                 next_state, reward, done = self.env.step(states, actions, step_count)
 
-                # DQNは逐次更新
+                # 状態価値関数学習以外(Q, DQN)は逐次更新
                 losses = []
-                for i, agent in enumerate(agents):
-                    losses.append(agent.update_brain(
-                        i, states, actions[i], reward,
-                        next_state, done, episode_num, step_count
-                    ))
+                if self.learning_mode != 'V':
+                    for i, agent in enumerate(agents):
+                        losses.append(agent.update_brain(
+                            i, states, actions[i], reward,
+                            next_state, done, episode_num, step_count
+                        ))
 
                 states = next_state
                 ep_reward += reward
@@ -204,9 +237,13 @@ class MultiAgent_DQN:
                 step_count += 1
                 total_step += 1
 
-            # エピソード終了
-            valid_losses = [l for l in losses if l is not None]
-            avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
+            # エピソード終了後，状態価値の更新 (V 学習時のみ)
+            if self.learning_mode == 'V':
+                avg_loss = agents[0].update_brain(0, states, None, reward, next_state,
+                                                  done, episode_num, step_count)
+            else:
+                valid_losses = [l for l in losses if l is not None]
+                avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 
             # ログにスコアを記録
             self.log_scores(episode_num, step_count, ep_reward, avg_loss)
@@ -215,6 +252,7 @@ class MultiAgent_DQN:
             avg_step_temp += step_count
 
         print()  # 終了時に改行
+        #pygame.quit()
 
         # モデル保存やプロット
         if self.load_model == 0:
@@ -239,31 +277,48 @@ class MultiAgent_DQN:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
-        model_dir_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir,'model_weights')
+        model_dir_path = os.path.join(self.dir_path, self.save_dir,'model_weights')
         if not os.path.exists(model_dir_path):
             os.makedirs(model_dir_path)
 
-        print('モデル保存中...')
-        for i, agent in enumerate(agents):
-            torch.save(agent.model.qnet.state_dict(), self.model_path[i])
-        print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
+        if self.learning_mode in ['V', 'Q']:
+            print('パラメータ保存中...')
+            for i, agent in enumerate(agents):
+                path = (os.path.join(model_dir_path, f'{i}.csv')
+                        if self.mask else
+                        os.path.join(model_dir_path, 'common.csv'))
+                with open(path, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    if self.mask:
+                        data = agent.linear.theta_list
+                    else:
+                        arr = np.array(agent.linear.common_theta_list)
+                        data = arr.reshape(-1, arr.shape[2])  # 2次元にリシェイプ
+                    for row in data:
+                        writer.writerow(row)
+            print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
+        else:
+            print('モデル保存中...')
+            for i, agent in enumerate(agents):
+                torch.save(agent.model.qnet.state_dict(), self.model_path[i])
+            print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
 
 
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
-        #parser.add_argument('--dir_path', default='/Users/ryohei_nakano/Desktop/研究コード/orig_rl_ver4.3')
-        parser.add_argument('--grid_size', default=8, type=int)
+        parser.add_argument('--dir_path', default='./')
+        parser.add_argument('--grid_size', default=4, type=int)
         parser.add_argument('--agents_number', default=2, type=int)
         parser.add_argument('--goals_number', default=2, type=int)
-        #parser.add_argument('--learning_mode', choices=['V', 'Q', 'DQN'], default='DQN')
+        parser.add_argument('--learning_mode', choices=['V', 'Q', 'DQN'], default='DQN')
         parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--load_model', choices=[0, 1, 2], default=1, type=int)
+        parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
-        parser.add_argument('--episode_number', default=5000, type=int)
-        parser.add_argument('--max_timestep', default=100, type=int)
+        parser.add_argument('--episode_number', default=300, type=int)
+        parser.add_argument('--max_timestep', default=2, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
         parser.add_argument('--learning_rate', default=0.000005, type=float)
         parser.add_argument('--gamma', default=0.95, type=float)
@@ -288,6 +343,16 @@ if __name__ == '__main__':
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
 
-    ma = MultiAgent_DQN(args)
-    agents = [Agent_DQN(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
-    ma.run(agents)
+    main = Main(args)
+    agents = None
+    if args.learning_mode == "Q":
+        from Q_learn.Agent_Q import Agent_Q
+        agents = [Agent_Q(args, main.model_path[b_idx]) for b_idx in range(args.agents_number)]
+    elif args.learning_mode == "DQN":
+        from DQN.Agent_DQN import Agent_DQN
+        agents = [Agent_DQN(args, main.model_path[b_idx]) for b_idx in range(args.agents_number)]
+    else:
+        print(f"{args.learning_mode}は未実装")
+        sys.exit(-1)
+    
+    main.run(agents)

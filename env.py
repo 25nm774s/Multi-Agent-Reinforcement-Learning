@@ -8,8 +8,7 @@
 """
 
 import numpy as np
-#import pygame
-from grid_renderer import GridRenderer
+from utils.grid_renderer import GridRenderer
 
 # 乱数の初期化（初期位置固定用）
 np.random.seed(0)

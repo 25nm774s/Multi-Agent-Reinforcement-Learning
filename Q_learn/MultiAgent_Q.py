@@ -62,14 +62,14 @@ import csv
 import numpy as np
 
 from env import GridWorld
-from Agent_Q import Agent_Q
-from plot_results import PlotResults
+from Q_learn.Agent_Q import Agent_Q
+from utils.plot_results import PlotResults
 
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-class Main:
+class MultiAgent_Q:
     def __init__(self, args):
         self.env = GridWorld(args)
         #self.learning_mode = args.learning_mode
@@ -321,6 +321,6 @@ if __name__ == '__main__':
             args.device = 'cpu'
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
-    ma = Main(args)
+    ma = MultiAgent_Q(args)
     agents = [Agent_Q(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
     ma.run(agents)

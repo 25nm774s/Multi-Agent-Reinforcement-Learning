@@ -62,8 +62,8 @@ import csv
 import numpy as np
 
 from env import GridWorld
-from Agent_DQN import Agent_DQN
-from plot_results import PlotResults
+from DQN.Agent_DQN import Agent_DQN
+from utils.plot_results import PlotResults
 
 RED = '\033[91m'
 GREEN = '\033[92m'

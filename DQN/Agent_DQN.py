@@ -136,9 +136,10 @@ class Agent_DQN:
         if len(self.replay_buffer) < self.batch_size: # batch_sizeはselfにある
             return None # バッチサイズに満たない場合は学習しない
 
+        # 1. バッチデータの取得
         states, action, reward, next_state, done = self.replay_buffer.get_batch()
         
-        # モデルの更新を呼び出す episode_numはターゲットネットワーク更新タイミングのため必要
+        # 2. モデルの更新 episode_numはターゲットネットワーク更新タイミングのため必要
         scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
 
         return scalar_loss

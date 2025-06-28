@@ -136,7 +136,8 @@ class DQN:
 
 class DQNModel: # 仮のクラス名
 
-    def __init__(self, optimizer, gamma, batch_size, agent_num, goals_num, load_model, learning_rate,mask):
+    def __init__(self, optimizer, gamma, batch_size, agent_num, 
+                 goals_num, load_model, learning_rate,mask,target_update_frequency=100):
         self.optimizer = optimizer
         self.gamma = gamma
         self.batch_size = batch_size
@@ -147,6 +148,7 @@ class DQNModel: # 仮のクラス名
         self.mask = mask
         self.lr = learning_rate
         self.action_size = 5
+        self.target_update_frequency = target_update_frequency
         #self.qnet = qnet # 依存性注入でもよい
         #self.qnet_target = qnet_target
         self.qnet_target = QNet(mask,self.agents_num,self.goals_num,self.action_size)
@@ -254,7 +256,7 @@ class DQNModel: # 仮のクラス名
         scalar_loss = (target_q - predicted_q).mean().item()
 
         # ターゲットネットワークの同期
-        if episode_num % 100 == 0:
+        if episode_num % self.target_update_frequency == 0:
             self.sync_qnet()
             
         return scalar_loss

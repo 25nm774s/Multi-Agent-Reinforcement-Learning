@@ -207,7 +207,7 @@ class MultiAgent_Q:
                         self.log_agent_states(episode_num, step_count, i, pos)
 
                 # 環境にステップを与えて状態を更新
-                next_state, reward, done = self.env.step(states, actions, step_count)
+                next_state, reward, done = self.env.step(states, actions)
 
                 # 状態価値関数学習以外(Q, DQN)は逐次更新
                 losses = []
@@ -216,6 +216,7 @@ class MultiAgent_Q:
                         i, states, actions[i], reward,
                         next_state, done, episode_num, step_count
                     ))
+                    
 
                 states = next_state
                 ep_reward += reward

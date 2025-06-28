@@ -283,7 +283,7 @@ class DQNModel: # 仮のクラス名
         
         return scalar_loss
 
-    def update(self, i, states, action, reward, next_state, done, episode_num):
+    def update(self, i, states, action, reward, next_state, done, episode_num)->float:
         """
         Qネットワークのメインの更新ロジック。学習モードによって処理を分岐する。
         """

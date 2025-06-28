@@ -97,8 +97,12 @@ class Agent_DQN:
         if step < self.decay_epsilon_step:
             self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
 
-    # 価値更新
+    # 価値更新(非推奨)
     def update_brain(self, i, states, action, reward, next_state, done, episode_num):
+        """
+        副作用を持つため強く非推奨
+        (推奨):observe_and_store_experienceとlearn_from_experienceを組み合わせて使う
+        """
 
         self.replay_buffer.add(states, action, reward, next_state, done)
 
@@ -107,11 +111,44 @@ class Agent_DQN:
 
         if len(self.replay_buffer) < self.batch_size:
             return None #<-こっちでバグったら単にreturnにする?
-            #return
         
         states, action, reward, next_state, done = self.replay_buffer.get_batch()
 
-        # モデルQネットワークの重み更新
+        # Qネットワークの重み更新
         scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
 
         return scalar_loss
+
+    def observe_and_store_experience(self, state, action, reward, next_state, done):
+        """
+        環境からの単一ステップの経験をリプレイバッファに追加する。
+        """
+        self.replay_buffer.add(state, action, reward, next_state, done)
+
+    def learn_from_experience(self, i, episode_num):
+        """
+        リプレイバッファからバッチを取得し、モデルを学習させる。
+        """
+        if self.load_model == 1:
+            return None # 学習済みモデル使用時は更新なし
+
+        #if len(self.replay_buffer) < self.model.batch_size: # batch_sizeはmodelにあると仮定
+        if len(self.replay_buffer) < self.batch_size: # batch_sizeはselfにある
+            return None # バッチサイズに満たない場合は学習しない
+
+        states, action, reward, next_state, done = self.replay_buffer.get_batch()
+        
+        # モデルの更新を呼び出す episode_numはターゲットネットワーク更新タイミングのため必要
+        scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
+
+        return scalar_loss
+
+# メインループでの呼び出し方の変更
+# for i, agent in enumerate(agents):
+#     # ステップごとに経験をストア
+#     agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
+#     
+#     # 学習は別のタイミングでトリガー
+#     loss = agent.learn_from_experience(i, episode_num, step_count)
+#     if loss is not None:
+#         losses.append(loss)

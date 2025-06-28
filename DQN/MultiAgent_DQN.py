@@ -197,10 +197,17 @@ class MultiAgent_DQN:
                 # DQNは逐次更新
                 losses = []
                 for i, agent in enumerate(agents):
-                    losses.append(agent.update_brain(
-                        i, states, actions[i], reward,
-                        next_state, done, episode_num
-                    ))
+                    #losses.append(agent.update_brain(
+                    #    i, states, actions[i], reward,
+                    #    next_state, done, episode_num
+                    #))
+                    # ステップごとに経験をストア
+                    agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
+                    
+                    # 学習は別のタイミングでトリガー
+                    loss = agent.learn_from_experience(i, episode_num)
+                    if loss is not None:
+                        losses.append(loss)                    
 
                 states = next_state
                 ep_reward += reward

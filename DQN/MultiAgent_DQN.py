@@ -166,7 +166,11 @@ class MultiAgent_DQN:
             )
 
             # states にはゴール + エージェントが一続きに入る
+            # (ゴールの位置1(x,y),ゴールの位置2(x,y)...ゴールの位置N(x,y),エージェント自身の位置1(x,y),エージェント自身の位置2(x,y)...エージェント自身の位置N(x,y))
+            #環境の現在の状態を表す大きなテンソル
             states = tuple(object_positions)
+
+            #print(f"states:{states}")
 
             done = False
             step_count = 0
@@ -188,14 +192,14 @@ class MultiAgent_DQN:
                         self.log_agent_states(episode_num, step_count, i, pos)
 
                 # 環境にステップを与えて状態を更新
-                next_state, reward, done = self.env.step(states, actions, step_count)
+                next_state, reward, done = self.env.step(states, actions)
 
                 # DQNは逐次更新
                 losses = []
                 for i, agent in enumerate(agents):
                     losses.append(agent.update_brain(
                         i, states, actions[i], reward,
-                        next_state, done, episode_num, step_count
+                        next_state, done, episode_num
                     ))
 
                 states = next_state

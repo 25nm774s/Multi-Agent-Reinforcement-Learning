@@ -80,7 +80,7 @@ class GridWorld:
         self.agents = [tuple(pos) for pos in new_positions]
         return tuple(goals_pos + self.agents)
 
-    def step(self, states, actions, time_step):
+    def step(self, states, actions):
         """
         行動を受け取り状態を更新．報酬と終了条件を返す
         """

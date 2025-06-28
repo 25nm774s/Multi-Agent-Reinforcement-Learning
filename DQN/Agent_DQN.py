@@ -12,7 +12,7 @@ import sys
 #from core.replay_buffer import ReplayBuffer
 #from core.dqn import DQN
 from utils.replay_buffer import ReplayBuffer
-from DQN.dqn import DQN
+from DQN.dqn import DQNModel
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -45,7 +45,7 @@ class Agent_DQN:
             self.model_path = model_path
             self.loading_model(self.model_path)
 
-        self.model = DQN(args, self.action_size, self.model_path)
+        self.model = DQNModel(args.optimizer,args.gamma,args.batch_size,args.agents_number,self.goals_num,self.load_model,args.learning_rate,self.mask)
 
     # 学習済みモデルの存在の確認
     def loading_model(self, model_path):
@@ -89,7 +89,7 @@ class Agent_DQN:
                 pass
 
             states = states.to(self.device)
-            qs = self.model.qnet(states)
+            qs = self.model.qnet(states)#nn.module標準の__call__ の挙動によるもの。入力データ（テンソル）を表す
             return qs.argmax().item()
 
     # epsilonの線形アニーリング
@@ -98,7 +98,7 @@ class Agent_DQN:
             self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
 
     # 価値更新
-    def update_brain(self, i, states, action, reward, next_state, done, episode_num, step):
+    def update_brain(self, i, states, action, reward, next_state, done, episode_num):
 
         self.replay_buffer.add(states, action, reward, next_state, done)
 
@@ -111,7 +111,7 @@ class Agent_DQN:
         
         states, action, reward, next_state, done = self.replay_buffer.get_batch()
 
-        # NNモデル使用時  
+        # モデルQネットワークの重み更新
         scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
 
         return scalar_loss

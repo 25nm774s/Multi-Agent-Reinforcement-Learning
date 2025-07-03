@@ -1,59 +1,3 @@
-"""
-このファイルを実行して学習する．
-python main.py --grid_size 10 のようにして各種設定を変更可能.
-主要なハイパーパラメータは parse_args() で管理.
-
-ゴール位置は初期に一度だけランダム生成し，エージェント位置のみエピソード毎に再生成するように修正済み。
-
---- リファクタリングに関する議論のまとめ (2024/05/20) ---
-現在の Main クラスの処理を、よりオブジェクト指向的に構造化する方向性を議論。
-主要な提案は以下の通り：
-1.  マルチエージェントシステムの中核ロジックを MultiAgent クラスにカプセル化。
-2.  MultiAgent クラス内に train() と evaluate() メソッドを分離。
-3.  さらに進んで、学習アルゴリズム (Q, DQNなど) を AgentBase を継承したサブクラスとして実装し、MultiAgent がこれらを管理する（ポリモーフィズム活用）。
-
-メリット：責務明確化、コード整理、再利用性/拡張性向上、テスト容易性、状態管理改善。
-考慮点：学習/評価の処理分離、状態管理、引数渡し、モデル保存/読み込み、ログ/可視化、学習モードの扱い、共通インターフェース設計（サブクラス化の場合）。
-目的：コードの保守性・拡張性を高め、将来的な機能追加（例: 新しいアルゴリズム）を容易にする。
----------------------------------------------------------
-
-TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMainクラスのrunメソッド内に混在しており、
-      保守性・拡張性の観点から、学習モードごとに別のクラス(例: Q_Main, DQN_Main)に分割する設計を検討する。
-      全体を制御するクラスで、どの学習モードのクラスを使うかを選択する形にする。
-
-"""
-
-# --- プログレスバー（進捗表示）に関する注意点と解決策 ---
-# Colab環境ではリアルタイムに表示されるプログレスバー（例: '■'）が、
-# ローカルPython環境で実行すると、処理が完了した後に一気に表示されてしまう場合があります。
-# これは、Pythonの標準出力がパフォーマンス向上のために「バッファリング」されるためです。
-
-# この問題を解決し、ローカル環境でもリアルタイムにプログレスバーを表示するための方法は以下の通りです。
-
-# 1. print()関数の 'flush=True' 引数を使用する (最もシンプル)
-#    - print()関数に 'flush=True' を追加すると、出力が即座に画面に書き出されます。
-#    - 例: print('■', end='', flush=True)
-
-# 2. sys.stdout.flush() を使用する (より柔軟な制御が必要な場合)
-#    - print()以外の方法で出力している場合や、特定のタイミングでまとめてフラッシュしたい場合に有効です。
-#    - import sys をファイルの先頭に追加し、出力後に sys.stdout.flush() を呼び出します。
-#    - 例:
-#      import sys
-#      sys.stdout.write('■')
-#      sys.stdout.flush()
-
-# 3. tqdm ライブラリを使用する (推奨: より高機能で美しいプログレスバー)
-#    - プログレスバーの表示に特化した外部ライブラリです。
-#    - 内部で適切なフラッシュ処理が行われるため、Colabでもローカルでも期待通りに動作します。
-#    - 残り時間推定などの追加機能も提供されます。
-#    - インストール: pip install tqdm
-#    - 使用例:
-#      from tqdm import tqdm
-#      for item in tqdm(iterable_object):
-#          # 処理内容
-#          pass
-# --------------------------------------------------------
-
 import sys
 import argparse
 import torch
@@ -71,7 +15,7 @@ RESET = '\033[0m'
 
 class MultiAgent_Q:
     def __init__(self, args):
-        self.env = GridWorld(args)
+        self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
         #self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
@@ -142,14 +86,6 @@ class MultiAgent_Q:
         else:
             print(f"{GREEN}CQLで学習中{RESET}\n")
 
-        # ------------------------------------------------------------------
-        # ゴールの位置は最初の一度だけ生成して固定 (object_positions_goals に保持)
-        # ------------------------------------------------------------------
-        object_positions_goals = []
-        self.env.goals = self.env.generate_unique_positions(
-            self.goals_num, object_positions_goals, self.grid_size
-        )
-
         total_step = 0
         avg_reward_temp, avg_step_temp = 0, 0
 
@@ -169,18 +105,10 @@ class MultiAgent_Q:
                 avg_reward_temp, avg_step_temp = 0, 0
 
             # --------------------------------------------
-            # ここで各エピソードごとにエージェントを再配置
-            # ゴール位置は固定のobject_positions_goalsをコピー
+            # 各エピソード開始時に環境をリセット
+            # これによりエージェントが再配置される
             # --------------------------------------------
-            object_positions = object_positions_goals.copy()
-
-            # エージェントの位置をランダム生成(ゴール座標との重複回避)
-            self.env.agents = self.env.generate_unique_positions(
-                self.agents_num, object_positions, self.grid_size
-            )
-
-            # states にはゴール + エージェントが一続きに入る
-            states = tuple(object_positions)
+            states = self.env.reset()
 
             done = False
             step_count = 0
@@ -194,10 +122,14 @@ class MultiAgent_Q:
                 for i, agent in enumerate(agents):
                     agent.decay_epsilon(total_step)
 
+                    # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
+                    # エージェント内部で自身の観測(masking)を行う
                     actions.append(agent.get_action(i, states))
 
                 # エージェントの状態を保存（オプション）
                 if self.save_agent_states:
+                    # states はゴール位置 + エージェント位置のタプルになっている
+                    # エージェントの位置は states の self.goals_num 以降
                     for i, pos in enumerate(states[self.goals_num:]):
                         self.log_agent_states(episode_num, step_count, i, pos)
 
@@ -207,28 +139,25 @@ class MultiAgent_Q:
                 # 状態価値関数学習以外(Q, DQN)は逐次更新
                 losses = []
                 for i, agent in enumerate(agents):
-                    #losses.append(agent.update_brain(
-                    #    i, states, actions[i], reward,
-                    #    next_state, done, episode_num, step_count
-                    #))
+                    # エージェントは自身の経験(状態s, 行動a, 報酬r, 次状態s', 終了フラグdone)をストア
+                    # ここでも状態sと次状態s'は環境全体の状態を渡す
                     agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
-                    
+
                     # 学習は別のタイミングでトリガー
+                    # 学習時にも環境全体の状態を渡す必要があるか、エージェントが自身の観測範囲で学習するかは
+                    # Agent_Qクラスの実装に依存
                     loss = agent.learn_from_experience(i, episode_num)
                     if loss is not None:
-                        losses.append(loss)                    
+                        losses.append(loss)
 
-                states = next_state
+                states = next_state # 状態を更新
                 ep_reward += reward
 
                 step_count += 1
                 total_step += 1
 
-                #if self.render_mode:
-                #    self.env.render(episode_num, step_count)
-                #    self.clock.tick(50)
-
             # エピソード終了
+            # lossesがNoneでないものだけを抽出して平均を計算
             valid_losses = [l for l in losses if l is not None]
             avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 
@@ -274,11 +203,28 @@ class MultiAgent_Q:
                     os.path.join(model_dir_path, 'common.csv'))
             with open(path, 'w', newline='') as f:
                 writer = csv.writer(f)
-                if self.mask:
-                    data = agent.linear.theta_list
-                else:
-                    arr = np.array(agent.linear.common_theta_list)
-                    data = arr.reshape(-1, arr.shape[2])  # 2次元にリシェイプ
+                # Agent_Qクラスが持つ学習パラメータを取得する必要がある
+                # 例: agent.get_model_params() のようなメソッドをAgent_Qに追加する必要があるかもしれない
+                # 現在のコードではagent.linear.theta_listやagent.linear.common_theta_listを参照しているが、
+                # Agent_Qクラスの内部実装に依存しすぎている
+                # Agent_Qクラスにパラメータを公開するメソッドを追加するか、
+                # ここで直接アクセス可能な構造になっているか確認が必要
+                try:
+                    if self.mask:
+                        # IQLの場合、各エージェントが独自のthetaを持つと仮定
+                        # Agent_Qクラスに self.theta_list を持たせる必要がある
+                        data = agent.theta_list
+                    else:
+                        # CQLの場合、共通のthetaを持つと仮定
+                        # Agent_Qクラスに self.common_theta_list を持たせる必要がある
+                        # そして、それを2次元にリシェイプして保存
+                        arr = np.array(agent.common_theta_list)
+                        data = arr.reshape(-1, arr.shape[2]) if arr.ndim > 2 else arr
+                except AttributeError as e:
+                     print(f"エラー: Agent_Qクラスに学習パラメータを保持する変数がないか、名前が異なります: {e}")
+                     print("Agent_Qクラスの実装を確認し、学習パラメータが self.theta_list または self.common_theta_list として保持されているか確認してください。")
+                     return # 保存処理を中断
+
                 for row in data:
                     writer.writerow(row)
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
@@ -299,7 +245,7 @@ if __name__ == '__main__':
         parser.add_argument('--episode_number', default=5000, type=int)
         parser.add_argument('--max_timestep', default=100, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float)
+        parser.add_argument('--learning_rate', default=0.000005, type=float) # ここを修正: add_number -> add_argument
         parser.add_argument('--gamma', default=0.95, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)
@@ -322,5 +268,7 @@ if __name__ == '__main__':
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
     ma = MultiAgent_Q(args)
+    # Agent_Qの初期化時に、モデルパスは各エージェント固有 or 共通で渡す
+    # Agent_Qクラス内でモデルのロード処理を行う必要がある
     agents = [Agent_Q(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
     ma.run(agents)

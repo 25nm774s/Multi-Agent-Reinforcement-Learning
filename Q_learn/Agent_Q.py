@@ -98,6 +98,7 @@ class Agent_Q:
             self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
 
     # 価値更新
+    # 非推奨関数
     def update_brain(self, i, states, action, reward, next_state, done, episode_num, step):
         self.replay_buffer.add(states, action, reward, next_state, done)
 
@@ -106,7 +107,6 @@ class Agent_Q:
 
         if len(self.replay_buffer) < self.batch_size:
             return None
-            #return 
         
         states, action, reward, next_state, done = self.replay_buffer.get_batch()
 
@@ -115,6 +115,36 @@ class Agent_Q:
         # 修正：ループ範囲を実際のバッチサイズ len(states) に変更
         for j in range(len(states)): # ここではバッチサイズ分のlossを平均
             scalar_loss.append(self.linear.update(i, states[j], action[j], reward[j], next_state[j], done[j], step))
+        scalar_loss = np.mean(scalar_loss)
+
+        return scalar_loss
+    
+    def observe_and_store_experience(self, state, action, reward, next_state, done):
+        """
+        環境からの単一ステップの経験をリプレイバッファに追加する。
+        """
+        self.replay_buffer.add(state, action, reward, next_state, done)
+
+    def learn_from_experience(self, i, episode_num):
+        """
+        リプレイバッファからバッチを取得し、モデルを学習させる。
+        """
+        if self.load_model == 1:
+            return None # 学習済みモデル使用時は更新なし
+
+        #if len(self.replay_buffer) < self.model.batch_size: # batch_sizeはmodelにあると仮定
+        if len(self.replay_buffer) < self.batch_size: # batch_sizeはselfにある
+            return None # バッチサイズに満たない場合は学習しない
+
+        # 1. バッチデータの取得
+        states, action, reward, next_state, done = self.replay_buffer.get_batch()
+        
+        # 2. モデルの更新 episode_numはターゲットネットワーク更新タイミングのため必要
+        # 線形関数近似器
+        scalar_loss = []
+        # 修正：ループ範囲を実際のバッチサイズ len(states) に変更
+        for j in range(len(states)): # ここではバッチサイズ分のlossを平均
+            scalar_loss.append(self.linear.update(i, states[j], action[j], reward[j], next_state[j], done[j], step=episode_num))
         scalar_loss = np.mean(scalar_loss)
 
         return scalar_loss

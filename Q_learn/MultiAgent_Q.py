@@ -119,7 +119,6 @@ class MultiAgent_Q:
             os.makedirs(dir_for_agents_states)
 
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
-        #self.clock = pygame.time.Clock()
 
         # エージェントの状態をcsvに保存するかどうか
         self.save_agent_states = args.save_agent_states
@@ -193,11 +192,7 @@ class MultiAgent_Q:
             while not done and step_count < self.max_ts:
                 actions = []
                 for i, agent in enumerate(agents):
-                    # load_model == 1 → 学習済みモデル (epsilon=0.1)
-                    if self.load_model == 1:
-                        agent.epsilon = 0.1
-                    else:
-                        agent.decay_epsilon(total_step)
+                    agent.decay_epsilon(total_step)
 
                     actions.append(agent.get_action(i, states))
 
@@ -212,11 +207,16 @@ class MultiAgent_Q:
                 # 状態価値関数学習以外(Q, DQN)は逐次更新
                 losses = []
                 for i, agent in enumerate(agents):
-                    losses.append(agent.update_brain(
-                        i, states, actions[i], reward,
-                        next_state, done, episode_num, step_count
-                    ))
+                    #losses.append(agent.update_brain(
+                    #    i, states, actions[i], reward,
+                    #    next_state, done, episode_num, step_count
+                    #))
+                    agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
                     
+                    # 学習は別のタイミングでトリガー
+                    loss = agent.learn_from_experience(i, episode_num)
+                    if loss is not None:
+                        losses.append(loss)                    
 
                 states = next_state
                 ep_reward += reward
@@ -228,7 +228,7 @@ class MultiAgent_Q:
                 #    self.env.render(episode_num, step_count)
                 #    self.clock.tick(50)
 
-            # エピソード終了後，状態価値の更新 (V 学習時のみ)
+            # エピソード終了
             valid_losses = [l for l in losses if l is not None]
             avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 
@@ -239,7 +239,6 @@ class MultiAgent_Q:
             avg_step_temp += step_count
 
         print()  # 終了時に改行
-        #pygame.quit()
 
         # モデル保存やプロット
         if self.load_model == 0:

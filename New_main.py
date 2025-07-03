@@ -37,11 +37,12 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class Main:
-    def __init__(self, args, multiagent):
-        self.multiagent = multiagent
+    def __init__(self, args, agent):
+        self.agent = agent
+        self.args = args
 
     def run(self, agents):
-        self.multiagent.run(agents)
+        self.agent.run(agents)
 
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:

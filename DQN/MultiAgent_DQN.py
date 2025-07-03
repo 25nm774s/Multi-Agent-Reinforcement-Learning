@@ -155,22 +155,10 @@ class MultiAgent_DQN:
                 avg_reward_temp, avg_step_temp = 0, 0
 
             # --------------------------------------------
-            # ここで各エピソードごとにエージェントを再配置
-            # ゴール位置は固定のobject_positions_goalsをコピー
+            # 各エピソード開始時に環境をリセット
+            # これによりエージェントが再配置される
             # --------------------------------------------
-            object_positions = object_positions_goals.copy()
-
-            # エージェントの位置をランダム生成(ゴール座標との重複回避)
-            self.env.agents = self.env.generate_unique_positions(
-                self.agents_num, object_positions, self.grid_size
-            )
-
-            # states にはゴール + エージェントが一続きに入る
-            # (ゴールの位置1(x,y),ゴールの位置2(x,y)...ゴールの位置N(x,y),エージェント自身の位置1(x,y),エージェント自身の位置2(x,y)...エージェント自身の位置N(x,y))
-            #環境の現在の状態を表す大きなテンソル
-            states = tuple(object_positions)
-
-            #print(f"states:{states}")
+            states = self.env.reset()
 
             done = False
             step_count = 0
@@ -184,6 +172,8 @@ class MultiAgent_DQN:
                 for i, agent in enumerate(agents):
                     agent.decay_epsilon(total_step)
 
+                    # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
+                    # エージェント内部で自身の観測(masking)を行う
                     actions.append(agent.get_action(i, states))
 
                 # エージェントの状態を保存（オプション）
@@ -197,25 +187,25 @@ class MultiAgent_DQN:
                 # DQNは逐次更新
                 losses = []
                 for i, agent in enumerate(agents):
-                    #losses.append(agent.update_brain(
-                    #    i, states, actions[i], reward,
-                    #    next_state, done, episode_num
-                    #))
-                    # ステップごとに経験をストア
+                    # エージェントは自身の経験(状態s, 行動a, 報酬r, 次状態s', 終了フラグdone)をストア
+                    # ここでも状態sと次状態s'は環境全体の状態を渡す
                     agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
-                    
+
                     # 学習は別のタイミングでトリガー
+                    # 学習時にも環境全体の状態を渡す必要があるか、エージェントが自身の観測範囲で学習するかは
+                    # Agent_Qクラスの実装に依存
                     loss = agent.learn_from_experience(i, episode_num)
                     if loss is not None:
-                        losses.append(loss)                    
+                        losses.append(loss)
 
-                states = next_state
+                states = next_state # 状態を更新
                 ep_reward += reward
 
                 step_count += 1
                 total_step += 1
 
             # エピソード終了
+            # lossesがNoneでないものだけを抽出して平均を計算
             valid_losses = [l for l in losses if l is not None]
             avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 

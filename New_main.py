@@ -56,8 +56,8 @@ class Main:
         with open(self.agents_states_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
-    def save_model(self, agents):
-        self.agent.save_model(agents)
+    def save_model(self):
+        self.agents.save_model(agents)
 
 if __name__ == '__main__':
     def parse_args():
@@ -97,28 +97,54 @@ if __name__ == '__main__':
             args.device = 'cpu'
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
+    from utils.Model_Saver import Saver
+    from utils.plot_results import PlotResults
+
     if args.learning_mode == "Q":
         from Q_learn.Agent_Q import Agent_Q
         from Q_learn.MultiAgent_Q import MultiAgent_Q
 
-        # model_path = 
         #agents = [Agent_Q(args, multiagent_q.model_path[b_idx]) for b_idx in range(args.agents_number)]
         agents = [Agent_Q(args) for _ in range(args.agents_number)]
-        #multiagent_q = MultiAgent_Q(args,agents)
-        #main = Main(args,agents)
+    
+        save_dir = os.path.join(
+            "output",
+            f"Q_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
+        )
+        scores_path = os.path.join(save_dir, "scores.csv")
+        agents_states_path = os.path.join(save_dir, "agents_states.csv")
 
-        #main.run()
-        maq = MultiAgent_Q(args,agents)
+        plot_results = PlotResults(scores_path, agents_states_path)
+
+        saver = Saver(save_dir,args.mask)
+
+        maq = MultiAgent_Q(args,agents,saver)
         maq.run()
+
+        #saver.save_model(agents)
+        #plot_results.draw()
 
     elif args.learning_mode == "DQN":
         from DQN.Agent_DQN import Agent_DQN
         from DQN.MultiAgent_DQN import MultiAgent_DQN
 
+        save_dir = os.path.join(
+            "output",
+            f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
+        )
+        scores_path = os.path.join(save_dir, "scores.csv")
+        agents_states_path = os.path.join(save_dir, "agents_states.csv")
+
+        plot_results = PlotResults(scores_path, agents_states_path)
+
+        saver = Saver(save_dir,args.mask)
         agents = [Agent_DQN(args, i) for i in range(args.agents_number)]
-        ma_dqn = MultiAgent_DQN(args, agents)
+        ma_dqn = MultiAgent_DQN(args, agents,saver)
 
         ma_dqn.run()
+
+        #saver.save_model_weights(agents)
+        #plot_results.draw_heatmap(args.grid_size)
 
     else:
         print(f"{args.learning_mode}は未実装")

@@ -71,7 +71,7 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_DQN:
-    def __init__(self, args, agents):
+    def __init__(self, args, agents, saver:Saver):
         self.env = GridWorld(args)
         self.agents = agents
         self.reward_mode = args.reward_mode
@@ -85,31 +85,31 @@ class MultiAgent_DQN:
         self.mask = args.mask
 
         self.save_agent_states = args.save_agent_states
-        self.OUT_FOLDER_NAME = "output"
+        #self.OUT_FOLDER_NAME = "output"
         
         # OutputFile
-        self.save_dir = (
-            f"DQN_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-            f"_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
+        self.save_dir = os.path.join(
+            "output",
+            f"DQN_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
         )
 
         # モデル保存先のパス生成(あとでクラス分けしてここはなかったことになる)
         self.model_path = []
         for b_idx in range(self.agents_num):
             self.model_path.append(
-                os.path.join(self.OUT_FOLDER_NAME, self.save_dir, 'model_weights', f"{b_idx}.pth")
+                os.path.join(self.save_dir, 'model_weights', f"{b_idx}.pth")
             )
 
         # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "scores.csv")
-        self.agents_states_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "agents_states.csv")
+        self.scores_path = os.path.join(self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(self.save_dir, "agents_states.csv")
 
         # ディレクトリがなければ作成
         dir_for_agents_states = os.path.dirname(self.agents_states_path)
         if not os.path.exists(dir_for_agents_states):
             os.makedirs(dir_for_agents_states)
 
-        self.saver = Saver(self.save_dir,self.scores_path,self.agents_states_path)
+        self.saver = saver
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
 
     """
@@ -225,6 +225,7 @@ class MultiAgent_DQN:
 
         print()  # 終了時に改行
 
+    
         # モデル保存やプロット
         if self.load_model == 0:
             #self.save_model(self.agents)
@@ -234,8 +235,9 @@ class MultiAgent_DQN:
 
         if self.save_agent_states:
             self.plot_results.draw_heatmap(self.grid_size)
+    
 
-    """
+    
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
@@ -257,7 +259,7 @@ class MultiAgent_DQN:
         for i, agent in enumerate(agents):
             torch.save(agent.model.qnet.state_dict(), self.model_path[i])
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
-    """
+    
 
 """
 if __name__ == '__main__':

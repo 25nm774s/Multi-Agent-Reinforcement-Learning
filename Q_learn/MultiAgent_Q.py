@@ -15,7 +15,7 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_Q:
-    def __init__(self, args, agents:Agent_Q):
+    def __init__(self, args, agents:Agent_Q, saver:Saver):
         self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
         self.agents = agents
 
@@ -32,19 +32,19 @@ class MultiAgent_Q:
         self.mask = args.mask
 
         # 結果保存先のパス生成
-        self.save_dir = (
-            f"Q_mask[{args.mask}]_Reward[{args.reward_mode}]"
-            f"_env[{args.grid_size}x{args.grid_size}]_agents[{args.agents_number}]"
+        self.save_dir = os.path.join(
+            "output",
+            f"DQN_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
         )
 
-        self.scores_path = os.path.join("output",self.save_dir, "scores.csv")
-        self.agents_states_path = os.path.join("output", self.save_dir, "agents_states.csv")
+        self.scores_path = os.path.join(self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(self.save_dir, "agents_states.csv")
 
-        self.saver = Saver(self.save_dir,self.scores_path,self.agents_states_path)
+        self.saver = saver
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
 
-        # エージェントの状態をcsvに保存するかどうか
-        self.save_agent_states = args.save_agent_states
+        # エージェントの状態をcsvに保存するかどうか(簡単のため常に1)
+        #self.save_agent_states = args.save_agent_states
 
         # TODO: Saverクラスの導入を検討
         # 現在、ファイルパス生成、ディレクトリ作成、csv書き込みロジックがMultiAgent_Qに混在している。
@@ -106,13 +106,13 @@ class MultiAgent_Q:
                     actions.append(agent.get_action(i, states))
 
                 # エージェントの状態を保存（オプション）
-                if self.save_agent_states:
-                    # states はゴール位置 + エージェント位置のタプルになっている
-                    # エージェントの位置は states の self.goals_num 以降
-                    # TODO: GridWorldのget_agent_positionsメソッドの使用を検討
-                    for i, pos in enumerate(states[self.goals_num:]):
-                        #self.log_agent_states(episode_num, step_count, i, pos)
-                        self.saver.log_agent_states(episode_num, step_count, i, pos)
+                #if self.save_agent_states:
+                # states はゴール位置 + エージェント位置のタプルになっている
+                # エージェントの位置は states の self.goals_num 以降
+                # TODO: GridWorldのget_agent_positionsメソッドの使用を検討
+                for i, pos in enumerate(states[self.goals_num:]):
+                    #self.log_agent_states(episode_num, step_count, i, pos)
+                    self.saver.log_agent_states(episode_num, step_count, i, pos)
 
                 # 環境にステップを与えて状態を更新
                 next_state, reward, done = self.env.step(states, actions)
@@ -152,58 +152,36 @@ class MultiAgent_Q:
 
         print()  # 終了時に改行
 
+    
         # モデル保存やプロット
         if self.load_model == 0:
             # TODO: Saverクラスのsave_modelメソッドに置き換え
-            #self.save_model(self.agents)
-            #self.plot_results.draw()
-            self.saver.save_model(self.agents)
+            self.save_model(self.agents)
+            self.plot_results.draw()
+            #self.saver.save_model(self.agents)
+        elif self.load_model == 1:
+            self.plot_results.draw()
 
-        self.plot_results.draw()
+        #if self.save_agent_states:
+        self.plot_results.draw_heatmap(self.grid_size)
+        #self.plot_results.draw_heatmap(self.grid_size)
+    
+    def log_scores(self, episode, time_step, reward, loss):
+        with open(self.scores_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, reward, loss])
 
-        if self.save_agent_states:
-            #self.plot_results.draw_heatmap(self.grid_size)
-            self.plot_results.draw_heatmap(self.grid_size)
+    def log_agent_states(self, episode, time_step, agent_id, agent_state):
+        if isinstance(agent_state, (list, tuple, np.ndarray)):
+            state_str = '_'.join(map(str, agent_state))
+        else:
+            state_str = str(agent_state)
+        with open(self.agents_states_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, agent_id, state_str])
+
+    def save_model(self,agents):
+        print("あとで実装")
 
 """
-if __name__ == '__main__':
-    def parse_args():
-        parser = argparse.ArgumentParser()
-        #parser.add_argument('--dir_path', default='/Users/ryohei_nakano/Desktop/研究コード/orig_rl_ver4.3')
-        parser.add_argument('--grid_size', default=8, type=int)
-        parser.add_argument('--agents_number', default=2, type=int)
-        parser.add_argument('--goals_number', default=2, type=int)
-        #parser.add_argument('--learning_mode', choices=['V', 'Q', 'DQN'], default='DQN')
-        parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
-        parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--load_model', choices=[0, 1, 2], default=1, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
-        parser.add_argument('--episode_number', default=5000, type=int)
-        parser.add_argument('--max_timestep', default=100, type=int)
-        parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float)
-        parser.add_argument('--gamma', default=0.95, type=float)
-        parser.add_argument('--buffer_size', default=10000, type=int)
-        parser.add_argument('--batch_size', default=2, type=int)
-        parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
-        parser.add_argument('--window_width', default=500, type=int)
-        parser.add_argument('--window_height', default=500, type=int)
-        parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
-        return parser.parse_args()
-
-    args = parse_args()
-
-    # auto選択時のデバイス決定ロジックを追加
-    if args.device == 'auto':
-        if torch.cuda.is_available():
-            args.device = 'cuda'
-        elif torch.backends.mps.is_available():
-            args.device = 'mps'
-        else:
-            args.device = 'cpu'
-        print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
-
     ma = MultiAgent_Q(args)
     # Agent_Qの初期化時に、モデルパスは各エージェント固有 or 共通で渡す
     # Agent_Qクラス内でモデルのロード処理を行う必要がある

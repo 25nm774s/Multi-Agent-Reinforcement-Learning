@@ -41,3 +41,92 @@ Saverクラスの設計仕様
        それはMultiAgent_Q経由で受け取った状態データを利用する形になる．
 
 """
+
+import os
+import numpy as np
+import csv
+
+RED = '\033[91m'
+GREEN = '\033[92m'
+RESET = '\033[0m'
+
+class Saver:
+    def __init__(self,save_dir,scores_path,agents_states_path):
+        self.save_dir = save_dir
+        self.scores_path = scores_path
+        self.agents_states_path = agents_states_path
+
+        self.mask = 0
+
+        # なければ作成
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        # スコアファイルを初期化（ヘッダ書き込み）
+        with open(self.scores_path, 'w', newline='') as f:
+            csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
+
+        # ヘッダ書き込み
+        with open(self.agents_states_path, 'w', newline='') as f:
+            csv.writer(f).writerow(['episode', 'time_step', 'agent_id', 'agent_state'])
+
+    def log_scores(self, episode, time_step, reward, loss):
+
+        # 内容
+        with open(self.scores_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, reward, loss])
+
+    def log_agent_states(self, episode, time_step, agent_id, agent_state):
+
+        if isinstance(agent_state, (list, tuple, np.ndarray)):
+            state_str = '_'.join(map(str, agent_state))
+        else:
+            state_str = str(agent_state)
+        with open(self.agents_states_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, agent_id, state_str])
+
+    def save_model(self, agents):
+
+        model_dir_path = os.path.join("output", self.save_dir,'model_weights')
+        if not os.path.exists(model_dir_path):
+            os.makedirs(model_dir_path)
+
+        print('パラメータ保存中...')
+        
+        for i, agent in enumerate(agents):
+            path = (os.path.join(model_dir_path, f'{i}.csv')
+                    if self.mask else
+                    os.path.join(model_dir_path, 'common.csv'))
+            with open(path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                # Agent_Qクラスが持つ学習パラメータを取得する必要がある
+                # 例: agent.get_model_params() のようなメソッドをAgent_Qに追加する必要があるかもしれない
+                # 現在のコードではagent.linear.theta_listやagent.linear.common_theta_listを参照しているが、
+                # Agent_Qクラスの内部実装に依存しすぎている
+                # Agent_Qクラスにパラメータを公開するメソッドを追加するか、
+                # ここで直接アクセス可能な構造になっているか確認が必要
+                try:
+                    if self.mask:
+                        # IQLの場合、各エージェントが独自のthetaを持つと仮定
+                        # Agent_Qクラスに self.theta_list を持たせる必要がある
+                        data = agent.theta_list
+                    else:
+                        # CQLの場合、共通のthetaを持つと仮定
+                        # Agent_Qクラスに self.common_theta_list を持たせる必要がある
+                        # そして、それを2次元にリシェイプして保存
+                        arr = np.array(agent.common_theta_list)
+                        data = arr.reshape(-1, arr.shape[2]) if arr.ndim > 2 else arr
+                except AttributeError as e:
+                     print(f"エラー: Agent_Qクラスに学習パラメータを保持する変数がないか、名前が異なります: {e}")
+                     print("Agent_Qクラスの実装を確認し、学習パラメータが self.theta_list または self.common_theta_list として保持されているか確認してください。")
+                     return # 保存処理を中断
+
+                for row in data:
+                    writer.writerow(row)
+        print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
+    
+    # モデルパラメータの保存
+
+    # 学習ログの保存
+    def save_learn_histry(self):
+        pass

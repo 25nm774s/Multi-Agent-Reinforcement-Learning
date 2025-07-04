@@ -103,7 +103,7 @@ if __name__ == '__main__':
 
         # model_path = 
         #agents = [Agent_Q(args, multiagent_q.model_path[b_idx]) for b_idx in range(args.agents_number)]
-        agents = [Agent_Q(args,i) for i in range(args.agents_number)]
+        agents = [Agent_Q(args) for _ in range(args.agents_number)]
         #multiagent_q = MultiAgent_Q(args,agents)
         #main = Main(args,agents)
 

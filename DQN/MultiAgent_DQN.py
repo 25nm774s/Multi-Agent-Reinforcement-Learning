@@ -55,15 +55,16 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 # --------------------------------------------------------
 
 import sys
-import argparse
 import torch
 import os
 import csv
 import numpy as np
 
 from env import GridWorld
-from DQN.Agent_DQN import Agent_DQN
+#from DQN.Agent_DQN import Agent_DQN
 from utils.plot_results import PlotResults
+from utils.Model_Saver import Saver
+
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -83,8 +84,9 @@ class MultiAgent_DQN:
         self.load_model = args.load_model
         self.mask = args.mask
 
+        self.save_agent_states = args.save_agent_states
         self.OUT_FOLDER_NAME = "output"
-
+        
         # OutputFile
         self.save_dir = (
             f"DQN_mask[{self.mask}]_RewardType[{self.reward_mode}]"
@@ -107,9 +109,10 @@ class MultiAgent_DQN:
         if not os.path.exists(dir_for_agents_states):
             os.makedirs(dir_for_agents_states)
 
+        self.saver = Saver(self.save_dir,self.scores_path,self.agents_states_path)
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
-        #self.clock = pygame.time.Clock()
 
+    """
         # エージェントの状態をcsvに保存するかどうか
         self.save_agent_states = args.save_agent_states
         if self.save_agent_states:
@@ -119,6 +122,8 @@ class MultiAgent_DQN:
         # スコアファイルを初期化（ヘッダ書き込み）
         with open(self.scores_path, 'w', newline='') as f:
             csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
+
+    """
 
     def run(self):
         # 事前条件チェック
@@ -180,7 +185,8 @@ class MultiAgent_DQN:
                 # エージェントの状態を保存（オプション）
                 if self.save_agent_states:
                     for i, pos in enumerate(states[self.goals_num:]):
-                        self.log_agent_states(episode_num, step_count, i, pos)
+                        #self.log_agent_states(episode_num, step_count, i, pos)
+                        self.saver.log_agent_states(episode_num, step_count, i, pos)
 
                 # 環境にステップを与えて状態を更新
                 next_state, reward, done = self.env.step(states, actions)
@@ -211,7 +217,8 @@ class MultiAgent_DQN:
             avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 
             # ログにスコアを記録
-            self.log_scores(episode_num, step_count, ep_reward, avg_loss)
+            #self.log_scores(episode_num, step_count, ep_reward, avg_loss)
+            self.saver.log_scores(episode_num, step_count, ep_reward, avg_loss)
 
             avg_reward_temp += ep_reward
             avg_step_temp += step_count
@@ -220,14 +227,15 @@ class MultiAgent_DQN:
 
         # モデル保存やプロット
         if self.load_model == 0:
-            self.save_model(self.agents)
-            self.plot_results.draw()
-        elif self.load_model == 2:
-            self.plot_results.draw()
+            #self.save_model(self.agents)
+            self.saver.save_model(self.agents)
+
+        self.plot_results.draw()
 
         if self.save_agent_states:
             self.plot_results.draw_heatmap(self.grid_size)
 
+    """
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
@@ -249,6 +257,7 @@ class MultiAgent_DQN:
         for i, agent in enumerate(agents):
             torch.save(agent.model.qnet.state_dict(), self.model_path[i])
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
+    """
 
 """
 if __name__ == '__main__':

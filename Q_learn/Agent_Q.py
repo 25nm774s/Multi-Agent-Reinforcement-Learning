@@ -26,7 +26,7 @@ MAX_EPSILON = 1
 MIN_EPSILON = 0.01
 
 class Agent_Q:
-    def __init__(self, args, agentID):
+    def __init__(self, args):
         self.agents_num = args.agents_number
         self.batch_size = args.batch_size
         self.decay_epsilon_step = args.decay_epsilon
@@ -36,30 +36,10 @@ class Agent_Q:
         self.load_model = args.load_model
         self.goals_num = args.goals_number
         self.mask = args.mask
-        self.model_path = agentID
+        #self.model_path = agentID
         self.device = torch.device(args.device)
         self.replay_buffer = ReplayBuffer("Q",args.buffer_size,self.batch_size,self.device)
-
-        # モデルのロード(自動的に読み込む設定にする)
-        #if self.load_model == 1 or self.load_model == 2:
-        #    self.model_path = agentID
-        #    self.loading_model(self.model_path)
-
-        self.linear = Linear(args, self.action_size, "Q")
-
-    # 学習済みモデルの存在の確認
-    def loading_model(self, model_path)->bool:
-        if os.path.exists(model_path):
-            print('モデルを読み込みました.')
-            print(f"from {GREEN}{model_path}{RESET}\n")
-
-            return True
-        else:
-            print(f"学習済みモデル {RED}{model_path}{RESET} が見つかりません.")
-            print('学習する場合, load_model=0 に変更してください.\n')
-
-            return False
-
+        self.linear = Linear(args,5,"Q")
 
     def get_action(self, i, states):    
         return self.linear_greedy_actor(i, states)

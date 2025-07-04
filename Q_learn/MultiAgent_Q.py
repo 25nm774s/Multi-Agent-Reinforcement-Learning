@@ -7,6 +7,7 @@ import numpy as np
 
 from env import GridWorld
 from Q_learn.Agent_Q import Agent_Q
+from utils.Model_Saver import Saver
 from utils.plot_results import PlotResults
 
 RED = '\033[91m'
@@ -14,9 +15,10 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_Q:
-    def __init__(self, args, agents):
+    def __init__(self, args, agents:Agent_Q):
         self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
         self.agents = agents
+
         #self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
@@ -29,46 +31,20 @@ class MultiAgent_Q:
         self.load_model = args.load_model
         self.mask = args.mask
 
-        self.OUT_FOLDER_NAME = "output"
-
-        # OutputFile
+        # 結果保存先のパス生成
         self.save_dir = (
-            f"Q_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-            f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
+            f"Q_mask[{args.mask}]_Reward[{args.reward_mode}]"
+            f"_env[{args.grid_size}x{args.grid_size}]_agents[{args.agents_number}]"
         )
 
-        # モデル保存先のパス生成(あとでクラス分けしてここはなかったことになる)
-        self.model_path = []
-        for b_idx in range(self.agents_num):
-            if self.mask:
-                self.model_path.append(
-                    os.path.join(self.OUT_FOLDER_NAME, self.save_dir, 'model_weights', f"{b_idx}.csv")
-                )
-            else:
-                self.model_path.append(
-                    os.path.join(self.OUT_FOLDER_NAME, self.save_dir, 'model_weights', "common.csv")
-                )
+        self.scores_path = os.path.join("output",self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join("output", self.save_dir, "agents_states.csv")
 
-        # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "scores.csv")
-        self.agents_states_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir, "agents_states.csv")
-
-        # ディレクトリがなければ作成
-        dir_for_agents_states = os.path.dirname(self.agents_states_path)
-        if not os.path.exists(dir_for_agents_states):
-            os.makedirs(dir_for_agents_states)
-
+        self.saver = Saver(self.save_dir,self.scores_path,self.agents_states_path)
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
 
         # エージェントの状態をcsvに保存するかどうか
         self.save_agent_states = args.save_agent_states
-        if self.save_agent_states:
-            with open(self.agents_states_path, 'w', newline='') as f:
-                csv.writer(f).writerow(['episode', 'time_step', 'agent_id', 'agent_state'])
-
-        # スコアファイルを初期化（ヘッダ書き込み）
-        with open(self.scores_path, 'w', newline='') as f:
-            csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
 
         # TODO: Saverクラスの導入を検討
         # 現在、ファイルパス生成、ディレクトリ作成、csv書き込みロジックがMultiAgent_Qに混在している。
@@ -135,7 +111,8 @@ class MultiAgent_Q:
                     # エージェントの位置は states の self.goals_num 以降
                     # TODO: GridWorldのget_agent_positionsメソッドの使用を検討
                     for i, pos in enumerate(states[self.goals_num:]):
-                        self.log_agent_states(episode_num, step_count, i, pos)
+                        #self.log_agent_states(episode_num, step_count, i, pos)
+                        self.saver.log_agent_states(episode_num, step_count, i, pos)
 
                 # 環境にステップを与えて状態を更新
                 next_state, reward, done = self.env.step(states, actions)
@@ -167,7 +144,8 @@ class MultiAgent_Q:
 
             # ログにスコアを記録
             # TODO: Saverクラスのlog_scoresメソッドに置き換え
-            self.log_scores(episode_num, step_count, ep_reward, avg_loss)
+            #self.log_scores(episode_num, step_count, ep_reward, avg_loss)
+            self.saver.log_scores(episode_num, step_count, ep_reward, avg_loss)
 
             avg_reward_temp += ep_reward
             avg_step_temp += step_count
@@ -177,66 +155,15 @@ class MultiAgent_Q:
         # モデル保存やプロット
         if self.load_model == 0:
             # TODO: Saverクラスのsave_modelメソッドに置き換え
-            self.save_model(self.agents)
-            self.plot_results.draw()
-        elif self.load_model == 2:
-            self.plot_results.draw()
+            #self.save_model(self.agents)
+            #self.plot_results.draw()
+            self.saver.save_model(self.agents)
+
+        self.plot_results.draw()
 
         if self.save_agent_states:
+            #self.plot_results.draw_heatmap(self.grid_size)
             self.plot_results.draw_heatmap(self.grid_size)
-
-    def log_scores(self, episode, time_step, reward, loss):
-        # TODO: Saverクラスへ移動
-        with open(self.scores_path, 'a', newline='') as f:
-            csv.writer(f).writerow([episode, time_step, reward, loss])
-
-    def log_agent_states(self, episode, time_step, agent_id, agent_state):
-        # TODO: Saverクラスへ移動
-        if isinstance(agent_state, (list, tuple, np.ndarray)):
-            state_str = '_'.join(map(str, agent_state))
-        else:
-            state_str = str(agent_state)
-        with open(self.agents_states_path, 'a', newline='') as f:
-            csv.writer(f).writerow([episode, time_step, agent_id, state_str])
-
-    def save_model(self, agents):
-        # TODO: Saverクラスへ移動
-        model_dir_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir,'model_weights')
-        if not os.path.exists(model_dir_path):
-            os.makedirs(model_dir_path)
-
-        print('パラメータ保存中...')
-        for i, agent in enumerate(agents):
-            path = (os.path.join(model_dir_path, f'{i}.csv')
-                    if self.mask else
-                    os.path.join(model_dir_path, 'common.csv'))
-            with open(path, 'w', newline='') as f:
-                writer = csv.writer(f)
-                # Agent_Qクラスが持つ学習パラメータを取得する必要がある
-                # 例: agent.get_model_params() のようなメソッドをAgent_Qに追加する必要があるかもしれない
-                # 現在のコードではagent.linear.theta_listやagent.linear.common_theta_listを参照しているが、
-                # Agent_Qクラスの内部実装に依存しすぎている
-                # Agent_Qクラスにパラメータを公開するメソッドを追加するか、
-                # ここで直接アクセス可能な構造になっているか確認が必要
-                try:
-                    if self.mask:
-                        # IQLの場合、各エージェントが独自のthetaを持つと仮定
-                        # Agent_Qクラスに self.theta_list を持たせる必要がある
-                        data = agent.theta_list
-                    else:
-                        # CQLの場合、共通のthetaを持つと仮定
-                        # Agent_Qクラスに self.common_theta_list を持たせる必要がある
-                        # そして、それを2次元にリシェイプして保存
-                        arr = np.array(agent.common_theta_list)
-                        data = arr.reshape(-1, arr.shape[2]) if arr.ndim > 2 else arr
-                except AttributeError as e:
-                     print(f"エラー: Agent_Qクラスに学習パラメータを保持する変数がないか、名前が異なります: {e}")
-                     print("Agent_Qクラスの実装を確認し、学習パラメータが self.theta_list または self.common_theta_list として保持されているか確認してください。")
-                     return # 保存処理を中断
-
-                for row in data:
-                    writer.writerow(row)
-        print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
 
 """
 if __name__ == '__main__':

@@ -15,7 +15,7 @@ class Linear:
     common_theta_list = None
     common_state_theta_list = None
 
-    def __init__(self, args, action_size, model_path, learning_mode):
+    def __init__(self, args, action_size, learning_mode):
         self.max_ts = args.max_timestep
         self.goals_num = args.goals_number
         self.agents_num = args.agents_number
@@ -59,6 +59,7 @@ class Linear:
         # 行動数分のmuを保持する配列(現状1つのみ)
         self.mu_list = [np.copy(self.mu_array)]
 
+        """
         # モデル読み込みまたは真の価値関数として読み込む場合
         if self.load_model == 1:
             # 学習済みモデルを読み込み
@@ -72,6 +73,7 @@ class Linear:
             # 未学習の初期化
             print(f"load_model {self.load_model}:未学習のため初期化")
             self.theta_list = [np.zeros(b) for _ in range(self.action_size)]
+        """
 
     def _load_trained_model(self, model_path, b):
         """学習済みのQ関数パラメータをCSVから読み込んでtheta_listに格納"""

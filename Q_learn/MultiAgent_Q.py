@@ -14,8 +14,9 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_Q:
-    def __init__(self, args):
+    def __init__(self, args, agents):
         self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
+        self.agents = agents
         #self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
@@ -30,11 +31,6 @@ class MultiAgent_Q:
 
         self.OUT_FOLDER_NAME = "output"
 
-        # 保存ファイル名
-        #self.f_name = (
-        #    f"{self.learning_mode}_mask[{self.mask}]_RewardType[{self.reward_mode}]"
-        #    f"_env[{self.grid_size}x{self.grid_size}]_agents[{self.agents_num}]_goals[{self.goals_num}]"
-        #)
         # OutputFile
         self.save_dir = (
             f"Q_mask[{self.mask}]_RewardType[{self.reward_mode}]"
@@ -80,7 +76,8 @@ class MultiAgent_Q:
         # Saverクラスは、モデルパラメータ、学習ログ、エージェント状態の保存メソッドを持つ。
         # MultiAgent_QはSaverインスタンスを持ち、適切なタイミングでSaverのメソッドを呼び出す。
 
-    def run(self, agents):
+    def run(self):
+
         # 事前条件チェック
         if self.agents_num < self.goals_num:
             print('goals_num <= agents_num に設定してください.\n')
@@ -125,7 +122,7 @@ class MultiAgent_Q:
             # ---------------------------
             while not done and step_count < self.max_ts:
                 actions = []
-                for i, agent in enumerate(agents):
+                for i, agent in enumerate(self.agents):
                     agent.decay_epsilon(total_step)
 
                     # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
@@ -145,7 +142,7 @@ class MultiAgent_Q:
 
                 # 状態価値関数学習以外(Q, DQN)は逐次更新
                 losses = []
-                for i, agent in enumerate(agents):
+                for i, agent in enumerate(self.agents):
                     # エージェントは自身の経験(状態s, 行動a, 報酬r, 次状態s', 終了フラグdone)をストア
                     # ここでも状態sと次状態s'は環境全体の状態を渡す
                     agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
@@ -180,7 +177,7 @@ class MultiAgent_Q:
         # モデル保存やプロット
         if self.load_model == 0:
             # TODO: Saverクラスのsave_modelメソッドに置き換え
-            self.save_model(agents)
+            self.save_model(self.agents)
             self.plot_results.draw()
         elif self.load_model == 2:
             self.plot_results.draw()
@@ -241,6 +238,7 @@ class MultiAgent_Q:
                     writer.writerow(row)
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
 
+"""
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
@@ -284,3 +282,4 @@ if __name__ == '__main__':
     # Agent_Qクラス内でモデルのロード処理を行う必要がある
     agents = [Agent_Q(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
     ma.run(agents)
+"""

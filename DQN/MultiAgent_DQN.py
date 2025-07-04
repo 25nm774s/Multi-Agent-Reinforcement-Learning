@@ -70,8 +70,9 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_DQN:
-    def __init__(self, args):
+    def __init__(self, args, agents):
         self.env = GridWorld(args)
+        self.agents = agents
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
@@ -119,7 +120,7 @@ class MultiAgent_DQN:
         with open(self.scores_path, 'w', newline='') as f:
             csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
 
-    def run(self, agents):
+    def run(self):
         # 事前条件チェック
         if self.agents_num < self.goals_num:
             print('goals_num <= agents_num に設定してください.\n')
@@ -169,7 +170,7 @@ class MultiAgent_DQN:
             # ---------------------------
             while not done and step_count < self.max_ts:
                 actions = []
-                for i, agent in enumerate(agents):
+                for i, agent in enumerate(self.agents):
                     agent.decay_epsilon(total_step)
 
                     # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
@@ -186,7 +187,7 @@ class MultiAgent_DQN:
 
                 # DQNは逐次更新
                 losses = []
-                for i, agent in enumerate(agents):
+                for i, agent in enumerate(self.agents):
                     # エージェントは自身の経験(状態s, 行動a, 報酬r, 次状態s', 終了フラグdone)をストア
                     # ここでも状態sと次状態s'は環境全体の状態を渡す
                     agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
@@ -219,7 +220,7 @@ class MultiAgent_DQN:
 
         # モデル保存やプロット
         if self.load_model == 0:
-            self.save_model(agents)
+            self.save_model(self.agents)
             self.plot_results.draw()
         elif self.load_model == 2:
             self.plot_results.draw()
@@ -249,7 +250,7 @@ class MultiAgent_DQN:
             torch.save(agent.model.qnet.state_dict(), self.model_path[i])
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
 
-
+"""
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
@@ -292,3 +293,4 @@ if __name__ == '__main__':
     ma = MultiAgent_DQN(args)
     agents = [Agent_DQN(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
     ma.run(agents)
+"""

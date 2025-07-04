@@ -37,12 +37,12 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class Main:
-    def __init__(self, args, agent):
-        self.agent = agent
+    def __init__(self, args, agents):
+        self.agents = agents
         self.args = args
 
-    def run(self, agents):
-        self.agent.run(agents)
+    def run(self):
+        self.agents.run()
 
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
@@ -57,7 +57,7 @@ class Main:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
-        self.multiagent.save_model(agents)
+        self.agent.save_model(agents)
 
 if __name__ == '__main__':
     def parse_args():
@@ -97,20 +97,28 @@ if __name__ == '__main__':
             args.device = 'cpu'
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
-
     if args.learning_mode == "Q":
         from Q_learn.Agent_Q import Agent_Q
         from Q_learn.MultiAgent_Q import MultiAgent_Q
-        multiagent = MultiAgent_Q(args)
-        main = Main(args,multiagent)
-        agents = [Agent_Q(args, multiagent.model_path[b_idx]) for b_idx in range(args.agents_number)]
-        main.run(agents)
+
+        # model_path = 
+        #agents = [Agent_Q(args, multiagent_q.model_path[b_idx]) for b_idx in range(args.agents_number)]
+        agents = [Agent_Q(args,i) for i in range(args.agents_number)]
+        #multiagent_q = MultiAgent_Q(args,agents)
+        #main = Main(args,agents)
+
+        #main.run()
+        maq = MultiAgent_Q(args,agents)
+        maq.run()
+
     elif args.learning_mode == "DQN":
         from DQN.Agent_DQN import Agent_DQN
         from DQN.MultiAgent_DQN import MultiAgent_DQN
-        multiagent = MultiAgent_DQN(args)
-        main = Main(args,multiagent)
-        agents = [Agent_DQN(args, multiagent.model_path[b_idx]) for b_idx in range(args.agents_number)]
-        main.run(agents)
+
+        agents = [Agent_DQN(args, i) for i in range(args.agents_number)]
+        ma_dqn = MultiAgent_DQN(args, agents)
+
+        ma_dqn.run()
+
     else:
         print(f"{args.learning_mode}は未実装")

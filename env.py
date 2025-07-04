@@ -10,7 +10,9 @@
 import numpy as np
 from utils.grid_renderer import GridRenderer
 
-# 乱数の初期化（初期位置固定用）
+# 乱数の初期化（初期位置固定用）（あとでGW.initに配置しても良い）
+# TODO: 乱数シードの設定場所について検討 (現状はクラス外で一度だけ固定)
+# 各GridWorldインスタンスで独立した乱数が必要な場合は__init__内に移動
 np.random.seed(0)
 
 # カラー定義 (レンダラーに移動したので不要ですが、もし他の場所で使うなら残しても良いです)
@@ -25,7 +27,7 @@ class GridWorld:
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
         self.grid_size = args.grid_size
         self.agents_num = args.agents_number
-        self.goals_num = args.goals_number
+        self.goals_num = args.goals_num
         self.reward_mode = args.reward_mode
 
         # ゴールとエージェントの位置を保持
@@ -41,6 +43,14 @@ class GridWorld:
         # ゴール位置は一度生成したら固定
         self._generate_fixed_goals()
 
+        # TODO: statesからゴール・エージェント位置を取り出す方法について検討
+        # 現在はメソッドの引数として渡されるstatesに対してスライスを使用
+        # Alternatives:
+        # 1. get_goal_positions(states), get_agent_positions(states) メソッドを作成 (現在の設計に合う)
+        # 2. GridWorldが内部で現在の状態を保持し、goal_positions, agent_positions プロパティを作成 (設計変更が必要)
+        # メソッド vs プロパティの使い分けについては、states変数をどこで管理するかに依存する。
+        # - main (または MultiAgent_Q)で管理 -> メソッドが自然
+        # - GridWorld内部で管理 -> プロパティが自然
 
     def _generate_fixed_goals(self):
         """
@@ -51,6 +61,15 @@ class GridWorld:
             self.goals_num, object_positions, self.grid_size
         )
 
+    def get_goal_positions(self,states):
+        """状態タプルからゴール位置のリストを取得"""
+        # TODO: statesの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
+        return list(states[:self.goals_num])
+
+    def get_agent_positions(self,states):
+        """状態タプルからエージェント位置のリストを取得"""
+        # TODO: statesの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
+        return list(states[self.goals_num:])
 
     def generate_unique_positions(self, num_positions, object_positions, grid_size):
         """
@@ -91,6 +110,7 @@ class GridWorld:
         他エージェントと衝突しそうな場合は更新しない．
         """
         # states からゴールとエージェントの位置を分離
+        # TODO: get_goal_positions, get_agent_positions メソッドの使用を検討
         goals_pos = list(states[:self.goals_num])
         agents_pos = [list(pos) for pos in states[self.goals_num:]]
         new_positions = [pos[:] for pos in agents_pos]
@@ -132,8 +152,10 @@ class GridWorld:
 
         # 報酬と終了条件をモード別に計算
         # ゴール位置はstatesから取得（固定なのでnext_stateと同じだが、step開始時のstatesを使うのがロジックとして自然）
+        # TODO: get_goal_positions メソッドの使用を検討
         goals_pos  = [list(pos) for pos in states[:self.goals_num]]
         # エージェント位置は更新後のnext_stateから取得
+        # TODO: get_agent_positions メソッドの使用を検討
         agents_pos = [list(pos) for pos in next_state[self.goals_num:]]
 
 
@@ -165,6 +187,7 @@ class GridWorld:
         # レンダラーが存在する場合のみ描画処理を行う
         if self.renderer:
             # states からゴールとエージェントの位置を分離してレンダラーに渡す
+            # TODO: get_goal_positions, get_agent_positions メソッドの使用を検討
             goals_pos = list(states[:self.goals_num])
             agents_pos = list(states[self.goals_num:])
             self.renderer.render(goals_pos, agents_pos, episode_num, time_step)

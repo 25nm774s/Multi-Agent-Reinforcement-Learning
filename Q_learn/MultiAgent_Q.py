@@ -74,6 +74,12 @@ class MultiAgent_Q:
         with open(self.scores_path, 'w', newline='') as f:
             csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
 
+        # TODO: Saverクラスの導入を検討
+        # 現在、ファイルパス生成、ディレクトリ作成、csv書き込みロジックがMultiAgent_Qに混在している。
+        # これらのデータ永続化に関する責務をSaverクラスに切り出すことで、MultiAgent_Qクラスを学習のメインループ制御に専念させ、コードの見通しと保守性を向上させる。
+        # Saverクラスは、モデルパラメータ、学習ログ、エージェント状態の保存メソッドを持つ。
+        # MultiAgent_QはSaverインスタンスを持ち、適切なタイミングでSaverのメソッドを呼び出す。
+
     def run(self, agents):
         # 事前条件チェック
         if self.agents_num < self.goals_num:
@@ -130,6 +136,7 @@ class MultiAgent_Q:
                 if self.save_agent_states:
                     # states はゴール位置 + エージェント位置のタプルになっている
                     # エージェントの位置は states の self.goals_num 以降
+                    # TODO: GridWorldのget_agent_positionsメソッドの使用を検討
                     for i, pos in enumerate(states[self.goals_num:]):
                         self.log_agent_states(episode_num, step_count, i, pos)
 
@@ -162,6 +169,7 @@ class MultiAgent_Q:
             avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
 
             # ログにスコアを記録
+            # TODO: Saverクラスのlog_scoresメソッドに置き換え
             self.log_scores(episode_num, step_count, ep_reward, avg_loss)
 
             avg_reward_temp += ep_reward
@@ -171,6 +179,7 @@ class MultiAgent_Q:
 
         # モデル保存やプロット
         if self.load_model == 0:
+            # TODO: Saverクラスのsave_modelメソッドに置き換え
             self.save_model(agents)
             self.plot_results.draw()
         elif self.load_model == 2:
@@ -180,10 +189,12 @@ class MultiAgent_Q:
             self.plot_results.draw_heatmap(self.grid_size)
 
     def log_scores(self, episode, time_step, reward, loss):
+        # TODO: Saverクラスへ移動
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
 
     def log_agent_states(self, episode, time_step, agent_id, agent_state):
+        # TODO: Saverクラスへ移動
         if isinstance(agent_state, (list, tuple, np.ndarray)):
             state_str = '_'.join(map(str, agent_state))
         else:
@@ -192,6 +203,7 @@ class MultiAgent_Q:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
+        # TODO: Saverクラスへ移動
         model_dir_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir,'model_weights')
         if not os.path.exists(model_dir_path):
             os.makedirs(model_dir_path)
@@ -245,7 +257,7 @@ if __name__ == '__main__':
         parser.add_argument('--episode_number', default=5000, type=int)
         parser.add_argument('--max_timestep', default=100, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float) # ここを修正: add_number -> add_argument
+        parser.add_argument('--learning_rate', default=0.000005, type=float)
         parser.add_argument('--gamma', default=0.95, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)

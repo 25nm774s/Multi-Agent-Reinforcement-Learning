@@ -173,7 +173,8 @@ class MultiAgent_DQN:
             while not done and step_count < self.max_ts:
                 actions = []
                 for i, agent in enumerate(self.agents):
-                    agent.decay_epsilon(total_step)
+                    #agent.decay_epsilon(total_step)
+                    agent.decay_epsilon_power(total_step)
 
                     # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
                     # エージェント内部で自身の観測(masking)を行う

@@ -44,6 +44,7 @@ class Main:
     def run(self):
         self.agents.run()
 
+    """
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
@@ -58,6 +59,7 @@ class Main:
 
     def save_model(self):
         self.agents.save_model(agents)
+    """
 
 if __name__ == '__main__':
     def parse_args():
@@ -116,9 +118,9 @@ if __name__ == '__main__':
 
         plot_results = PlotResults(scores_path, agents_states_path)
 
-        saver = Saver(save_dir,args.mask)
+        saver = Saver(save_dir)
 
-        maq = MultiAgent_Q(args,agents,saver)
+        maq = MultiAgent_Q(args,agents,saver,plot_results)
         maq.run()
 
         #saver.save_model(agents)
@@ -137,9 +139,10 @@ if __name__ == '__main__':
 
         plot_results = PlotResults(scores_path, agents_states_path)
 
-        saver = Saver(save_dir,args.mask)
-        agents = [Agent_DQN(args, i) for i in range(args.agents_number)]
-        ma_dqn = MultiAgent_DQN(args, agents,saver)
+        saver = Saver(save_dir)
+        #agents = [Agent_DQN(args, i) for i in range(args.agents_number)]
+        agents = [Agent_DQN(args) for _ in range(args.agents_number)]
+        ma_dqn = MultiAgent_DQN(args, agents,saver,plot_results)
 
         ma_dqn.run()
 

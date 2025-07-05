@@ -61,7 +61,7 @@ import csv
 import numpy as np
 
 from env import GridWorld
-#from DQN.Agent_DQN import Agent_DQN
+from DQN.Agent_DQN import Agent_DQN
 from utils.plot_results import PlotResults
 from utils.Model_Saver import Saver
 
@@ -71,9 +71,12 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_DQN:
-    def __init__(self, args, agents, saver:Saver):
+    def __init__(self, args, agents:list[Agent_DQN], saver:Saver,plot_results:PlotResults):
         self.env = GridWorld(args)
         self.agents = agents
+        self.saver = saver
+        self.plot_results = plot_results
+
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
@@ -87,6 +90,7 @@ class MultiAgent_DQN:
         self.save_agent_states = args.save_agent_states
         #self.OUT_FOLDER_NAME = "output"
         
+        """
         # OutputFile
         self.save_dir = os.path.join(
             "output",
@@ -111,6 +115,7 @@ class MultiAgent_DQN:
 
         self.saver = saver
         self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
+        """
 
     """
         # エージェントの状態をcsvに保存するかどうか
@@ -133,14 +138,6 @@ class MultiAgent_DQN:
 
         # 学習開始メッセージ
         print(f"{GREEN}DQN{RESET} で学習中...\n")
-
-        # ------------------------------------------------------------------
-        # ゴールの位置は最初の一度だけ生成して固定 (object_positions_goals に保持)
-        # ------------------------------------------------------------------
-        object_positions_goals = []
-        self.env.goals = self.env.generate_unique_positions(
-            self.goals_num, object_positions_goals, self.grid_size
-        )
 
         total_step = 0
         avg_reward_temp, avg_step_temp = 0, 0
@@ -225,11 +222,11 @@ class MultiAgent_DQN:
 
         print()  # 終了時に改行
 
-    
+    def results(self):
         # モデル保存やプロット
         if self.load_model == 0:
             #self.save_model(self.agents)
-            self.saver.save_model(self.agents)
+            self.saver.save_dqn_weights(self.agents)
 
         self.plot_results.draw()
 
@@ -237,7 +234,7 @@ class MultiAgent_DQN:
             self.plot_results.draw_heatmap(self.grid_size)
     
 
-    
+    """
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
@@ -251,7 +248,7 @@ class MultiAgent_DQN:
             csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
     def save_model(self, agents):
-        model_dir_path = os.path.join(self.OUT_FOLDER_NAME, self.save_dir,'model_weights')
+        model_dir_path = os.path.join("output", self.save_dir,'model_weights')
         if not os.path.exists(model_dir_path):
             os.makedirs(model_dir_path)
 
@@ -260,48 +257,4 @@ class MultiAgent_DQN:
             torch.save(agent.model.qnet.state_dict(), self.model_path[i])
         print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
     
-
-"""
-if __name__ == '__main__':
-    def parse_args():
-        parser = argparse.ArgumentParser()
-        #parser.add_argument('--dir_path', default='/Users/ryohei_nakano/Desktop/研究コード/orig_rl_ver4.3')
-        parser.add_argument('--grid_size', default=8, type=int)
-        parser.add_argument('--agents_number', default=2, type=int)
-        parser.add_argument('--goals_number', default=2, type=int)
-        #parser.add_argument('--learning_mode', choices=['V', 'Q', 'DQN'], default='DQN')
-        parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
-        parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--load_model', choices=[0, 1, 2], default=1, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
-        parser.add_argument('--episode_number', default=5000, type=int)
-        parser.add_argument('--max_timestep', default=100, type=int)
-        parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float)
-        parser.add_argument('--gamma', default=0.95, type=float)
-        parser.add_argument('--buffer_size', default=10000, type=int)
-        parser.add_argument('--batch_size', default=2, type=int)
-        parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
-        parser.add_argument('--window_width', default=500, type=int)
-        parser.add_argument('--window_height', default=500, type=int)
-        parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
-        return parser.parse_args()
-
-    args = parse_args()
-
-    # auto選択時のデバイス決定ロジックを追加
-    if args.device == 'auto':
-        if torch.cuda.is_available():
-            args.device = 'cuda'
-        elif torch.backends.mps.is_available():
-            args.device = 'mps'
-        else:
-            args.device = 'cpu'
-        print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
-
-
-    ma = MultiAgent_DQN(args)
-    agents = [Agent_DQN(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
-    ma.run(agents)
-"""
+    """

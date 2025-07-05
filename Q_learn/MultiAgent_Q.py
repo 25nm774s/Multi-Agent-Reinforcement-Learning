@@ -15,9 +15,11 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_Q:
-    def __init__(self, args, agents:Agent_Q, saver:Saver):
+    def __init__(self, args, agents:list[Agent_Q], saver:Saver, plot_results:PlotResults):
         self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
         self.agents = agents
+        self.saver = saver
+        self.plot_results = plot_results
 
         #self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
@@ -31,6 +33,7 @@ class MultiAgent_Q:
         self.load_model = args.load_model
         self.mask = args.mask
 
+        """
         # 結果保存先のパス生成
         self.save_dir = os.path.join(
             "output",
@@ -51,6 +54,7 @@ class MultiAgent_Q:
         # これらのデータ永続化に関する責務をSaverクラスに切り出すことで、MultiAgent_Qクラスを学習のメインループ制御に専念させ、コードの見通しと保守性を向上させる。
         # Saverクラスは、モデルパラメータ、学習ログ、エージェント状態の保存メソッドを持つ。
         # MultiAgent_QはSaverインスタンスを持ち、適切なタイミングでSaverのメソッドを呼び出す。
+        """
 
     def run(self):
 
@@ -152,20 +156,20 @@ class MultiAgent_Q:
 
         print()  # 終了時に改行
 
-    
+    def results(self):
         # モデル保存やプロット
         if self.load_model == 0:
             # TODO: Saverクラスのsave_modelメソッドに置き換え
-            self.save_model(self.agents)
+            #self.save_model(self.agents)
             self.plot_results.draw()
-            #self.saver.save_model(self.agents)
+            self.saver.save_q_table(self.agents,self.mask)
         elif self.load_model == 1:
             self.plot_results.draw()
 
         #if self.save_agent_states:
         self.plot_results.draw_heatmap(self.grid_size)
-        #self.plot_results.draw_heatmap(self.grid_size)
     
+    """
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:
             csv.writer(f).writerow([episode, time_step, reward, loss])
@@ -180,11 +184,4 @@ class MultiAgent_Q:
 
     def save_model(self,agents):
         print("あとで実装")
-
-"""
-    ma = MultiAgent_Q(args)
-    # Agent_Qの初期化時に、モデルパスは各エージェント固有 or 共通で渡す
-    # Agent_Qクラス内でモデルのロード処理を行う必要がある
-    agents = [Agent_Q(args, ma.model_path[b_idx]) for b_idx in range(args.agents_number)]
-    ma.run(agents)
-"""
+    """

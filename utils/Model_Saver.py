@@ -103,96 +103,73 @@ class ISaver(ABC):
     ## def load_model(self, agent_id):
     ##     pass
 
-class Saver(ISaver):
-	"""
-    ファイルに学習結果を保存する Saver クラスの実装。
-    BaseSaver を継承します。
-    """
-	def __init__(self, save_dir, mask):
-		super().__init__(save_dir)
-		self.mask = mask # mask の情報を Saver で持つように変更
+import os
+import csv
+import torch
+import numpy as np
 
-		self.scores_path = os.path.join(self.save_dir, "scores.csv")
-		self.agents_states_path = os.path.join(self.save_dir, "agents_states.csv")
+class Saver:
+    def __init__(self, save_dir):
+        self.save_dir = save_dir
+        self.scores_path = os.path.join(self.save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(self.save_dir, "agents_states.csv")
+        self.model_dir_path = os.path.join(self.save_dir, 'model_weights')
 
-		# スコアファイルを初期化（ヘッダ書き込み）
-		with open(self.scores_path, 'w', newline='') as f:
-			csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
+        # Ensure directories exist
+        os.makedirs(self.save_dir, exist_ok=True)
+        os.makedirs(self.model_dir_path, exist_ok=True)
 
-		# エージェント状態ファイルを初期化（ヘッダ書き込み）
-		with open(self.agents_states_path, 'w', newline='') as f:
-			csv.writer(f).writerow(['episode', 'time_step', 'agent_id', 'agent_state'])
+        # Initialize log files with headers if they don't exist
+        if not os.path.exists(self.scores_path):
+            with open(self.scores_path, 'w', newline='') as f:
+                csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
+
+        if not os.path.exists(self.agents_states_path):
+             with open(self.agents_states_path, 'w', newline='') as f:
+                csv.writer(f).writerow(['episode', 'time_step', 'agent_id', 'agent_state'])
 
 
-	def log_scores(self, episode, time_step, reward, loss):
-		"""
-		学習スコアをCSVファイルに記録します。
-		"""
-		with open(self.scores_path, 'a', newline='') as f:
-			csv.writer(f).writerow([episode, time_step, reward, loss])
+    def save_q_table(self, agents, mask):
+        print('Qテーブル保存中...')
+        for i, agent in enumerate(agents):
+            path = (os.path.join(self.model_dir_path, f'{i}.csv')
+                    if mask else
+                    os.path.join(self.model_dir_path, 'common.csv'))
 
-	def log_agent_states(self, episode, time_step, agent_id, agent_state):
-		"""
-		エージェントの状態をCSVファイルに記録します。
-		"""
-		# 状態がリストやタプル、NumPy配列の場合は文字列に変換
-		if isinstance(agent_state, (list, tuple, np.ndarray)):
-			state_str = '_'.join(map(str, agent_state))
-		else:
-			state_str = str(agent_state)
+            with open(path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                if mask:
+                    # Assuming Agent_Q stores Q table in agent.linear.theta_list
+                    data = agent.linear.theta_list
+                else:
+                    # Assuming common Q table is in agent.linear.common_theta_list
+                    # and needs reshaping
+                    arr = np.array(agent.linear.common_theta_list)
+                    # Reshape to 2D: (states * actions) x 1
+                    data = arr.reshape(-1, arr.shape[2])
+                for row in data:
+                    writer.writerow(row)
+            if not mask: # Only save the common table once
+                break
+        print(f"保存先: {self.model_dir_path}\n")
 
-		with open(self.agents_states_path, 'a', newline='') as f:
-			csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
-	def save_model(self, agents):
-		"""
-		学習済みモデルのパラメータをCSVファイルに保存します。
-		"""
-		model_dir_path = os.path.join(self.save_dir, 'model_weights')
-		if not os.path.exists(model_dir_path):
-			os.makedirs(model_dir_path)
+    def save_dqn_weights(self, agents):
+        print('モデル重み保存中...')
+        for i, agent in enumerate(agents):
+            path = os.path.join(self.model_dir_path, f"{i}.pth")
+            # Assuming Agent_DQN stores the model in agent.model.qnet
+            torch.save(agent.model.qnet.state_dict(), path)
+        print(f"保存先: {self.model_dir_path}\n")
 
-		print('パラメータ保存中...')
+    def log_agent_states(self, episode, time_step, agent_id, agent_state):
+        if isinstance(agent_state, (list, tuple, np.ndarray)):
+            state_str = '_'.join(map(str, agent_state))
+        else:
+            state_str = str(agent_state)
+        with open(self.agents_states_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, agent_id, state_str])
 
-		for i, agent in enumerate(agents):
-			# mask に応じてファイルパスを決定
-			path = (os.path.join(model_dir_path, f'{i}.csv')
-					if self.mask else
-					os.path.join(model_dir_path, 'common.csv'))
-
-			with open(path, 'w', newline='') as f:
-				writer = csv.writer(f)
-				try:
-					# Agent_Qクラスにパラメータ取得用のメソッドがあると理想的ですが、
-					# 現在のコードに合わせて直接アクセスを試みます。
-					# Agent_Qクラスの実装に依存するため、注意が必要です。
-					if self.mask:
-						# IQLの場合
-						data = agent.theta_list # Agent_Qに theta_list がある前提
-					else:
-						# CQLの場合
-						arr = np.array(agent.common_theta_list) # Agent_Qに common_theta_list がある前提
-						data = arr.reshape(-1, arr.shape[2]) if arr.ndim > 2 else arr
-
-				except AttributeError as e:
-						print(f"エラー: Agent_Qクラスに学習パラメータを保持する変数がないか、名前が異なります: {e}")
-						print("Agent_Qクラスの実装を確認し、学習パラメータが self.theta_list または self.common_theta_list として保持されているか確認してください。")
-						return # 保存処理を中断
-
-				for row in data:
-					writer.writerow(row)
-		print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
-
-	def save_model_weights(self,agents):
-		model_dir_path = os.path.join("output", self.save_dir,'model_weights')
-		if not os.path.exists(model_dir_path):
-			os.makedirs(model_dir_path)
-
-		print('モデル保存中...')
-		for i, agent in enumerate(agents):
-			torch.save(agent.model.qnet.state_dict(), self.model_path[i])
-		print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
-
-    # 必要に応じて load_model などのメソッドを実装
-    # def load_model(self, agent_id):
-    #     pass
+    def log_scores(self, episode, time_step, reward, loss):
+        with open(self.scores_path, 'a', newline='') as f:
+            csv.writer(f).writerow([episode, time_step, reward, loss])

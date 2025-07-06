@@ -24,7 +24,7 @@ class Linear:
         """
         self.max_ts = args.max_timestep
         self.goals_num = args.goals_number
-        self.agents_num = args.agents_num
+        self.agents_num = args.agents_number
         self.gamma = args.gamma          # 割引率
         self.lr = args.learning_rate     # 学習率
         self.grid_size = args.grid_size

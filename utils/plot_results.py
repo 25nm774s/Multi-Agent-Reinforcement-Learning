@@ -6,15 +6,18 @@
 を導出し, その推移をプロットする.
 また，ヒートマップの出力も担当.
 """
-
+import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
 class PlotResults:
-    def __init__(self, scores_path, agents_states_path):
-        self.scores_path = scores_path
-        self.agents_states_path = agents_states_path
+    #def __init__(self, scores_path, agents_states_path):
+    #    self.scores_path = scores_path
+    #    self.agents_states_path = agents_states_path
+    def __init__(self, save_dir:str):
+        self.scores_path = os.path.join(save_dir, "scores.csv")
+        self.agents_states_path = os.path.join(save_dir, "agents_states.csv")
 
     # CSVファイルの読み込み
     def road_csv(self):

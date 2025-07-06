@@ -47,6 +47,8 @@ import numpy as np
 import csv
 import torch
 
+#from BaseAgent import Agent#←のように抽象クラスをimportするとよい
+
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'

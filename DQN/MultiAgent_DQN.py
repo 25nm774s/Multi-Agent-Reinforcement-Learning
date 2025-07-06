@@ -71,11 +71,11 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_DQN:
-    def __init__(self, args, agents:list[Agent_DQN], saver:Saver,plot_results:PlotResults):
+    def __init__(self, args, agents:list[Agent_DQN]):
         self.env = GridWorld(args)
         self.agents = agents
-        self.saver = saver
-        self.plot_results = plot_results
+        #self.saver = saver
+        #self.plot_results = plot_results
 
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
@@ -89,7 +89,16 @@ class MultiAgent_DQN:
 
         self.save_agent_states = args.save_agent_states
         #self.OUT_FOLDER_NAME = "output"
+
+        save_dir = os.path.join(
+            "output",
+            f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
+        )
+        # ディレクトリがなければ作成
+        if not os.path.exists(save_dir): os.makedirs(save_dir)
         
+        self.saver = Saver(save_dir)
+        self.plot_results = PlotResults(save_dir)
         """
         # OutputFile
         self.save_dir = os.path.join(
@@ -127,7 +136,6 @@ class MultiAgent_DQN:
         # スコアファイルを初期化（ヘッダ書き込み）
         with open(self.scores_path, 'w', newline='') as f:
             csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
-
     """
 
     def run(self):
@@ -223,17 +231,16 @@ class MultiAgent_DQN:
 
         print()  # 終了時に改行
 
-    def results(self):
+    def save_model_weights(self):
         # モデル保存やプロット
-        if self.load_model == 0:
-            #self.save_model(self.agents)
-            self.saver.save_dqn_weights(self.agents)
-
-        self.plot_results.draw()
-
-        if self.save_agent_states:
-            self.plot_results.draw_heatmap(self.grid_size)
+        self.saver.save_dqn_weights(self.agents)            
     
+    def save_Qtable(self):
+        self.saver.save_q_table(self.agents,self.mask)
+
+    def result_show(self):
+        self.plot_results.draw()
+        self.plot_results.draw_heatmap(self.grid_size)
 
     """
     def log_scores(self, episode, time_step, reward, loss):

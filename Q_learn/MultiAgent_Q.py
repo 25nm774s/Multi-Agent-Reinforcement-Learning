@@ -15,11 +15,11 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_Q:
-    def __init__(self, args, agents:list[Agent_Q], saver:Saver, plot_results:PlotResults):
+    def __init__(self, args, agents:list[Agent_Q]):#, saver:Saver, plot_results:PlotResults):
         self.env = GridWorld(args) # GridWorldインスタンス生成時にゴール位置は固定生成される
         self.agents = agents
-        self.saver = saver
-        self.plot_results = plot_results
+        #self.saver = saver
+        #self.plot_results = plot_results
 
         #self.learning_mode = args.learning_mode
         self.reward_mode = args.reward_mode
@@ -32,6 +32,17 @@ class MultiAgent_Q:
         #self.dir_path = args.dir_path
         self.load_model = args.load_model
         self.mask = args.mask
+
+        save_dir = os.path.join(
+            "output",
+            f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
+        )
+
+        #scores_path = os.path.join(save_dir, "scores.csv")
+        #agents_states_path = os.path.join(save_dir, "agents_states.csv")
+
+        self.saver = Saver(save_dir=save_dir)
+        self.plot_results = PlotResults(save_dir)
 
         """
         # 結果保存先のパス生成
@@ -156,19 +167,30 @@ class MultiAgent_Q:
 
         print()  # 終了時に改行
 
-    def results(self):
+    #def results(self):
         # モデル保存やプロット
-        if self.load_model == 0:
+        #if self.load_model == 0:
             # TODO: Saverクラスのsave_modelメソッドに置き換え
             #self.save_model(self.agents)
-            self.plot_results.draw()
-            self.saver.save_q_table(self.agents,self.mask)
-        elif self.load_model == 1:
-            self.plot_results.draw()
+            #self.plot_results.draw()
+            #self.saver.save_q_table(self.agents,self.mask)
+        #elif self.load_model == 1:
+            #self.plot_results.draw()
 
         #if self.save_agent_states:
-        self.plot_results.draw_heatmap(self.grid_size)
+        #self.plot_results.draw_heatmap(self.grid_size)
+
+    def save_model_weights(self):
+        # モデル保存やプロット
+        self.saver.save_dqn_weights(self.agents)            
     
+    def save_Qtable(self):
+        self.saver.save_q_table(self.agents,self.mask)
+
+    def result_show(self):
+        self.plot_results.draw()
+        self.plot_results.draw_heatmap(self.grid_size)
+
     """
     def log_scores(self, episode, time_step, reward, loss):
         with open(self.scores_path, 'a', newline='') as f:

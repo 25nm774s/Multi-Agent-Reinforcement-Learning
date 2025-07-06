@@ -10,19 +10,20 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 import torch.optim as optim
-    
+
 class QNet(nn.Module):
-    def __init__(self, mask, agents_num, goals_num, action_size):
+    #def __init__(self, mask, agents_num, goals_num, action_size):
+    def __init__(self, input_size, output_size):
         super().__init__()
         
-        if mask:
-            input_size = 2
-        else:
-            input_size = agents_num*2 + goals_num*2
+        #if mask:
+        #    input_size = 2
+        #else:
+        #    input_size = agents_num*2 + goals_num*2
 
         self.fc1 = nn.Linear(input_size, 128)
         self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, action_size)
+        self.fc3 = nn.Linear(128, output_size)
     
     # 順伝播
     def forward(self, x):
@@ -43,8 +44,13 @@ class DQN:
         self.optimizer = args.optimizer
         self.mask = args.mask
 
-        self.qnet = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
-        self.qnet_target = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
+        # mask: True[次元数x(エージェント数+ゴール数)]/False[次元数]
+        input_size = self.mask if (agents_num + self.goals_num) * 2 else 2
+
+        #self.qnet = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
+        self.qnet = QNet(input_size, action_size).to(self.device)
+        #self.qnet_target = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
+        self.qnet_target = QNet(input_size, action_size).to(self.device)
 
         # モデルの読み込み
         if self.load_model == 1:
@@ -136,9 +142,10 @@ class DQN:
 
 class DQNModel: # 仮のクラス名
 
-    def __init__(self, optimizer, gamma, batch_size, agent_num, 
+    def __init__(self, optimizer_type, gamma, batch_size, agent_num, 
                  goals_num, load_model, learning_rate,mask,target_update_frequency=100):
-        self.optimizer_type = optimizer # optimizer と変数名が衝突しないように変更
+        
+        #optimizer_type = optimizer_type # optimizer と変数名が衝突しないように変更
         self.gamma = gamma
         self.batch_size = batch_size
         self.agents_num = agent_num
@@ -150,19 +157,21 @@ class DQNModel: # 仮のクラス名
         self.target_update_frequency = target_update_frequency
         #self.qnet = qnet # 依存性注入でもよい
         #self.qnet_target = qnet_target
-        self.qnet_target = QNet(mask,self.agents_num,self.goals_num,self.action_size)
-        self.qnet = QNet(mask,self.agents_num,self.goals_num,self.action_size)
+        #self.qnet_target = QNet(mask,self.agents_num,self.goals_num,self.action_size)
 
-        # PyTorchテンソルの操作ではtorch.arangeを使うことが多いが、
-        # self.batch_indices = torch.arange(self.batch_size) # updateメソッド内でデバイスを指定して作成するのが安全
+        # mask: True[次元数x(エージェント数+ゴール数)]/False[次元数]
+        input_size = self.mask if (self.agents_num + self.goals_num) * 2 else 2
+
+        self.qnet_target = QNet(input_size, self.action_size)
+        self.qnet = QNet(input_size, self.action_size)
 
         # オプティマイザの初期化
-        if self.optimizer_type == 'Adam': # 変更した変数名を使用
+        if optimizer_type == 'Adam': # 変更した変数名を使用
             self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.lr)
-        elif self.optimizer_type == 'RMSProp':
+        elif optimizer_type == 'RMSProp':
             self.optimizer = optim.RMSprop(self.qnet.parameters(), lr=self.lr)
         else:
-            print(f"Warning: Optimizer type '{self.optimizer_type}' not recognized. Using Adam as default.")
+            print(f"Warning: Optimizer type '{optimizer_type}' not recognized. Using Adam as default.")
             self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.lr)
 
 
@@ -252,7 +261,7 @@ class DQNModel: # 仮のクラス名
         target_q_values = reward_batch + (1 - done_batch.float()) * self.gamma * next_max_q_values
         return target_q_values
 
-    def _optimize_network(self, loss):
+    def _optimize_network(self, loss:torch.Tensor):
         """
         バックプロパゲーションとパラメータの更新を行う。
         """

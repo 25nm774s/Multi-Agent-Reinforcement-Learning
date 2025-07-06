@@ -5,10 +5,8 @@
 self.sigmaはガウス基底の標準偏差(バンド幅).
 """
 
-import os
 import csv
 import numpy as np
-import itertools
 
 class Linear:
     # クラス変数：他エージェントと価値共有する場合に使用
@@ -41,7 +39,7 @@ class Linear:
         # エピソード中のデータを一時的に保持するリスト
         self.loss = []
         self.episode_data = []
-        self.all_th_delta = [] # TODO: この変数は現在使用されていない可能性があります。確認・削除を検討.
+        #self.all_th_delta = [] # TODO: この変数は現在使用されていない可能性があります。確認・削除を検討.
 
         # 状態インデックスの計算結果をキャッシュ
         self.index_cache = {}
@@ -328,7 +326,7 @@ class Linear:
         if step == 0:
             self.loss = []
             self.episode_data = []
-            self.all_th_delta = [] # TODO: この変数は現在使用されていない可能性があります。確認・削除を検討.
+            #self.all_th_delta = [] # TODO: この変数は現在使用されていない可能性があります。確認・削除を検討.
 
 
         # load_model の設定に基づいて更新ロジックを選択

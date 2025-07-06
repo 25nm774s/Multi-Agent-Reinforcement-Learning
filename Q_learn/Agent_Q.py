@@ -39,7 +39,7 @@ class Agent_Q:
         #self.model_path = agentID
         self.device = torch.device(args.device)
         self.replay_buffer = ReplayBuffer("Q",args.buffer_size,self.batch_size,self.device)
-        self.linear = Linear(args,5,"Q")
+        self.linear = Linear(args,5)
 
     def get_action(self, i, states):    
         return self.linear_greedy_actor(i, states)

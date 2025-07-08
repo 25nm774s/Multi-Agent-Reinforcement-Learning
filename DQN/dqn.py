@@ -1,15 +1,7 @@
-"""
-======================================================================
-DQNのネットワークアーキテクチャ.
-======================================================================
-"""
-
+import torch
+import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-
-import torch
-import numpy as np
-import torch.optim as optim
 
 class QNet(nn.Module):
     #def __init__(self, mask, agents_num, goals_num, action_size):
@@ -31,120 +23,12 @@ class QNet(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
-class DQN:
-    def __init__(self, args, action_size, model_path):
-        agents_num = args.agents_number
-        self.goals_num = args.goals_number
-        self.lr = args.learning_rate
-        self.gamma = args.gamma
-        self.load_model = args.load_model
-        self.device = args.device
-        self.batch_size = args.batch_size
-        self.optimizer = args.optimizer
-        self.mask = args.mask
-
-        # mask: True[次元数x(エージェント数+ゴール数)]/False[次元数]
-        input_size = self.mask if (agents_num + self.goals_num) * 2 else 2
-
-        #self.qnet = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
-        self.qnet = QNet(input_size, action_size).to(self.device)
-        #self.qnet_target = QNet(self.mask, agents_num, self.goals_num, action_size).to(self.device)
-        self.qnet_target = QNet(input_size, action_size).to(self.device)
-
-        # モデルの読み込み
-        if self.load_model == 1:
-            self.qnet.load_state_dict(torch.load(model_path))
-            self.qnet_target.load_state_dict(torch.load(model_path))
-            self.qnet.eval()
-            self.qnet_target.eval()
-        elif self.load_model == 2:
-            self.qnet_target.load_state_dict(torch.load(model_path))
-            self.qnet_target.eval()
-
-        if self.optimizer == 'Adam':
-            self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.lr)
-        elif self.optimizer == 'RMSProp':
-            self.optimizer = optim.RMSprop(self.qnet.parameters(), lr=self.lr)
-
-    def huber_loss(self, q, target):
-        err = target - q
-        abs_err = abs(err)
-
-        # 標準偏差を用いた動的なHUBER_LOSS_DELTAの設定
-        if len(err) > 1:
-            huber_loss_delta = torch.mean(abs_err).item() + torch.std(err).item() # 各errの絶対値の平均値 + 標準偏差
-        else:
-            huber_loss_delta = torch.mean(abs_err).item()  # データが1つしかない場合、標準偏差は計算しない
         
-        cond = torch.abs(err) < huber_loss_delta
-        L2 = 0.5 * torch.square(err)
-        L1 = huber_loss_delta * (torch.abs(err) - 0.5 * huber_loss_delta)
-        loss = torch.where(cond, L2, L1)
-
-        return torch.mean(loss)
-
-    # ターゲットネットワークの更新
-    def sync_qnet(self):
-        self.qnet_target.load_state_dict(self.qnet.state_dict())
-
-    # モデルアップデート
-    def update(self, i, states, action, reward, next_state, done, episode_num):
-
-        if self.mask:
-            idx = i*2 + self.goals_num*2
-            idx_lst = [idx, idx + 1]
-            states = states[:, idx_lst]
-            next_state = next_state[:, idx_lst]
-
-        if self.load_model == 0 or self.load_model == 1: # 未学習と学習済みモデル使用時
-
-            qs = self.qnet(states) # 各 state におけるQ値
-            q = qs[np.arange(self.batch_size), action] # 実際に取った行動
-
-            next_qs = self.qnet_target(next_state)
-            next_q = next_qs.max(1)[0] # 各 next_state において最も値の高いQ値
-
-            next_q.detach()
-            target = reward + (1 - done) * self.gamma * next_q
-
-            loss = self.huber_loss(q, target)
-
-            self.optimizer.zero_grad() # 累積勾配にならないように初期化
-            loss.backward() # 勾配導出と逆伝播
-            self.optimizer.step() # パラメータ更新
-
-            #scalar_loss = loss.item()
-            scalar_loss = (target - q).mean().item()
-
-            if episode_num % 100 == 0:
-                self.sync_qnet() # 100 episode 毎にターゲットネットワーク更新
-        
-        else: # 学習済みモデルを真の価値関数として改めて学習
-
-            qs = self.qnet(states)
-            q = qs[np.arange(self.batch_size), action]
-
-            true_qs = self.qnet_target(states)
-            true_q = true_qs[np.arange(self.batch_size), action]
-
-            loss = self.huber_loss(q, true_q)
-
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
-
-            #scalar_loss = loss.item()    
-            scalar_loss = (true_q - q).mean().item()
-
-
-        return scalar_loss
-
 class DQNModel: # 仮のクラス名
 
-    def __init__(self, optimizer_type, gamma, batch_size, agent_num, 
+    def __init__(self, optimizer_type, gamma, batch_size, agent_num,
                  goals_num, load_model, learning_rate,mask,target_update_frequency=100):
-        
+
         #optimizer_type = optimizer_type # optimizer と変数名が衝突しないように変更
         self.gamma = gamma
         self.batch_size = batch_size
@@ -159,8 +43,9 @@ class DQNModel: # 仮のクラス名
         #self.qnet_target = qnet_target
         #self.qnet_target = QNet(mask,self.agents_num,self.goals_num,self.action_size)
 
-        # mask: True[次元数x(エージェント数+ゴール数)]/False[次元数]
-        input_size = self.mask if (self.agents_num + self.goals_num) * 2 else 2
+        # maskがTrueの場合、入力サイズは次元数 * (エージェント数 + ゴール数)
+        # maskがFalseの場合、入力サイズは次元数のみ
+        input_size = (self.agents_num + self.goals_num) * 2 if self.mask else 2
 
         self.qnet_target = QNet(input_size, self.action_size)
         self.qnet = QNet(input_size, self.action_size)
@@ -177,23 +62,25 @@ class DQNModel: # 仮のクラス名
 
     def huber_loss(self, q, target):
         err = target - q
-        abs_err = torch.abs(err) # torch.abs を使用
+        abs_err = torch.abs(err)
 
         # 標準偏差を用いた動的なHUBER_LOSS_DELTAの設定
         # バッチサイズが1より大きい場合のみ標準偏差を計算
         if len(err) > 1:
             huber_loss_delta = torch.mean(abs_err).item() + torch.std(err).item()
         else:
-            huber_loss_delta = torch.mean(abs_err).item() # データが1つしかない場合、標準偏差は計算しない
+            huber_loss_delta = torch.mean(abs_err).item()
 
         # HUBER_LOSS_DELTA がゼロに近すぎる場合（全ての誤差がゼロに近いなど）の対策
         if huber_loss_delta < 1e-6:
-             huber_loss_delta = 1.0 # あるいは別の小さな正の値
+             huber_loss_delta = 1.0
 
-
-        cond = torch.abs(err) < huber_loss_delta
-        L2 = 0.5 * torch.square(err) # torch.square を使用
-        L1 = huber_loss_delta * (torch.abs(err) - 0.5 * huber_loss_delta)
+        # Huber loss implementation
+        # If |err| < delta, use 0.5 * err^2 (L2)
+        # If |err| >= delta, use delta * (|err| - 0.5 * delta) (L1)
+        cond = abs_err < huber_loss_delta # Use abs_err for the condition
+        L2 = 0.5 * torch.square(err)
+        L1 = huber_loss_delta * (abs_err - 0.5 * huber_loss_delta) # Use abs_err here as well
         loss = torch.where(cond, L2, L1)
 
         return torch.mean(loss)
@@ -309,7 +196,7 @@ class DQNModel: # 仮のクラス名
         (入力は特定エージェントの状態バッチ)
         """
         # メインネットワークの予測Q値 (特定エージェントの状態バッチを使用)
-        predicted_q = self._calculate_q_values(agent_states_batch, action_batch)
+        predicted_q = self.qnet(agent_states_batch) # 形状: (batch_size, action_size)
 
         # ターゲットネットワークを「真の価値関数」として利用
         # 現在のエージェントの状態バッチ `agent_states_batch` をターゲットQネットに入力し、実際に取られた行動のQ値を取得

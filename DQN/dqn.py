@@ -8,11 +8,6 @@ class QNet(nn.Module):
     def __init__(self, input_size, output_size):
         super().__init__()
         
-        #if mask:
-        #    input_size = 2
-        #else:
-        #    input_size = agents_num*2 + goals_num*2
-
         self.fc1 = nn.Linear(input_size, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, output_size)
@@ -51,7 +46,7 @@ class DQNModel: # 仮のクラス名
         self.qnet: QNet = QNet(input_size, self.action_size)
 
         # オプティマイザの初期化
-        if optimizer_type == 'Adam': # 変更した変数名を使用
+        if optimizer_type == 'Adam':
             self.optimizer: optim.Optimizer = optim.Adam(self.qnet.parameters(), lr=self.lr)
         elif optimizer_type == 'RMSProp':
             self.optimizer: optim.Optimizer = optim.RMSprop(self.qnet.parameters(), lr=self.lr)
@@ -79,14 +74,14 @@ class DQNModel: # 仮のクラス名
         # Huber loss implementation
         # If |err| < delta, use 0.5 * err^2 (L2)
         # If |err| >= delta, use delta * (|err| - 0.5 * delta) (L1)
-        cond: torch.Tensor = abs_err < huber_loss_delta # Use abs_err for the condition
+        cond: torch.Tensor = abs_err < huber_loss_delta
         L2: torch.Tensor = 0.5 * torch.square(err)
-        L1: torch.Tensor = huber_loss_delta * (abs_err - 0.5 * huber_loss_delta) # Use abs_err here as well
+        L1: torch.Tensor = huber_loss_delta * (abs_err - 0.5 * huber_loss_delta)
         loss: torch.Tensor = torch.where(cond, L2, L1)
 
         return torch.mean(loss)
 
-    def _extract_agent_state(self, i: int, global_states_batch: torch.Tensor, next_global_states_batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]: # 引数名を変更
+    def _extract_agent_state(self, i: int, global_states_batch: torch.Tensor, next_global_states_batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         複数エージェントの全体の状態バッチから、特定エージェントの状態バッチを抽出する。
         """
@@ -112,7 +107,7 @@ class DQNModel: # 仮のクラス名
         return agent_states_batch, next_agent_states_batch # 抽出したエージェントの状態バッチを返す
 
 
-    def _calculate_q_values(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> torch.Tensor: # 引数名を変更
+    def _calculate_q_values(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> torch.Tensor:
         """
         現在のエージェントの状態バッチと行動バッチに対応するQ値をメインQネットで計算する。
         """
@@ -139,7 +134,7 @@ class DQNModel: # 仮のクラス名
         # [0] で最大値のテンソルを取得。detach() は勾配計算から切り離す
         return next_max_q_values_target
 
-    def _calculate_target_q_values(self, reward_batch: torch.Tensor, done_batch: torch.Tensor, next_max_q_values: torch.Tensor) -> torch.Tensor: # 引数名を変更
+    def _calculate_target_q_values(self, reward_batch: torch.Tensor, done_batch: torch.Tensor, next_max_q_values: torch.Tensor) -> torch.Tensor:
         """
         報酬バッチ、完了フラグバッチ、および次の状態の最大Q値バッチに基づいてターゲットQ値を計算する。
         """
@@ -163,7 +158,7 @@ class DQNModel: # 仮のクラス名
         """
         self.qnet_target.load_state_dict(self.qnet.state_dict())
 
-    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int) -> float: # 引数名を変更
+    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int) -> float:
         """
         通常のDQN学習ロジックを実行する。
         (入力は特定エージェントの状態バッチ)
@@ -190,7 +185,7 @@ class DQNModel: # 仮のクラス名
 
         return scalar_loss
 
-    def _perform_knowledge_distillation_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> float: # 引数名を変更
+    def _perform_knowledge_distillation_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> float:
         """
         学習済みモデルを真の価値関数として改めて学習する特殊な学習ロジックを実行する。
         （知識蒸留や模倣学習に相当）
@@ -220,7 +215,7 @@ class DQNModel: # 仮のクラス名
         return scalar_loss
 
 
-    def update(self, i: int, global_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_global_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int) -> float: # 引数名を変更
+    def update(self, i: int, global_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_global_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int) -> float:
         """
         Qネットワークのメインの更新ロジック。学習モードによって処理を分岐する。
         (入力は全体の状態のバッチ)

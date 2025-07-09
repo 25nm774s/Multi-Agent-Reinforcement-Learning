@@ -323,7 +323,7 @@ class Linear:
         self.episode_data.append((st_idx, action, agent_pos))
 
         # エピソードの最初のステップでリストを初期化
-        if step == 0:
+        if step == 0 or done:
             self.loss = []
             self.episode_data = []
             #self.all_th_delta = [] # TODO: この変数は現在使用されていない可能性があります。確認・削除を検討.

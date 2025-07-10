@@ -71,11 +71,23 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 class MultiAgent_DQN:
+    """
+    複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
+    環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
+    """
     def __init__(self, args, agents:list[Agent_DQN]):
+        """
+        MultiAgent_DQN クラスのコンストラクタ.
+
+        Args:
+            args: 実行設定を含むオブジェクト.
+                  (reward_mode, render_mode, episode_number, max_timestep,
+                   agents_number, goals_num, grid_size, load_model, mask,
+                   save_agent_states 属性を持つことを想定)
+            agents (list[Agent_DQN]): 使用するエージェントオブジェクトのリスト.
+        """
         self.env = GridWorld(args)
         self.agents = agents
-        #self.saver = saver
-        #self.plot_results = plot_results
 
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
@@ -88,58 +100,25 @@ class MultiAgent_DQN:
         self.mask = args.mask
 
         self.save_agent_states = args.save_agent_states
-        #self.OUT_FOLDER_NAME = "output"
 
+        # 結果保存ディレクトリの設定と作成
         save_dir = os.path.join(
             "output",
             f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
         )
-        # ディレクトリがなければ作成
         if not os.path.exists(save_dir): os.makedirs(save_dir)
-        
+
+        # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(save_dir)
         self.plot_results = PlotResults(save_dir)
-        """
-        # OutputFile
-        self.save_dir = os.path.join(
-            "output",
-            f"DQN_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
-        )
 
-        # モデル保存先のパス生成(あとでクラス分けしてここはなかったことになる)
-        self.model_path = []
-        for b_idx in range(self.agents_num):
-            self.model_path.append(
-                os.path.join(self.save_dir, 'model_weights', f"{b_idx}.pth")
-            )
-
-        # 結果保存先のパス生成
-        self.scores_path = os.path.join(self.save_dir, "scores.csv")
-        self.agents_states_path = os.path.join(self.save_dir, "agents_states.csv")
-
-        # ディレクトリがなければ作成
-        dir_for_agents_states = os.path.dirname(self.agents_states_path)
-        if not os.path.exists(dir_for_agents_states):
-            os.makedirs(dir_for_agents_states)
-
-        self.saver = saver
-        self.plot_results = PlotResults(self.scores_path, self.agents_states_path)
-        """
-
-    """
-        # エージェントの状態をcsvに保存するかどうか
-        self.save_agent_states = args.save_agent_states
-        if self.save_agent_states:
-            with open(self.agents_states_path, 'w', newline='') as f:
-                csv.writer(f).writerow(['episode', 'time_step', 'agent_id', 'agent_state'])
-
-        # スコアファイルを初期化（ヘッダ書き込み）
-        with open(self.scores_path, 'w', newline='') as f:
-            csv.writer(f).writerow(['episode', 'time_step', 'reward', 'loss'])
-    """
 
     def run(self):
-        # 事前条件チェック
+        """
+        強化学習のメイン実行ループ.
+        指定されたエピソード数だけ環境とのインタラクションと学習を行います。
+        """
+        # 事前条件チェック: ゴール数はエージェント数以下である必要がある
         if self.agents_num < self.goals_num:
             print('goals_num <= agents_num に設定してください.\n')
             sys.exit()
@@ -147,122 +126,163 @@ class MultiAgent_DQN:
         # 学習開始メッセージ
         print(f"{GREEN}DQN{RESET} で学習中...\n")
 
-        total_step = 0
-        avg_reward_temp, avg_step_temp = 0, 0
+        total_step = 0 # 環境との全インタラクションステップ数の累積
+        avg_reward_temp, avg_step_temp = 0, 0 # 期間内の平均計算用一時変数
+        achieved_episodes_temp = 0 # 集計期間内に目標を達成したエピソード数のカウント
 
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
         for episode_num in range(1, self.episode_num + 1):
-            print('■', end='',flush=True)  # 進捗表示
+            print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
-            # 100エピソードごとに平均を出力
+            # 100エピソードごとに集計結果を出力
             if episode_num % 100 == 0:
-                print()
-                avg_reward = avg_reward_temp / 100
-                avg_step = avg_step_temp / 100
+                print() # 改行
+                avg_reward = avg_reward_temp / 100 # 期間内の平均報酬
+                avg_step = avg_step_temp / 100     # 期間内の平均ステップ数
+                # 達成率を計算 (達成したエピソード数 / 集計エピソード数)
+                achievement_rate = achieved_episodes_temp / 100
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward}{RESET}\n")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の達成率: {GREEN}{achievement_rate:.2f}{RESET}\n") # 達成率も出力 .2f で小数点以下2桁表示
+                # 集計変数をリセット
                 avg_reward_temp, avg_step_temp = 0, 0
+                achieved_episodes_temp = 0
 
             # --------------------------------------------
             # 各エピソード開始時に環境をリセット
             # これによりエージェントが再配置される
             # --------------------------------------------
-            states = self.env.reset()
+            # 環境をリセットし、初期全体状態を取得
+            current_global_state = self.env.reset()
 
-            done = False
-            step_count = 0
-            ep_reward = 0
+            done = False # エピソード完了フラグ
+            step_count = 0 # 現在のエピソードのステップ数
+            ep_reward = 0.0 # 現在のエピソードの累積報酬
+
+            # 各ステップで発生した学習損失を収集するためのリスト (オプション)
+            # 逐次更新の場合、各ステップで学習が発生するわけではないため、
+            # learn_from_experience が学習を実行した場合にのみ損失がリストに追加される。
+            # このリストは、そのエピソード中に発生した学習ステップでの損失を記録する。
+            losses_this_episode = []
 
             # ---------------------------
             # 1エピソードのステップループ
             # ---------------------------
             while not done and step_count < self.max_ts:
+                # 各エージェントの行動を選択
                 actions = []
                 for i, agent in enumerate(self.agents):
-                    #agent.decay_epsilon(total_step)
+                    # エージェントにε減衰を適用 (全ステップ数に基づき減衰)
                     agent.decay_epsilon_power(total_step)
 
-                    # エージェントに行動を選択させる際に、現在の状態(states)全体を渡す
-                    # エージェント内部で自身の観測(masking)を行う
-                    actions.append(agent.get_action(i, states))
+                    # エージェントに行動を選択させる
+                    # エージェント内部で自身の観測(masking)を行うため、全体状態を渡す
+                    actions.append(agent.get_action(i, current_global_state))
 
                 # エージェントの状態を保存（オプション）
+                # 全体状態からエージェント部分を抽出し、Saverでログ記録
                 if self.save_agent_states:
-                    for i, pos in enumerate(states[self.goals_num:]):
-                        #self.log_agent_states(episode_num, step_count, i, pos)
-                        self.saver.log_agent_states(episode_num, step_count, i, pos)
+                     # current_global_state の構造に依存してエージェント部分を抽出
+                     # モックの構造に合わせて、agent_pos は goals_num 以降とする
+                    agent_positions_in_global_state = current_global_state[self.goals_num:]
+                    for i, agent_pos in enumerate(agent_positions_in_global_state):
+                        self.saver.log_agent_states(episode_num, step_count, i, agent_pos)
 
-                # 環境にステップを与えて状態を更新
-                next_state, reward, done = self.env.step(states, actions)
+                # 環境にステップを与えて状態を更新し、結果を取得
+                # 入力に現在の全体状態と全エージェントの行動を使用
+                next_global_state, reward, done = self.env.step(current_global_state, actions)
 
-                # DQNは逐次更新
-                losses = []
-                for i, agent in enumerate(self.agents):
-                    # エージェントは自身の経験(状態s, 行動a, 報酬r, 次状態s', 終了フラグdone)をストア
-                    # ここでも状態sと次状態s'は環境全体の状態を渡す
-                    agent.observe_and_store_experience(states, actions[i], reward, next_state, done)
-
-                    # 学習は別のタイミングでトリガー
-                    # 学習時にも環境全体の状態を渡す必要があるか、エージェントが自身の観測範囲で学習するかは
-                    # Agent_Qクラスの実装に依存
-                    loss = agent.learn_from_experience(i, episode_num)
-                    if loss is not None:
-                        losses.append(loss)
-
-                states = next_state # 状態を更新
+                # 各ステップで獲得した報酬をエピソード報酬に加算
                 ep_reward += reward
 
-                step_count += 1
-                total_step += 1
+                # 各エージェントの経験をリプレイバッファにストアし、学習を試行
+                for i, agent in enumerate(self.agents):
+                    # エージェントは自身の経験 (状態s, 行動a, 報酬r, 次状態s', 終了フラグdone) をストア
+                    # 状態sと次状態s'は環境全体の全体状態を渡す
+                    agent.observe_and_store_experience(current_global_state, actions[i], reward, next_global_state, done)
 
-            # エピソード終了
-            # lossesがNoneでないものだけを抽出して平均を計算
-            valid_losses = [l for l in losses if l is not None]
-            avg_loss = sum(valid_losses) / len(valid_losses) if valid_losses else 0
+                    # エージェントに学習を試行させる
+                    # learn_from_experience はバッファサイズが満たされているなど、学習可能な場合に損失を返す
+                    loss = agent.learn_from_experience(i, episode_num)
+                    if loss is not None:
+                        # 学習が発生した場合、その損失をリストに追加
+                        losses_this_episode.append(loss)
 
-            # ログにスコアを記録
-            #self.log_scores(episode_num, step_count, ep_reward, avg_loss)
-            self.saver.log_scores(episode_num, step_count, ep_reward, avg_loss)
+                # 全体状態を次の状態に更新
+                current_global_state = next_global_state
 
+                step_count += 1 # エピソード内のステップ数をインクリメント
+                total_step += 1 # 全体のステップ数をインクリメント
+
+            # ---------------------------
+            # エピソード終了後の処理
+            # ---------------------------
+
+            # エピソードが完了 (done == True) した場合、達成エピソード数カウンタをインクリメント
+            if done:
+                achieved_episodes_temp += 1
+
+            # エピソード中に発生した学習ステップでの平均損失を計算
+            # losses_this_episode リストに収集された損失の平均
+            valid_losses = [l for l in losses_this_episode if l is not None] # Noneでない損失のみをフィルタリング (learn_from_experienceがNoneを返す場合があるため)
+            avg_loss_this_episode = sum(valid_losses) / len(valid_losses) if valid_losses else 0 # losses_this_episodeが空の場合は0
+
+            # Saverでエピソードごとのスコアをログに記録
+            # エピソード番号、最終ステップ数、累積報酬、エピソード中の平均損失を記録
+            self.saver.log_scores(episode_num, step_count, ep_reward, avg_loss_this_episode)
+
+            # 集計期間内の平均計算のための累積
             avg_reward_temp += ep_reward
             avg_step_temp += step_count
 
-        print()  # 終了時に改行
+        print()  # 全エピソード終了後に改行
 
     def save_model_weights(self):
-        # モデル保存やプロット
-        self.saver.save_dqn_weights(self.agents)            
-    
+        """学習済みモデルの重みを保存する."""
+        # モデル保存を Saver に依頼
+        self.saver.save_dqn_weights(self.agents)
+
     def save_Qtable(self):
-        self.saver.save_q_table(self.agents,self.mask)
+        """
+        Qテーブルを保存する (NNベースの場合は近似計算が必要な場合がある).
+        現在の実装はNNベースのため、このメソッドは必要ないか、
+        Q関数からQ値を計算して保存するなどの実装が必要。
+        """
+        # エージェントがNNベースなのでQテーブルは保存しない (または、Q関数から近似的に計算して保存するなど)
+        # 現在の実装では NN ベースなので save_Qtable は不要かもしれない。
+        # モックとしては存在させる。
+        print("MultiAgent_DQN: save_Qtable called (for NN based agents).")
+        # self.saver.save_q_table(self.agents,self.mask) # Saverのモックを呼ぶ
+        pass
 
     def result_show(self):
+        """学習結果をプロットして表示する."""
+        # PlotResults にプロットを依頼
         self.plot_results.draw()
         self.plot_results.draw_heatmap(self.grid_size)
 
-    """
-    def log_scores(self, episode, time_step, reward, loss):
-        with open(self.scores_path, 'a', newline='') as f:
-            csv.writer(f).writerow([episode, time_step, reward, loss])
 
-    def log_agent_states(self, episode, time_step, agent_id, agent_state):
-        if isinstance(agent_state, (list, tuple, np.ndarray)):
-            state_str = '_'.join(map(str, agent_state))
-        else:
-            state_str = str(agent_state)
-        with open(self.agents_states_path, 'a', newline='') as f:
-            csv.writer(f).writerow([episode, time_step, agent_id, state_str])
-
-    def save_model(self, agents):
-        model_dir_path = os.path.join("output", self.save_dir,'model_weights')
-        if not os.path.exists(model_dir_path):
-            os.makedirs(model_dir_path)
-
-        print('モデル保存中...')
-        for i, agent in enumerate(agents):
-            torch.save(agent.model.qnet.state_dict(), self.model_path[i])
-        print(f"保存先: {GREEN}{model_dir_path}{RESET}\n")
-    
-    """
+# モックに必要な args オブジェクトを定義
+# 実際の実行時には、適切な引数を持つ args オブジェクトが渡される必要があります。
+class MockArgs:
+    def __init__(self):
+        self.grid_size = 5
+        self.agents_number = 2
+        self.goals_number = 1
+        self.reward_mode = 0
+        self.render_mode = False
+        self.episode_number = 10
+        self.max_timestep = 100
+        self.load_model = 0
+        self.mask = True
+        self.save_agent_states = True
+        self.buffer_size = 10000
+        self.batch_size = 32
+        self.optimizer = 'Adam'
+        self.gamma = 0.99
+        self.learning_rate = 0.001
+        self.decay_epsilon = 10000 # ε減衰ステップ数のモック
+        self.device = 'cpu' # または 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.target_update_frequency = 100

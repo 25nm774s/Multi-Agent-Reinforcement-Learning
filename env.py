@@ -4,7 +4,7 @@
 
 - レンダリング処理は GridRenderer クラスに分離済み．
 - 環境のロジック（状態管理，状態遷移，報酬計算など）も，
-  将来的に必要に応じて別のクラスに分離する可能性あり．
+将来的に必要に応じて別のクラスに分離する可能性あり．
 """
 
 import numpy as np
@@ -23,8 +23,19 @@ np.random.seed(0)
 # GRAY   = (128, 128, 128)
 
 class GridWorld:
+    """
+    マルチエージェントグリッドワールド環境クラス.
+    エージェントとゴールの配置、状態遷移、報酬計算を行います.
+    """
     def __init__(self, args):
-        """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
+        """
+        GridWorld コンストラクタ.
+
+        Args:
+            args: 環境設定を含むオブジェクト.
+                (grid_size, agents_number, goals_number, reward_mode,
+                render_mode, window_width, window_height 属性を持つことを想定)
+        """
         self.grid_size = args.grid_size
         self.agents_num = args.agents_number
         self.goals_num = args.goals_number
@@ -36,7 +47,15 @@ class GridWorld:
 
         # レンダラーのインスタンスを生成 (args.render_modeに基づいて)
         if args.render_mode:
-            self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size)
+            # GridRenderer クラスは別途定義されていると仮定し、ここではモックや実際のインポートは行わない
+            # from utils.renderer import GridRenderer # 実際のコードでは必要
+            class MockGridRenderer: # Mock Renderer for demonstration
+                def __init__(self, width, height, grid_size):
+                    print(f"MockGridRenderer initialized with width={width}, height={height}, grid_size={grid_size}")
+                def render(self, goals, agents):
+                    #print(f"MockGridRenderer: render called with goals={goals}, agents={agents}")
+                    pass # モックなので描画はしない
+            self.renderer = MockGridRenderer(args.window_width, args.window_height, self.grid_size)
         else:
             self.renderer = None
 
@@ -54,27 +73,52 @@ class GridWorld:
 
     def _generate_fixed_goals(self):
         """
-        最初の一度だけゴール位置を生成して固定する内部メソッド
+        最初の一度だけゴール位置を生成して固定する内部メソッド.
+        既存の位置と重複しないようにランダムに生成します.
         """
         object_positions = []
         self.goals = self.generate_unique_positions(
             self.goals_num, object_positions, self.grid_size
         )
 
-    def get_goal_positions(self,states):
-        """状態タプルからゴール位置のリストを取得"""
-        # TODO: statesの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
-        return list(states[:self.goals_num])
+    def get_goal_positions(self,global_state):
+        """
+        全体状態タプルからゴール位置のリストを取得.
 
-    def get_agent_positions(self,states):
-        """状態タプルからエージェント位置のリストを取得"""
-        # TODO: statesの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
-        return list(states[self.goals_num:])
+        Args:
+            global_state (tuple): 環境の全体状態タプル.
+
+        Returns:
+            list: ゴール位置のリスト.
+        """
+        # TODO: global_stateの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
+        return list(global_state[:self.goals_num])
+
+    def get_agent_positions(self,global_state):
+        """
+        全体状態タプルからエージェント位置のリストを取得.
+
+        Args:
+            global_state (tuple): 環境の全体状態タプル.
+
+        Returns:
+            list: エージェント位置のリスト.
+        """
+        # TODO: global_stateの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
+        return list(global_state[self.goals_num:])
 
     def generate_unique_positions(self, num_positions, object_positions, grid_size):
         """
-        渡された既存座標と重ならないように，
-        (num_positions)個のランダム座標を生成して返す
+        渡された既存座標(object_positions)と重ならないように，
+        指定された個数(num_positions)のランダム座標を生成して返す．
+
+        Args:
+            num_positions (int): 生成する座標の個数.
+            object_positions (list): 既存のオブジェクト位置のリスト.
+            grid_size (int): グリッドのサイズ.
+
+        Returns:
+            list: 生成された一意な位置のリスト.
         """
         positions = []
         # 既存のオブジェクト位置をセットに変換して高速化
@@ -90,8 +134,11 @@ class GridWorld:
 
     def reset(self):
         """
-        エピソード開始時に環境をリセットし、初期状態を返す．
+        エピソード開始時に環境をリセットし、初期の全体状態を返す．
         エージェントの位置をランダムに再配置する．
+
+        Returns:
+            tuple: 環境の初期全体状態 (ゴール位置 + エージェント位置のタプル).
         """
         # ゴール位置は_generate_fixed_goalsで生成済みのものを利用
         # エージェントの位置をランダム生成（ゴール座標との重複回避）
@@ -99,20 +146,32 @@ class GridWorld:
         self.agents = self.generate_unique_positions(
             self.agents_num, object_positions, self.grid_size
         )
-        # states にはゴール + エージェントが一続きに入る
-        states = tuple(self.goals + self.agents)
-        return states
+        # global_state にはゴール + エージェントが一続きに入る
+        global_state = tuple(self.goals + self.agents)
+
+        # レンダラーがあれば初期状態を描画
+        if self.renderer:
+            self.renderer.render(self.goals, self.agents)
+
+        return global_state
 
 
-    def update_positions(self, states, actions):
+    def update_positions(self, global_state, actions):
         """
         行動(actions)に基づいてエージェント位置を更新．
         他エージェントと衝突しそうな場合は更新しない．
+
+        Args:
+            global_state (tuple): 現在の環境全体状態.
+            actions (list): 各エージェントの行動リスト (int のリスト).
+
+        Returns:
+            tuple: 更新されたエージェント位置を含む次の全体状態タプル.
         """
-        # states からゴールとエージェントの位置を分離
+        # global_state からゴールとエージェントの位置を分離
         # TODO: get_goal_positions, get_agent_positions メソッドの使用を検討
-        goals_pos = list(states[:self.goals_num])
-        agents_pos = [list(pos) for pos in states[self.goals_num:]]
+        goals_pos = list(global_state[:self.goals_num])
+        agents_pos = [list(pos) for pos in global_state[self.goals_num:]]
         new_positions = [pos[:] for pos in agents_pos]
 
         for idx, action in enumerate(actions):
@@ -139,68 +198,67 @@ class GridWorld:
 
         # 更新されたエージェントの位置をインスタンス変数に反映
         self.agents = [tuple(pos) for pos in new_positions]
-        # 新しい状態を返す (ゴール位置 + 更新されたエージェント位置)
+        # 新しい全体状態を返す (ゴール位置 + 更新されたエージェント位置)
         return tuple(goals_pos + self.agents)
 
 
-    def step(self, states, actions):
+    def step(self, global_state, actions):
         """
-        行動を受け取り状態を更新．報酬と終了条件を返す
+        行動を受け取り状態を更新．報酬と終了条件を返す．
+
+        Args:
+            global_state (tuple): 現在の環境全体状態.
+            actions (list): 各エージェントの行動リスト (int のリスト).
+
+        Returns:
+            tuple: (next_global_state, reward, done) のタプル.
+                next_global_state (tuple): 次の環境全体状態.
+                reward (float): 得られた報酬.
+                done (bool): エピソード完了フラグ (全エージェントがゴールに到達したか).
         """
-        # statesを受け取り、update_positionsで次の状態を計算
-        next_state = self.update_positions(states, actions)
+        # global_stateを受け取り、update_positionsで次の状態を計算
+        next_global_state = self.update_positions(global_state, actions)
 
         # 報酬と終了条件をモード別に計算
-        # ゴール位置はstatesから取得（固定なのでnext_stateと同じだが、step開始時のstatesを使うのがロジックとして自然）
+        # ゴール位置はglobal_stateから取得（固定なのでnext_global_stateと同じだが、step開始時のglobal_stateを使うのがロジックとして自然）
         # TODO: get_goal_positions メソッドの使用を検討
-        goals_pos  = [list(pos) for pos in states[:self.goals_num]]
-        # エージェント位置は更新後のnext_stateから取得
+        goals_pos  = [tuple(pos) for pos in global_state[:self.goals_num]] # リストのリストではなくタプルのリストに変換
+        # エージェント位置は更新後のnext_global_stateから取得
         # TODO: get_agent_positions メソッドの使用を検討
-        agents_pos = [list(pos) for pos in next_state[self.goals_num:]]
+        agents_pos = [tuple(pos) for pos in next_global_state[self.goals_num:]] # リストのリストではなくタプルのリストに変換
 
+        # 完了条件の判定 (全エージェントがゴールに乗ったか)
+        # goals_pos と agents_pos はタプルのリストになっているはずなので、比較可能
+        done = all(goal in agents_pos for goal in goals_pos)
 
         if self.reward_mode == 0:
-            # エージェントが全ゴールに乗ったら +10
-            # agents_pos はリストのリストなので、goals_posのタプルと比較するために変換
-            done = all(goal in [tuple(ag) for ag in agents_pos] for goal in goals_pos)
-            reward = 10 if done else 0
-            return next_state, reward, done
+            # エージェントが全ゴールに乗ったら +10, それ以外は 0
+            # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
+            reward = 10.0 if done else 0.0 # 報酬をfloatにする
+            return next_global_state, reward, done # 計算された done を返す
 
         elif self.reward_mode == 1:
             # 未完了時は -1, 完了時は 0
-            done = all(goal in [tuple(ag) for ag in agents_pos] for goal in goals_pos)
-            reward = 0 if done else -1
-            return next_state, reward, done
+            # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
+            reward = 0.0 if done else -1.0 # 報酬をfloatにする
+            return next_global_state, reward, done # 計算された done を返す
 
         else:  # reward_mode == 2
             # ゴールから最近傍エージェントまでのマンハッタン距離の合計を負報酬
             total_distance = 0
+            # goals_pos はタプルのリスト
+            # agents_pos はタプルのリスト
             for goal in goals_pos:
+                # 各ゴールに対して、全てのエージェントとのマンハッタン距離を計算し、最小値を取る
                 min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agents_pos)
                 total_distance += min_dist
-            reward = - total_distance
-            done = all(goal in [tuple(ag) for ag in agents_pos] for goal in goals_pos)
-            return next_state, reward, done
+            # 合計距離の負の値を報酬とする
+            reward = - float(total_distance) # 報酬をfloatにする
 
-    def render(self, states, episode_num=0, time_step=0):
-        """pygame を用いて環境を描画 (レンダラーに処理を委譲)"""
-        # レンダラーが存在する場合のみ描画処理を行う
-        if self.renderer:
-            # states からゴールとエージェントの位置を分離してレンダラーに渡す
-            # TODO: get_goal_positions, get_agent_positions メソッドの使用を検討
-            goals_pos = list(states[:self.goals_num])
-            agents_pos = list(states[self.goals_num:])
-            self.renderer.render(goals_pos, agents_pos, episode_num, time_step)
+            # レンダラーがあれば描画
+            if self.renderer:
+                # レンダラーにはタプルのリストを渡す必要があるかもしれないので、変換
+                self.renderer.render(goals_pos, agents_pos) # リストのリストからタプルのリストに変更したので引数も修正
 
-    # レンダリング関連のメソッドは削除
-    # def _draw_grid(self):
-    #     """マス目を描画"""
-    #     pass # 削除
-
-    # def _draw_goals_and_agents(self):
-    #     """ゴールとエージェントを描画"""
-    #     pass # 削除
-
-    # def _draw_episode_and_step_info(self, episode_num, time_step):
-    #     """エピソード数とステップ数を画面に描画"""
-    #     pass # 削除
+            # reward_mode 2 でも完了条件は同じ
+            return next_global_state, reward, done

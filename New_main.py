@@ -103,11 +103,11 @@ if __name__ == '__main__':
     #from utils.plot_results import PlotResults
 
     if args.learning_mode == "Q":
-        from Q_learn.Agent_Q import Agent_Q
+        from Q_learn.Agent_Q import Agent
         from Q_learn.MultiAgent_Q import MultiAgent_Q
 
         #agents = [Agent_Q(args, multiagent_q.model_path[b_idx]) for b_idx in range(args.agents_number)]
-        agents = [Agent_Q(args) for _ in range(args.agents_number)]
+        agents = [Agent(args,i) for i in range(args.agents_number)]
 
         """
         save_dir = os.path.join(

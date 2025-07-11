@@ -74,11 +74,11 @@ if __name__ == '__main__':
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
-        parser.add_argument('--episode_number', default=300, type=int)
-        parser.add_argument('--max_timestep', default=2, type=int)
+        parser.add_argument('--episode_number', default=1000, type=int)
+        parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float)
-        parser.add_argument('--gamma', default=0.95, type=float)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)
         parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
@@ -99,8 +99,8 @@ if __name__ == '__main__':
             args.device = 'cpu'
         print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
 
-    from utils.Model_Saver import Saver
-    from utils.plot_results import PlotResults
+    #from utils.Model_Saver import Saver
+    #from utils.plot_results import PlotResults
 
     if args.learning_mode == "Q":
         from Q_learn.Agent_Q import Agent_Q

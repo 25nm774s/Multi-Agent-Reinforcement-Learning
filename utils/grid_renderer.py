@@ -3,7 +3,7 @@
 pygameを用いて環境を描画する．
 """
 
-import pygame
+#import pygame
 
 # カラー定義
 BLACK  = (0, 0, 0)
@@ -12,6 +12,9 @@ GREEN  = (0, 255, 0)
 BLUE   = (0, 0, 255)
 GRAY   = (128, 128, 128)
 
+class GridRenderer:
+    pass
+'''
 class GridRenderer:
     def __init__(self, window_width, window_height, grid_size):
         """コンストラクタ：ウィンドウサイズや環境パラメータの初期設定"""
@@ -85,3 +88,4 @@ class GridRenderer:
         st_text = self.font.render(f'Step: {time_step}', True, BLACK)
         self.screen.blit(ep_text, (10, 10))
         self.screen.blit(st_text, (10, 50))
+'''

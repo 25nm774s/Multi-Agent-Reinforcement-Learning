@@ -4,24 +4,23 @@
 """
 import torch
 import numpy as np
-import os
-import sys
+#import os
+#import sys
 
 
-from utils.replay_buffer import ReplayBuffer # ReplayBuffer クラスは既に上のセルで定義されているため不要
-from DQN.dqn import DQNModel # DQNModel クラスは既に上のセルで定義されているため不要
-from DQN.dqn import QNet # QNet クラスは既に上のセルで定義されているため不要
-from utils.replay_buffer import ReplayBuffer # 重複
+from utils.replay_buffer import ReplayBuffer
+from DQN.dqn import DQNModel
+#from DQN.dqn import QNet
 
-np.random.seed(0)
-torch.manual_seed(0)
+np.random.seed(42)
+torch.manual_seed(42)
 
 # ターミナルの表示関連
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-MAX_EPSILON = 1
+MAX_EPSILON = 1.0
 MIN_EPSILON = 0.01
 
 class Agent_DQN:
@@ -57,7 +56,8 @@ class Agent_DQN:
         # 現在の ReplayBuffer 実装は 'V', 'Q', 'else' で分岐しており、DQNでは 'else' が使われる想定
         # 'else' ブランチに学習モードを指定する必要はないが、ReplayBuffer の __init__ に learning_mode があるため仮に渡す
         # args に learning_mode がない場合はデフォルト値を設定するか、args に追加が必要
-        self.replay_buffer = ReplayBuffer("DQN_else", args.buffer_size, self.batch_size, self.device) # learning_mode を仮設定
+        """　将来learning_modeはなくす　"""
+        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device) # learning_mode を仮設定
 
 
         # Agent_DQN の内部で DQNModel を初期化
@@ -161,20 +161,20 @@ class Agent_DQN:
         else:
             self.epsilon = MIN_EPSILON
 
-    def decay_epsilon_power(self,step:int,alpha=0.5):
+    def decay_epsilon_power(self,step:int,alpha=0.9):
         """
         εをステップ数に基づいてべき乗で減衰させる。
         探索率εは step^(-alpha) に比例して減少する。
 
         Args:
             step (int): 現在のステップ数.
-            alpha (float, optional): 減衰率を調整するパラメータ. Defaults to 0.5.
+            alpha (float, optional): 減衰率を調整するパラメータ. Defaults to 0.9.
         """
         # ゼロ除算対策
         effective_step = max(1, step)
         self.epsilon = MAX_EPSILON * (1.0 / (effective_step ** alpha))
         # 必要に応じて MIN_EPSILON で下限を設ける
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
+        #self.epsilon = max(MIN_EPSILON, self.epsilon)
 
     # 価値更新(非推奨)
     def update_brain(self, i, states, action, reward, next_state, done, episode_num):

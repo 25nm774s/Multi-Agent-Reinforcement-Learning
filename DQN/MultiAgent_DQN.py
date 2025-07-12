@@ -182,7 +182,7 @@ class MultiAgent_DQN:
                 actions = []
                 for i, agent in enumerate(self.agents):
                     # エージェントにε減衰を適用 (全ステップ数に基づき減衰)
-                    agent.decay_epsilon_power(total_step)
+                    agent.decay_epsilon_power(total_step,0.3)
 
                     # エージェントに行動を選択させる
                     # エージェント内部で自身の観測(masking)を行うため、全体状態を渡す

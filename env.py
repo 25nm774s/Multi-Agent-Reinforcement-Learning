@@ -234,13 +234,13 @@ class GridWorld:
         if self.reward_mode == 0:
             # エージェントが全ゴールに乗ったら +10, それ以外は 0
             # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
-            reward = 10.0 if done else 0.0 # 報酬をfloatにする
+            reward = 100.0 if done else 0.0 # 報酬をfloatにする
             return next_global_state, reward, done # 計算された done を返す
 
         elif self.reward_mode == 1:
             # 未完了時は -1, 完了時は 0
             # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
-            reward = 0.0 if done else -1.0 # 報酬をfloatにする
+            reward = 1000.0 if done else -1.0 # 報酬をfloatにする
             return next_global_state, reward, done # 計算された done を返す
 
         else:  # reward_mode == 2

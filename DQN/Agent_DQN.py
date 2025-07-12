@@ -161,7 +161,7 @@ class Agent_DQN:
         else:
             self.epsilon = MIN_EPSILON
 
-    def decay_epsilon_power(self,step:int,alpha=0.9):
+    def decay_epsilon_power(self,step:int,alpha=0.5):
         """
         εをステップ数に基づいてべき乗で減衰させる。
         探索率εは step^(-alpha) に比例して減少する。

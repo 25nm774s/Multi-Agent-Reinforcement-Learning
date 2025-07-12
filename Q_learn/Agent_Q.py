@@ -1,13 +1,9 @@
-# Assume QTable class is already defined in a previous cell
-# Assume SimpleArgs class is already defined in a previous cell
-# Assume Constants (RED, GREEN, RESET) are already defined in a previous cell
-
 import numpy as np
 import os
-from typing import Tuple, List, Any
+from typing import Tuple, List
 
-from .QTable import QTable
-# QState definition (needed here for type hinting in Agent class methods)
+from QTable import QTable
+# QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y)
 QState = Tuple[int, ...]
 
@@ -21,7 +17,7 @@ class Agent:
         Agent コンストラクタ.
 
         Args:
-            args: 環境設定を含むオブジェクト (SimpleArgs等を想定).
+            args: 環境設定を含むオブジェクト.
             agent_id (int): このエージェントのID.
         """
         self.agent_id = agent_id
@@ -115,7 +111,7 @@ class Agent:
             best_actions = [a for a, q in enumerate(q_values) if q == max_q]
             return np.random.choice(best_actions)
 
-    def decay_epsilon_pow(self, step:int, alpha=0.50):
+    def decay_epsilon_pow(self, step:int, alpha=0.90):
         """
         ステップ数に基づいてεをべき乗減衰させる.
 

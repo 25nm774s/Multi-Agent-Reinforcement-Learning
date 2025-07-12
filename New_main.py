@@ -21,16 +21,8 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 
 """
 
-import sys
 import argparse
 import torch
-import os
-import csv
-import numpy as np
-
-#from env import GridWorld
-#from agent import Agent
-#from utils.plot_results import PlotResults as pr
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -73,7 +65,7 @@ if __name__ == '__main__':
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto') # 'auto'を追加し、デフォルトを'auto'に変更
+        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)

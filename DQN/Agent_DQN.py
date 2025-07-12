@@ -174,7 +174,7 @@ class Agent_DQN:
         effective_step = max(1, step)
         self.epsilon = MAX_EPSILON * (1.0 / (effective_step ** alpha))
         # 必要に応じて MIN_EPSILON で下限を設ける
-        #self.epsilon = max(MIN_EPSILON, self.epsilon)
+        self.epsilon = max(MIN_EPSILON, self.epsilon)
 
     # 価値更新(非推奨)
     def update_brain(self, i, states, action, reward, next_state, done, episode_num):

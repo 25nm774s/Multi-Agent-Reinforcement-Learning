@@ -129,7 +129,6 @@ class MultiAgent_DQN:
         total_step = 0 # 環境との全インタラクションステップ数の累積
         avg_reward_temp, avg_step_temp = 0, 0 # 期間内の平均計算用一時変数
         achieved_episodes_temp = 0 # 集計期間内に目標を達成したエピソード数のカウント
-        achieved_episodes_step = 0 # 集計期間内に目標を達成したステップ数
 
         # ----------------------------------
         # メインループ（各エピソード）
@@ -140,19 +139,15 @@ class MultiAgent_DQN:
             # 100エピソードごとに集計結果を出力
             if episode_num % 100 == 0:
                 print() # 改行
-                avg_reward = avg_reward_temp / 100 # 期間内の平均報酬
-                avg_step = avg_step_temp / 100     # 期間内の平均ステップ数
-                # 達成率を計算 (達成したエピソード数 / 集計エピソード数)
-                achievement_rate = achieved_episodes_temp / 100
+                avg_reward = avg_reward_temp / 100       # 期間内の平均報酬
+                #avg_step = avg_step_temp / 100          # 期間内の平均ステップ数
+                avg_step = avg_step_temp / achieved_episodes_temp  # 期間内の平均ステップ数
+                achievement_rate = achieved_episodes_temp / 100    # 達成率を計算 (達成したエピソード数 / 集計エピソード数)
                 
-                if achieved_episodes_temp: 
-                    avg_step_success=achieved_episodes_step/achieved_episodes_temp
-                else:avg_step_success =-1
-                avg_step = avg_step_temp / 100     # 期間内の平均ステップ数
-                avg_step = avg_step_temp / 100     # 期間内の平均ステップ数
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均step(成功) : {GREEN}{avg_step_success}{RESET}")#/{GREEN}{avg_step}{RESET}")
-                #print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の達成率: {GREEN}{achievement_rate:.2f}{RESET}\n") # 達成率も出力 .2f で小数点以下2桁表示
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.3}{RESET}")#/{GREEN}{avg_step}{RESET}")
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.3}{RESET}")
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}\n") # 達成率も出力 .2f で小数点以下2桁表示
+                
                 # 集計変数をリセット
                 avg_reward_temp, avg_step_temp = 0, 0
                 achieved_episodes_temp = 0
@@ -182,7 +177,7 @@ class MultiAgent_DQN:
                 actions = []
                 for i, agent in enumerate(self.agents):
                     # エージェントにε減衰を適用 (全ステップ数に基づき減衰)
-                    agent.decay_epsilon_power(total_step,0.3)
+                    agent.decay_epsilon_power(total_step)
 
                     # エージェントに行動を選択させる
                     # エージェント内部で自身の観測(masking)を行うため、全体状態を渡す
@@ -230,7 +225,7 @@ class MultiAgent_DQN:
             # エピソードが完了 (done == True) した場合、達成エピソード数カウンタをインクリメント
             if done:
                 achieved_episodes_temp += 1
-                achieved_episodes_step += step_count
+                avg_step_temp += step_count
 
             # エピソード中に発生した学習ステップでの平均損失を計算
             # losses_this_episode リストに収集された損失の平均
@@ -243,7 +238,7 @@ class MultiAgent_DQN:
 
             # 集計期間内の平均計算のための累積
             avg_reward_temp += ep_reward
-            avg_step_temp += step_count
+            #avg_step_temp += step_count
 
         print()  # 全エピソード終了後に改行
 

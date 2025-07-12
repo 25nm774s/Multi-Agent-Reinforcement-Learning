@@ -15,13 +15,6 @@ from utils.grid_renderer import GridRenderer
 # 各GridWorldインスタンスで独立した乱数が必要な場合は__init__内に移動
 np.random.seed(0)
 
-# カラー定義 (レンダラーに移動したので不要ですが、もし他の場所で使うなら残しても良いです)
-# BLACK  = (0, 0, 0)
-# WHITE  = (255, 255, 255)
-# GREEN  = (0, 255, 0)
-# BLUE   = (0, 0, 255)
-# GRAY   = (128, 128, 128)
-
 class GridWorld:
     """
     マルチエージェントグリッドワールド環境クラス.
@@ -47,15 +40,8 @@ class GridWorld:
 
         # レンダラーのインスタンスを生成 (args.render_modeに基づいて)
         if args.render_mode:
-            # GridRenderer クラスは別途定義されていると仮定し、ここではモックや実際のインポートは行わない
-            # from utils.renderer import GridRenderer # 実際のコードでは必要
-            class MockGridRenderer: # Mock Renderer for demonstration
-                def __init__(self, width, height, grid_size):
-                    print(f"MockGridRenderer initialized with width={width}, height={height}, grid_size={grid_size}")
-                def render(self, goals, agents):
-                    #print(f"MockGridRenderer: render called with goals={goals}, agents={agents}")
-                    pass # モックなので描画はしない
-            self.renderer = MockGridRenderer(args.window_width, args.window_height, self.grid_size)
+            #self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size)
+            self.renderer = None
         else:
             self.renderer = None
 
@@ -233,15 +219,13 @@ class GridWorld:
 
         if self.reward_mode == 0:
             # エージェントが全ゴールに乗ったら +10, それ以外は 0
-            # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
-            reward = 100.0 if done else 0.0 # 報酬をfloatにする
-            return next_global_state, reward, done # 計算された done を返す
+            reward = 100.0 if done else 0.0
+            #return next_global_state, reward, done
 
         elif self.reward_mode == 1:
-            # 未完了時は -1, 完了時は 0
-            # 計算された done フラグに基づいて報酬と完了フラグを設定・返却
-            reward = 1000.0 if done else -1.0 # 報酬をfloatにする
-            return next_global_state, reward, done # 計算された done を返す
+            # 未完了時は -5, 完了時は 500
+            reward = 500.0 if done else -5.0 # 報酬をfloatにする
+            #return next_global_state, reward, done
 
         else:  # reward_mode == 2
             # ゴールから最近傍エージェントまでのマンハッタン距離の合計を負報酬
@@ -260,5 +244,5 @@ class GridWorld:
                 # レンダラーにはタプルのリストを渡す必要があるかもしれないので、変換
                 self.renderer.render(goals_pos, agents_pos) # リストのリストからタプルのリストに変更したので引数も修正
 
-            # reward_mode 2 でも完了条件は同じ
-            return next_global_state, reward, done
+        
+        return next_global_state, reward, done

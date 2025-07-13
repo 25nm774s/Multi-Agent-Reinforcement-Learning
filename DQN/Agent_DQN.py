@@ -12,17 +12,24 @@ from utils.replay_buffer import ReplayBuffer
 from DQN.dqn import DQNModel
 #from DQN.dqn import QNet
 
-np.random.seed(42)
-torch.manual_seed(42)
-
-# ターミナルの表示関連
-RED = '\033[91m'
-GREEN = '\033[92m'
-RESET = '\033[0m'
+import torch
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.01
 
+# Assuming these modules are available in the environment or will be provided
+# from env import GridWorld
+# from DQN.Agent_DQN import Agent_DQN # Modified below
+# from DQN.MultiAgent_DQN import MultiAgent_DQN # Modified below
+# from utils.Model_Saver import Saver # Modified below
+# from utils.plot_results import PlotResults
+# from utils.grid_renderer import GridRenderer
+from DQN.dqn import DQNModel # Modified below
+from utils.replay_buffer import ReplayBuffer # Modified below
+
+
+# Add beta and beta_anneal_steps to Agent_DQN.__init__
+# Modify Agent_DQN.learn_from_experience to use sample(self.beta), pass indices/weights to model.update, and update beta
 class Agent_DQN:
     """
     DQN エージェントクラス.
@@ -38,60 +45,48 @@ class Agent_DQN:
             args: エージェントの設定を含む属性を持つオブジェクト (例: argparse.Namespace).
                   必要な属性: agents_number, batch_size, decay_epsilon,
                   load_model, goals_num, mask, device, buffer_size,
-                  optimizer, gamma, learning_rate, target_update_frequency.
+                  optimizer, gamma, learning_rate, target_update_frequency,
+                  alpha, beta, beta_anneal_steps.
         """
         self.agents_num = args.agents_number
         self.batch_size = args.batch_size
         self.decay_epsilon_step = args.decay_epsilon
         self.action_size = 5
         self.epsilon = MAX_EPSILON
-        #self.learning_mode = args.learning_mode # learn_from_experience で ReplayBuffer に渡す際に使用される想定？
         self.load_model = args.load_model
         self.goals_num = args.goals_number
         self.mask = args.mask
-        #self.model_path = model_path
         self.device = torch.device(args.device)
-        # ReplayBuffer の初期化
+
+        # PER パラメータの追加 (Step 1)
+        self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
+        self.beta = args.beta if hasattr(args, 'beta') else 0.4 # Betaの初期値
+        self.beta_anneal_steps = args.beta_anneal_steps if hasattr(args, 'beta_anneal_steps') else args.episode_number # ベータを1.0まで増加させるエピソード数
+
+        # ReplayBuffer の初期化 (PER パラメータ alpha を渡す) (Step 1 & 10)
         # learning_mode は ReplayBuffer の get_batch の挙動に影響するため、args から渡すか適切に設定する必要がある
         # 現在の ReplayBuffer 実装は 'V', 'Q', 'else' で分岐しており、DQNでは 'else' が使われる想定
         # 'else' ブランチに学習モードを指定する必要はないが、ReplayBuffer の __init__ に learning_mode があるため仮に渡す
         # args に learning_mode がない場合はデフォルト値を設定するか、args に追加が必要
         """　将来learning_modeはなくす　"""
-        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device) # learning_mode を仮設定
+        # Pass alpha to ReplayBuffer (Step 10)
+        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device, alpha=self.alpha)
 
 
-        # Agent_DQN の内部で DQNModel を初期化
+        # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 5)
         self.model = DQNModel(
             args.optimizer,
             args.gamma,
             args.batch_size,
             self.agents_num,
             self.goals_num,
-            args.load_model, # argsからload_modelを渡す
+            args.load_model,
             args.learning_rate,
             args.mask,
-            args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100 # デフォルト値を追加
+            args.device,
+            100,#args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100,
+            use_per=True # PERを使用することをモデルに伝える (Step 5)
         )
-
-    """
-        # モデルのロード
-        if self.load_model == 1 or self.load_model == 2:
-            self.model_path = model_path
-            self.loading_model(self.model_path)
-
-        self.model = DQNModel(args.optimizer,args.gamma,args.batch_size,args.agents_number,self.goals_num,self.load_model,args.learning_rate,self.mask)
-
-    # 学習済みモデルの存在の確認
-    def loading_model(self, model_path):
-        if os.path.exists(model_path):
-            print('モデルを読み込みました.')
-            print(f"from {GREEN}{model_path}{RESET}\n")
-        else:
-            print(f"学習済みモデル {RED}{model_path}{RESET} が見つかりません.")
-            print('学習する場合, load_model=0 に変更してください.\n')
-            sys.exit()
-
-    """
 
     def get_action(self, i: int, global_state: tuple) -> int:
         """
@@ -176,46 +171,6 @@ class Agent_DQN:
         # 必要に応じて MIN_EPSILON で下限を設ける
         self.epsilon = max(MIN_EPSILON, self.epsilon)
 
-    # 価値更新(非推奨)
-    def update_brain(self, i, states, action, reward, next_state, done, episode_num):
-        """
-        非推奨メソッド: 環境とのインタラクション、経験の保存、学習をまとめて行う (副作用が強い).
-        代わりに observe_and_store_experience と learn_from_experience を組み合わせて使用することを推奨します。
-
-        Args:
-            i (int): 更新を行うエージェントのインデックス.
-            states (Any): 環境の現在の全体状態.
-            action (int): エージェントが取った行動.
-            reward (float): 行動によって得られた報酬.
-            next_state (Any): 環境の次の全体状態.
-            done (bool): エピソードが完了したかどうかのフラグ.
-            episode_num (int): 現在のエピソード番号.
-
-        Returns:
-            float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
-        """
-        """
-        self.replay_buffer.add(states, action, reward, next_state, done)
-
-        if self.load_model == 1:
-            return None # 学習済みモデル使用時は更新なし
-
-        if len(self.replay_buffer) < self.batch_size:
-            return None #<-こっちでバグったら単にreturnにする?
-
-        states, action, reward, next_state, done = self.replay_buffer.get_batch()
-
-        # Qネットワークの重み更新
-        scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
-
-        return scalar_loss
-        """
-        print("Warning: update_brainは非推奨。代わりにobserve_and_store_experienceとlearn_from_experienceを推奨。")
-        # 必要であれば、互換性のために内部で呼び出しをラップすることも可能だが、非推奨であることを明確にする
-        #self.observe_and_store_experience(states, action, reward, next_state, done)
-        #return self.learn_from_experience(i, episode_num)
-
-
     def observe_and_store_experience(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
         """
         環境からの単一ステップの経験 (全体状態, 行動, 報酬, 次の全体状態, 完了フラグ) をリプレイバッファに追加する。
@@ -229,42 +184,62 @@ class Agent_DQN:
         """
         self.replay_buffer.add(global_state, action, reward, next_global_state, done)
 
-    def learn_from_experience(self, i: int, episode_num: int) -> float | None:
+    def learn_from_experience(self, i: int, episode_num: int, total_episode_num: int) -> float | None:
         """
         リプレイバッファからバッチを取得し、モデルを学習させる。
-        バッチサイズに満たない場合は学習を行わない。
+        バッチサイズに満たない場合は学習を行わない。PERを使用する場合は、
+        サンプリングされた経験の優先度をTD誤差に基づいて更新する。
 
         Args:
             i (int): 学習を行うエージェントのインデックス.
             episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
+            total_episode_num (int): 全体のエピソード数 (betaアニーリング用).
 
         Returns:
             float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
         """
         # モデルロード設定が1 (学習済みモデル使用) の場合は学習しない
         if self.load_model == 1:
-            return None # 学習済みモデル使用時は更新なし
+            return None
 
         # リプレイバッファにバッチサイズ分の経験が溜まっていない場合は学習しない
-        if len(self.replay_buffer) < self.batch_size: # batch_sizeはselfにある
-            return None # バッチサイズに満たない場合は学習しない
+        if len(self.replay_buffer) < self.batch_size:
+            return None
 
-        # 1. バッチデータの取得
-        # ReplayBuffer からは全体状態のバッチが返される (Tensorのタプル)
-        batch = self.replay_buffer.get_dqn_batch()
+        # 1. バッチデータの取得 (PER対応 sample メソッドを使用) (Step 2)
+        # ReplayBuffer の sample メソッドは経験データに加え、IS重みとサンプリングされたインデックスを返す
+        batch_data = self.replay_buffer.sample(self.beta) # betaを渡してサンプリング (Step 2)
 
-        # get_batchがNoneを返す可能性は、上記のlenチェックで防がれているはずだが、念のため型チェック
-        if batch is None:
-             return None # ここには到達しない想定だが、安全策として
+        if batch_data is None:
+             return None
 
-        # get_batch は Tuple[torch.Tensor, ...] を返すことを期待する
-        # 型ヒントに従い、unpack する
-        global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch = batch
+        # sample メソッドは Tuple[..., is_weights_tensor, sampled_indices] を返すことを期待する
+        global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices = batch_data
 
         # 2. モデルの更新
-        # DQNModel の update メソッドにバッチデータを渡す
-        # episode_num はターゲットネットワーク更新タイミングのため必要
-        # update メソッドは float | None を返す
-        loss = self.model.update(i, global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, episode_num)
+        # DQNModel の update メソッドにバッチデータ、IS重み、サンプリングされたインデックスを渡す (Step 3)
+        # update メソッドは float | None (学習損失) と TD誤差 (PER用) を返すように修正されている
+        loss, td_errors = self.model.update(
+            i,
+            global_states_batch,
+            actions_batch,
+            rewards_batch,
+            next_global_states_batch,
+            dones_batch,
+            episode_num,
+            is_weights_batch, # IS重みを渡す (Step 3)
+            sampled_indices # サンプリングされたインデックスを渡す (PERの優先度更新はReplayBufferで行うが、TD誤差計算はModelで行うためここで渡す必要はないかもしれない -> update内でTD誤差を計算して返すようにする)
+        )
+
+        # 3. PER: 優先度の更新 (Step 9)
+        # モデルの update メソッドから計算されたTD誤差の絶対値を取得し、リプレイバッファの優先度を更新
+        if td_errors is not None and sampled_indices is not None:
+             self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
+
+        # 4. PER: Betaの線形アニーリング (Step 4)
+        # エピソードの進行に応じて beta を線形的に 1.0 まで増加させる
+        # beta_increment_per_episode = (1.0 - args.beta) / args.beta_anneal_steps # args.beta_anneal_steps は総エピソード数か、βを1にするステップ数
+        beta_increment_per_episode = (1.0 - (self.beta)) / (self.beta_anneal_steps)
+        self.beta = min(1.0, self.beta + beta_increment_per_episode)
 
         return loss

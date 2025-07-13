@@ -9,6 +9,7 @@
 
 import numpy as np
 from utils.grid_renderer import GridRenderer
+import random
 
 # 乱数の初期化（初期位置固定用）（あとでGW.initに配置しても良い）
 # TODO: 乱数シードの設定場所について検討 (現状はクラス外で一度だけ固定)
@@ -93,14 +94,15 @@ class GridWorld:
         # TODO: global_stateの構造が変わった場合にここだけ修正すれば済むように、このメソッドを使用することを検討
         return list(global_state[self.goals_num:])
 
-    def generate_unique_positions(self, num_positions, object_positions, grid_size):
+
+    def generate_unique_positions(self, num_positions, existing_positions, grid_size):
         """
-        渡された既存座標(object_positions)と重ならないように，
+        渡された既存座標(existing_positions)と重ならないように，
         指定された個数(num_positions)のランダム座標を生成して返す．
 
         Args:
             num_positions (int): 生成する座標の個数.
-            object_positions (list): 既存のオブジェクト位置のリスト.
+            existing_positions (list): 既存のオブジェクト位置のリスト.
             grid_size (int): グリッドのサイズ.
 
         Returns:
@@ -108,36 +110,92 @@ class GridWorld:
         """
         positions = []
         # 既存のオブジェクト位置をセットに変換して高速化
-        existing_positions_set = set(object_positions)
+        existing_positions_set = set(existing_positions)
         while len(positions) < num_positions:
             pos = (np.random.randint(0, grid_size), np.random.randint(0, grid_size))
             if pos not in existing_positions_set:
                 positions.append(pos)
                 existing_positions_set.add(pos) # 生成した位置も既存に追加
-        # 生成した位置をobject_positionsリストにも追加（呼び出し元で利用するため）
-        # object_positions.extend(positions) # この行は不要かもしれないが、元のロジックを踏襲
+        # 生成した位置をexisting_positionsリストにも追加（呼び出し元で利用するため）
+        # existing_positions.extend(positions) # この行は不要かもしれないが、元のロジックを踏襲
         return positions
 
     def reset(self):
         """
         エピソード開始時に環境をリセットし、初期の全体状態を返す．
-        エージェントの位置をランダムに再配置する．
+        エージェントの位置をゴール近傍、またはランダムに再配置する．
 
         Returns:
             tuple: 環境の初期全体状態 (ゴール位置 + エージェント位置のタプル).
         """
         # ゴール位置は_generate_fixed_goalsで生成済みのものを利用
-        # エージェントの位置をランダム生成（ゴール座標との重複回避）
         object_positions = list(self.goals) # ゴール位置を初期の既存位置としてコピー
-        self.agents = self.generate_unique_positions(
-            self.agents_num, object_positions, self.grid_size
-        )
+        self.agents = []
+        existing_positions_set = set(object_positions) # 既存の位置セット
+
+        # エージェントの初期位置をゴール近傍に配置するロジック
+        # TODO: init_near_goal フラグでこの動作を切り替えられるようにする
+        # if self.init_near_goal:
+        for _ in range(self.agents_num):
+            placed = False
+            max_attempts = 100 # ゴール近傍での配置試行回数
+            attempt = 0
+            while not placed and attempt < max_attempts:
+                # いずれかのゴールをランダムに選択
+                target_goal = random.choice(self.goals)
+                gx, gy = target_goal
+
+                # ゴール近傍の座標を生成 (マンハッタン距離1または2以内)
+                # dx, dy は -2 から 2 の範囲でランダムに選択し、マンハッタン距離 <= 2 を満たすもの
+                dx = np.random.randint(-2, 3)
+                dy = np.random.randint(-2, 3)
+                if abs(dx) + abs(dy) > 2 or (dx == 0 and dy == 0): # ゴール位置自体は避ける
+                     continue
+
+                new_ax = gx + dx
+                new_ay = gy + dy
+
+                # グリッド範囲内か確認
+                if 0 <= new_ax < self.grid_size and 0 <= new_ay < self.grid_size:
+                    new_pos = (new_ax, new_ay)
+
+                    # 生成された位置が既存のオブジェクト(ゴールや他のエージェント)と重複しないか確認
+                    if new_pos not in existing_positions_set:
+                        self.agents.append(new_pos)
+                        existing_positions_set.add(new_pos) # 配置したエージェント位置も既存に追加
+                        placed = True
+                        break # 配置成功
+                attempt += 1
+
+            # もしゴール近傍に配置できなかった場合 (一定回数試行しても重複する場合)
+            if not placed:
+                 # ランダムな位置に配置するフォールバック
+                 while True:
+                     pos = (np.random.randint(0, self.grid_size), np.random.randint(0, self.grid_size))
+                     if pos not in existing_positions_set:
+                         self.agents.append(pos)
+                         existing_positions_set.add(pos)
+                         break
+        # else: # もし init_near_goal が False の場合、元のランダム配置ロジックを使用
+        #     object_positions = list(self.goals) # ゴール位置を初期の既存位置としてコピー
+        #     self.agents = self.generate_unique_positions(
+        #         self.agents_num, object_positions, self.grid_size
+        #     )
+
+
         # global_state にはゴール + エージェントが一続きに入る
         global_state = tuple(self.goals + self.agents)
 
         # レンダラーがあれば初期状態を描画
         if self.renderer:
             self.renderer.render(self.goals, self.agents)
+
+        # 密な報酬計算のために、前ステップのゴールまでの距離を保持
+        # reset時に初期化
+        self._prev_total_distance_to_goals = self._calculate_total_distance_to_goals(global_state)
+        # 各ゴールに到達したかどうかのフラグを保持 (段階報酬用)
+        self._goals_reached_status = [False] * self.goals_num
+
 
         return global_state
 
@@ -149,7 +207,7 @@ class GridWorld:
 
         Args:
             global_state (tuple): 現在の環境全体状態.
-            actions (list): 各エージェントの行動リスト (int のリスト).
+            actions (list): 各エージェntの行動リスト (int のリスト).
 
         Returns:
             tuple: 更新されたエージェント位置を含む次の全体状態タプル.
@@ -187,6 +245,25 @@ class GridWorld:
         # 新しい全体状態を返す (ゴール位置 + 更新されたエージェント位置)
         return tuple(goals_pos + self.agents)
 
+    def _calculate_total_distance_to_goals(self, global_state):
+        """
+        環境全体の状態から、全ゴールに対して最近傍のエージェントまでのマンハッタン距離の合計を計算する。
+
+        Args:
+            global_state (tuple): 環境の全体状態タプル.
+
+        Returns:
+            float: 全ゴールに対する最近傍エージェントまでのマンハッタン距離の合計.
+        """
+        goals_pos  = [tuple(pos) for pos in global_state[:self.goals_num]]
+        agents_pos = [tuple(pos) for pos in global_state[self.goals_num:]]
+
+        total_distance = 0
+        for goal in goals_pos:
+            # 各ゴールに対して、全てのエージェントとのマンハッタン距離を計算し、最小値を取る
+            min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agents_pos)
+            total_distance += min_dist
+        return float(total_distance)
 
     def step(self, global_state, actions):
         """
@@ -206,43 +283,60 @@ class GridWorld:
         next_global_state = self.update_positions(global_state, actions)
 
         # 報酬と終了条件をモード別に計算
-        # ゴール位置はglobal_stateから取得（固定なのでnext_global_stateと同じだが、step開始時のglobal_stateを使うのがロジックとして自然）
-        # TODO: get_goal_positions メソッドの使用を検討
-        goals_pos  = [tuple(pos) for pos in global_state[:self.goals_num]] # リストのリストではなくタプルのリストに変換
-        # エージェント位置は更新後のnext_global_stateから取得
-        # TODO: get_agent_positions メソッドの使用を検討
-        agents_pos = [tuple(pos) for pos in next_global_state[self.goals_num:]] # リストのリストではなくタプルのリストに変換
+        goals_pos  = [tuple(pos) for pos in global_state[:self.goals_num]]
+        agents_pos = [tuple(pos) for pos in next_global_state[self.goals_num:]]
 
         # 完了条件の判定 (全エージェントがゴールに乗ったか)
         # goals_pos と agents_pos はタプルのリストになっているはずなので、比較可能
         done = all(goal in agents_pos for goal in goals_pos)
 
+        reward = 0.0 # 報酬を初期化
+
         if self.reward_mode == 0:
-            # エージェントが全ゴールに乗ったら +10, それ以外は 0
+            # モード 0: エージェントが全ゴールに乗ったら +100, それ以外は 0
             reward = 100.0 if done else 0.0
-            #return next_global_state, reward, done
 
         elif self.reward_mode == 1:
-            # 未完了時は -5, 完了時は 500
-            reward = 500.0 if done else -5.0 # 報酬をfloatにする
-            #return next_global_state, reward, done
+            # モード 1: 未完了時は -5, 完了時は 500
+            reward = 500.0 if done else -5.0
 
-        else:  # reward_mode == 2
-            # ゴールから最近傍エージェントまでのマンハッタン距離の合計を負報酬
-            total_distance = 0
-            # goals_pos はタプルのリスト
-            # agents_pos はタプルのリスト
-            for goal in goals_pos:
-                # 各ゴールに対して、全てのエージェントとのマンハッタン距離を計算し、最小値を取る
-                min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agents_pos)
-                total_distance += min_dist
-            # 合計距離の負の値を報酬とする
-            reward = - float(total_distance) # 報酬をfloatにする
+        elif self.reward_mode == 2:
+            # モード 2: ゴールから最近傍エージェントまでのマンハッタン距離の合計を負報酬
+            # total_distance = self._calculate_total_distance_to_goals(next_global_state) # これはステップごとの距離自体を報酬にする場合
+            # reward = - total_distance
+            pass # このモードは距離の差分を使う密な報酬で置き換えるか、区別する
 
-            # レンダラーがあれば描画
-            if self.renderer:
-                # レンダラーにはタプルのリストを渡す必要があるかもしれないので、変換
-                self.renderer.render(goals_pos, agents_pos) # リストのリストからタプルのリストに変更したので引数も修正
+        elif self.reward_mode == 3:
+             # モード 3: 密な報酬 (距離の差分) + 段階報酬 + 完了報酬
+             # 1. 前ステップからの合計距離の変化に基づく報酬
+             current_total_distance = self._calculate_total_distance_to_goals(next_global_state)
+             distance_change = self._prev_total_distance_to_goals - current_total_distance # 距離が減れば正、増えれば負
+             reward += distance_change * 1.0 # 距離の差分に比例した報酬 (スケールは調整可能)
 
-        
+             # 2. 各ゴールに到達した際の段階報酬
+             current_agents_pos_set = set(agents_pos)
+             for goal_idx, goal in enumerate(goals_pos):
+                 # そのゴールにエージェントがいて、かつまだそのゴールを達成済みとして記録していない場合
+                 if goal in current_agents_pos_set and not self._goals_reached_status[goal_idx]:
+                     reward += 50.0 # ゴール一つ達成につき報酬 (調整可能)
+                     self._goals_reached_status[goal_idx] = True # このゴールは達成済みとして記録
+
+             # 3. 全ゴール達成時の完了報酬 (既存の密な報酬や段階報酬に加えて)
+             if done:
+                 reward += 200.0 # 全完了時の追加報酬 (調整可能)
+
+             # 次のステップのために現在の合計距離を保存
+             self._prev_total_distance_to_goals = current_total_distance
+
+        else: # 未知のreward_modeの場合
+            print(f"Warning: Unknown reward_mode: {self.reward_mode}. Reward is 0.")
+            reward = 0.0
+
+
+        # レンダラーがあれば描画
+        if self.renderer:
+            # レンダラーにはタプルのリストを渡す必要があるかもしれないので、変換
+            self.renderer.render(goals_pos, agents_pos) # リストのリストからタプルのリストに変更したので引数も修正
+
+
         return next_global_state, reward, done

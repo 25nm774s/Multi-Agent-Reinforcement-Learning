@@ -64,7 +64,7 @@ if __name__ == '__main__':
         parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
+        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=3, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)

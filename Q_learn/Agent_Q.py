@@ -65,8 +65,8 @@ class Agent:
         # global_stateはゴール位置 + エージェント位置の順に並んでいると仮定
         # 自身のエージェント位置は goals_num + agent_id のインデックスにある
         if self.goals_num + self.agent_id >= len(global_state):
-             # エージェントIDが不正な場合や global_state の構造が想定外の場合
-             raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
+            # エージェントIDが不正な場合や global_state の構造が想定外の場合
+            raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
 
         agent_position = global_state[self.goals_num + self.agent_id]
 
@@ -74,11 +74,11 @@ class Agent:
         flat_state_list: List[int] = []
         for pos in goal_positions:
             if not isinstance(pos, tuple) or len(pos) != 2:
-                 raise ValueError(f"Unexpected goal position format: {pos}")
+                raise ValueError(f"Unexpected goal position format: {pos}")
             flat_state_list.extend(pos) # ゴール座標を追加
 
         if not isinstance(agent_position, tuple) or len(agent_position) != 2:
-             raise ValueError(f"Unexpected agent position format: {agent_position}")
+            raise ValueError(f"Unexpected agent position format: {agent_position}")
         flat_state_list.extend(agent_position) # 自身の座標を追加
 
         return tuple(flat_state_list) # タプルに変換して返す

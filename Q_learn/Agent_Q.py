@@ -2,7 +2,8 @@ import numpy as np
 import os
 from typing import Tuple, List
 
-from Q_learn.QTable import QTable
+from .QTable import QTable
+from .linear import Linear
 # QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y)
 QState = Tuple[int, ...]

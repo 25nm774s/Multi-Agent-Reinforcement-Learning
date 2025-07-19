@@ -19,7 +19,7 @@ class QTable:
     エージェントIDや行動選択ロジックは含まない.
     """
     def __init__(self, action_size: int, learning_rate: float, discount_factor: float,
-                 load_model: bool, model_path: str):
+                load_model: bool, model_path: str):
         """
         QTable コンストラクタ.
 
@@ -63,9 +63,9 @@ class QTable:
         """
         # Qテーブルに状態が存在しない場合は初期化
         if state not in self.q_table:
-             self.q_table[state] = [self._initial_q_value] * self.action_size
+            self.q_table[state] = [self._initial_q_value] * self.action_size
         if next_state not in self.q_table:
-             self.q_table[next_state] = [self._initial_q_value] * self.action_size
+            self.q_table[next_state] = [self._initial_q_value] * self.action_size
 
         # 現在の状態・行動に対するQ値
         current_q_value = self.q_table[state][action]
@@ -89,7 +89,10 @@ class QTable:
         """
         Qテーブルをファイルに保存する (pickle形式).
         """
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        # ディレクトリ部分を取得し、空でない場合にディレクトリを作成
+        save_dir = os.path.dirname(file_path)
+        if save_dir: # ディレクトリが指定されている場合のみ作成
+            os.makedirs(save_dir, exist_ok=True)
         try:
             with open(file_path, 'wb') as f:
                 pickle.dump(self.q_table, f)

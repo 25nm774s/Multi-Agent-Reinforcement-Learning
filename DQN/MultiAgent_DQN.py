@@ -56,7 +56,7 @@ class MultiAgent_DQN:
         if not os.path.exists(save_dir): os.makedirs(save_dir)
 
         # 結果保存およびプロット関連クラスの初期化
-        self.saver = Saver(save_dir)
+        self.saver = Saver(save_dir,self.grid_size)
         self.plot_results = PlotResults(save_dir)
 
 
@@ -143,11 +143,11 @@ class MultiAgent_DQN:
                 # エージェントの状態を保存（オプション）
                 # 全体状態からエージェント部分を抽出 し、Saverでログ記録
                 if self.save_agent_states:
-                     # current_global_state の構造に依存してエージェント部分を抽出
-                     # モックの構造に合わせて、agent_pos は goals_num 以降とする
+                    # current_global_state の構造に依存してエージェント部分を抽出
+                    # モックの構造に合わせて、agent_pos は goals_num 以降とする
                     agent_positions_in_global_state = current_global_state[self.goals_num:]
                     for i, agent_pos in enumerate(agent_positions_in_global_state):
-                        self.saver.log_agent_states(episode_num, step_count, i, agent_pos)
+                        self.saver.log_agent_states(i, agent_pos[0],agent_pos[1])
 
                 # 環境にステップを与えて状態を更新し、結果を取得
                 # 入力に現在の全体状態と全エージェントの行動を使用
@@ -194,12 +194,13 @@ class MultiAgent_DQN:
 
             # Saverでエピソードごとのスコアをログに記録
             # エピソード番号、最終ステップ数、累積報酬、エピソード中の平均損失を記録
-            self.saver.log_scores(episode_num, step_count, ep_reward, ep_avg_loss)
+            self.saver.log_episode_data(episode_num, step_count, ep_reward, ep_avg_loss)
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             avg_reward_temp += ep_reward
 
-
+        self.saver.save_remaining_episode_data()
+        self.saver.save_visited_coordinates()
         print()  # 全エピソード終了後に改行
 
     def save_model_weights(self):
@@ -220,8 +221,8 @@ class MultiAgent_DQN:
         # self.saver.save_q_table(self.agents,self.mask) # Saverのモックを呼ぶ
         pass
 
-    def result_show(self):
-        """学習結果をプロットして表示する."""
+    def result_save(self):
+        """学習結果をプロットする"""
         # PlotResults にプロットを依頼
         self.plot_results.draw()
-        self.plot_results.draw_heatmap(self.grid_size)
+        self.plot_results.draw_heatmap()

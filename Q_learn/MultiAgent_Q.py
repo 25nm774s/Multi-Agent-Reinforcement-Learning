@@ -34,8 +34,7 @@ class MultiAgent_Q:
         # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
         args.dir_path = save_dir
 
-        # Mock SaverとMock PlotResultsを使用
-        self.saver = Saver(save_dir=save_dir)
+        self.saver = Saver(save_dir=save_dir,grid_size=self.grid_size)
         self.plot_results = PlotResults(save_dir)
 
 
@@ -104,7 +103,7 @@ class MultiAgent_Q:
                 # TODO: GridWorldのget_agent_positionsメソッドの使用を検討 (MockGridWorldには実装済み)
                 agent_positions_in_states = self.env.get_agent_positions(states) # GridWorldのメソッドを使用
                 for i, pos in enumerate(agent_positions_in_states):
-                    self.saver.log_agent_states(episode_num, step_count, i, pos)
+                    self.saver.log_agent_states(i, pos[0],pos[1])
 
 
                 # 環境にステップを与えて状態を更新
@@ -135,11 +134,13 @@ class MultiAgent_Q:
 
 
             # ログにスコアを記録
-            self.saver.log_scores(episode_num, step_count, ep_reward, avg_episode_loss)
+            self.saver.log_episode_data(episode_num, step_count, ep_reward, avg_episode_loss)
 
             avg_reward_temp += ep_reward
             avg_step_temp += step_count
 
+        self.saver.save_remaining_episode_data()
+        self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
     def save_model_weights(self):
@@ -153,7 +154,7 @@ class MultiAgent_Q:
         for i, agent in enumerate(self.agents):
             agent.save_q_table() # Agentは自身の保存パスを知っている
 
-    def result_show(self):
-        print("Showing results...")
+    def result_save(self):
+        print("Saving results...")
         self.plot_results.draw()
-        self.plot_results.draw_heatmap(self.grid_size)
+        self.plot_results.draw_heatmap()

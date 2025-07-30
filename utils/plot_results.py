@@ -15,9 +15,9 @@ class PlotResults:
         self.save_dir = save_dir
 
         # save_dir を使用して PlotResults 内でファイルパスを定義
-        # scores_summary100.csv が集計済みファイルであると仮定
+        # scores_summary100.csv:集計済みファイル
         self.scores_summary_100_path = os.path.join(self.save_dir, "scores_summary100.csv")
-        # visited_coordinates.npy がヒートマップデータファイルであると仮定
+        # visited_coordinates.npy をヒートマップデータファイルとする
         self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
 
 
@@ -28,9 +28,9 @@ class PlotResults:
         pass
 
     def add_agent_state(self, agent_id: int, x: int, y: int):
-         # データログ記録は Saver の責任となったため、このメソッドは PlotResults には不要であるべきです。
-         # ただし、元のコード構造に基づいて、現時点では保持していますが、何も実行しません。
-         pass
+        # データログ記録は Saver の責任となったため、このメソッドは PlotResults には不要であるべきです。
+        # ただし、元のコード構造に基づいて、現時点では保持していますが、何も実行しません。
+        pass
 
     def road_csv(self):
         # scores_summary100.csv から読み込むように更新
@@ -57,27 +57,27 @@ class PlotResults:
         plt.subplot(1, 3, 1)
         # scores_summary100.csv に合うように列名を更新
         plt.plot(grouped_data['episode_group_end'], grouped_data['avg_time_step_100'], marker='o', markersize=4)
-        plt.xlabel('Episode Group End') 
-        plt.ylabel('Average Time Steps') 
-        plt.title('Average Time Steps per 100 Episodes') 
+        plt.xlabel('Episode Group End')
+        plt.ylabel('Average Time Steps')
+        plt.title('Average Time Steps per 100 Episodes')
         plt.grid(True)
 
         # エピソードごとの平均報酬をプロット
         plt.subplot(1, 3, 2)
         # scores_summary100.csv に合うように列名を更新
         plt.plot(grouped_data['episode_group_end'], grouped_data['avg_reward_100'], marker='o', markersize=4)
-        plt.xlabel('Episode Group End') 
-        plt.ylabel('Average Reward') 
-        plt.title('Average Reward per 100 Episodes') 
+        plt.xlabel('Episode Group End')
+        plt.ylabel('Average Reward')
+        plt.title('Average Reward per 100 Episodes')
         plt.grid(True)
 
         # エピソードごとの平均損失をプロット
         plt.subplot(1, 3, 3)
         # scores_summary100.csv に合うように列名を更新
         plt.plot(grouped_data['episode_group_end'], grouped_data['avg_loss_100'], marker='o', markersize=4)
-        plt.xlabel('Episode Group End') 
-        plt.ylabel('Average Loss') 
-        plt.title('Average Loss per 100 Episodes') 
+        plt.xlabel('Episode Group End')
+        plt.ylabel('Average Loss')
+        plt.title('Average Loss per 100 Episodes')
         plt.grid(True)
 
         # 出力ファイル名を更新
@@ -111,8 +111,8 @@ class PlotResults:
         # visited_count_grid が NxN 配列であると仮定
         cell_num_grid = visited_count_grid.shape[0] # ロードされた配列からグリッドサイズを取得
         if cell_num_grid != visited_count_grid.shape[1]:
-             print(f"エラー: ロードされた訪問回数グリッドの形状が無効です: {visited_count_grid.shape}")
-             return
+            print(f"エラー: ロードされた訪問回数グリッドの形状が無効です: {visited_count_grid.shape}")
+            return
 
         label_fontsize = 14
         title_fontsize = 16
@@ -124,13 +124,29 @@ class PlotResults:
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))
 
         ax.set_title('Total Agent Visit Frequency Heatmap', fontsize=title_fontsize)
-        im = ax.imshow(visited_count_grid, origin='lower', cmap='plasma', aspect='auto')
+        # Use extent to align grid lines with cell boundaries
+        im = ax.imshow(visited_count_grid, origin='lower', cmap='plasma', extent = (-0.5, float(cell_num_grid - 0.5), -0.5, float(cell_num_grid - 0.5)))
         cbar = fig.colorbar(im, ax=ax, label='Visit Count')
         ax.set_xlabel('X', fontsize=label_fontsize)
         ax.set_ylabel('Y', fontsize=label_fontsize)
-        ax.set_xticks(np.arange(cell_num_grid))
-        ax.set_yticks(np.arange(cell_num_grid))
-        ax.grid(True, color='white', linewidth=0.5)
+
+        # Set major ticks at integer positions (0, 1, 2, ...) for labels
+        ax.set_xticks(np.arange(0, cell_num_grid, 1))
+        ax.set_yticks(np.arange(0, cell_num_grid, 1))
+
+        # Set tick labels to be integer positions (0, 1, 2, ...)
+        ax.set_xticklabels(np.arange(0, cell_num_grid, 1))
+        ax.set_yticklabels(np.arange(0, cell_num_grid, 1))
+
+        # Set minor ticks at half-integer positions for grid lines
+        ax.set_xticks(np.arange(-0.5, cell_num_grid, 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, cell_num_grid, 1), minor=True)
+
+        # Enable grid lines for minor ticks (boundaries)
+        ax.grid(which='minor', color='white', linestyle='-', linewidth=0.5)
+
+        # Optionally, disable grid lines for major ticks if they are distracting
+        ax.grid(which='major', color='none', linestyle='None')
 
 
         output_path = self.visited_coordinates_path.replace('.npy', '_heatmap.pdf') # 出力ファイル名を更新

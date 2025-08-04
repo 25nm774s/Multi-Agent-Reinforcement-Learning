@@ -6,21 +6,22 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 from Q_learn.Agent_Q import Agent
-from env import GridWorld
+from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Model_Saver import Saver
 from utils.plot_results import PlotResults
 
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
-        self.env = GridWorld(args)
+        # Use the MultiAgentGridEnv class defined in previous cells
+        self.env = MultiAgentGridEnv(args)
         self.agents = agents # Store the list of Agent instances
 
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
-        self.episode_num = args.episode_number
+        self.episode_number = args.episode_number
         self.max_ts = args.max_timestep
-        self.agents_num = args.agents_number
-        self.goals_num = args.goals_number
+        self.agents_number = args.agents_number
+        self.goals_number = args.goals_number
         self.grid_size = args.grid_size
 
         self.load_model = args.load_model
@@ -29,7 +30,7 @@ class MultiAgent_Q:
         # Save directory calculation remains the same
         save_dir = os.path.join(
             "output",
-            f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_num}]"
+            f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]"
         )
         # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
         args.dir_path = save_dir
@@ -41,7 +42,7 @@ class MultiAgent_Q:
     def run(self):
 
         # 事前条件チェック
-        if self.agents_num < self.goals_num:
+        if self.agents_number < self.goals_number:
             print('goals_num <= agents_num に設定してください.\n')
             sys.exit()
 
@@ -59,10 +60,10 @@ class MultiAgent_Q:
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
-        for episode_num in range(1, self.episode_num + 1):
+        for episode_num in range(1, self.episode_number + 1):
             # print('■', end='',flush=True)  # 進捗表示 - コメントアウトしてログを見やすくする
             if episode_num % 10 == 0:
-                print(f"Episode {episode_num} / {self.episode_num}", end='\r', flush=True)
+                print(f"Episode {episode_num} / {self.episode_number}", end='\r', flush=True)
 
 
             # 100エピソードごとに平均を出力
@@ -71,14 +72,15 @@ class MultiAgent_Q:
                 avg_reward = avg_reward_temp / 100
                 avg_step = avg_step_temp / 100
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}\n")
+                print(f"==== エピソード {episode_num - 99} ~ {avg_reward:.2f}{RESET}\n") # Corrected variable name
                 avg_reward_temp, avg_step_temp = 0, 0
 
             # --------------------------------------------
             # 各エピソード開始時に環境をリセット
             # これによりエージェントが再配置される
             # --------------------------------------------
-            states = self.env.reset()
+            # The reset method in the updated MultiAgentGridEnv now returns observation, info
+            current_states:tuple[tuple[int, int], ...] = self.env.reset()
 
             done = False
             step_count = 0
@@ -95,26 +97,36 @@ class MultiAgent_Q:
                     agent.decay_epsilon_pow(total_step)
 
                     # Agentクラスのget_actionを呼び出し (global_stateのみ渡す)
-                    actions.append(agent.get_action(states))
+                    actions.append(agent.get_action(current_states))
 
                 # エージェントの状態を保存（オプション）
                 # states はゴール位置 + エージェント位置のタプルになっている
                 # エージェントの位置は states の self.goals_num 以降
                 # TODO: GridWorldのget_agent_positionsメソッドの使用を検討 (MockGridWorldには実装済み)
-                agent_positions_in_states = self.env.get_agent_positions(states) # GridWorldのメソッドを使用
-                for i, pos in enumerate(agent_positions_in_states):
-                    self.saver.log_agent_states(i, pos[0],pos[1])
+                agent_positions_dict = self.env.get_agent_positions() # GridWorldのメソッドを使用
+                # The get_agent_positions method returns a dictionary {agent_id: (x, y)}
+                # Need to iterate through agent_ids to get positions in order
+                agent_positions_list = [agent_positions_dict[agent_id] for agent_id in self.env._agent_ids]
+
+
+                for i, pos in enumerate(agent_positions_list):
+                    # Saver expects agent_idx, position, step
+                    self.saver.log_agent_states(i, pos[0], pos[1]) # Use step_count here
 
 
                 # 環境にステップを与えて状態を更新
-                next_state, reward, done = self.env.step(states, actions)
+                # The step method in the updated MultiAgentGridEnv now returns observation, reward, done, info
+                next_observation, reward, done, info = self.env.step(actions)
 
                 # Q学習は経験ごとに逐次更新
                 step_losses = [] # 各ステップでのエージェントごとの損失
                 if self.load_model == 0: # 学習モードの場合のみ
                     for i, agent in enumerate(self.agents):
                         # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
-                        loss = agent.learn(states, actions[i], reward, next_state, done)
+                        # Note: In a multi-agent setting, the reward might be individual or shared.
+                        # The current implementation passes the single global reward to all agents.
+                        # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
+                        loss = agent.learn(current_states, actions[i], reward, next_observation, done)
                         step_losses.append(loss)
 
                 # ステップの平均損失をエピソード損失リストに追加
@@ -122,7 +134,7 @@ class MultiAgent_Q:
                 losses.append(avg_step_loss)
 
 
-                states = next_state # 状態を更新
+                current_states = next_observation # 状態を更新
                 ep_reward += reward
 
                 step_count += 1

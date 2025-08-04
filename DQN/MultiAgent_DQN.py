@@ -1,10 +1,7 @@
 import sys
-import torch
 import os
-import csv
-import numpy as np
 
-from env import GridWorld
+from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from DQN.Agent_DQN import Agent_DQN
 from utils.plot_results import PlotResults
 from utils.Model_Saver import Saver
@@ -31,7 +28,7 @@ class MultiAgent_DQN:
                    save_agent_states, alpha, beta, beta_anneal_steps 属性を持つことを想定)
             agents (list[Agent_DQN]): 使用するエージェントオブジェクトのリスト.
         """
-        self.env = GridWorld(args)
+        self.env = MultiAgentGridEnv(args)
         self.agents = agents
 
         self.reward_mode = args.reward_mode
@@ -42,14 +39,15 @@ class MultiAgent_DQN:
         self.goals_num = args.goals_number
         self.grid_size = args.grid_size
         self.load_model = args.load_model
-        self.mask = args.mask
+        #self.mask = args.mask
 
         self.save_agent_states = args.save_agent_states
 
         # 結果保存ディレクトリの設定と作成
         save_dir = os.path.join(
             "output",
-            f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
+            #f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
+            f"DQN_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
             # PERを使用する場合、ディレクトリ名にPER関連パラメータを含めるとより分かりやすい
             # f"DQN_PER_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]"
         )
@@ -116,7 +114,7 @@ class MultiAgent_DQN:
 
 
             # 各エピソード開始時に環境をリセット
-            current_global_state = self.env.reset()
+            current_global_state:tuple[tuple[int, int], ...] = self.env.reset()
 
             done = False # エピソード完了フラグ
             step_count = 0 # 現在のエピソードのステップ数
@@ -151,7 +149,7 @@ class MultiAgent_DQN:
 
                 # 環境にステップを与えて状態を更新し、結果を取得
                 # 入力に現在の全体状態と全エージェントの行動を使用
-                next_global_state, reward, done = self.env.step(current_global_state, actions)
+                next_global_state, reward, done, _ = self.env.step(actions)
 
                 # 各ステップで獲得した報酬をエピソード報酬に加算
                 ep_reward += reward

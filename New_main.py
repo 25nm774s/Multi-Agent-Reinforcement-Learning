@@ -77,6 +77,8 @@ if __name__ == '__main__':
         parser.add_argument('--window_width', default=500, type=int)
         parser.add_argument('--window_height', default=500, type=int)
         parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
+        parser.add_argument('--pause_duration', default=0.1, type=float)
+        
         return parser.parse_args()
 
     args = parse_args()

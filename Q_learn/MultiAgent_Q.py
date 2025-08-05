@@ -42,8 +42,8 @@ class MultiAgent_Q:
     def run(self):
 
         # 事前条件チェック
-        if self.agents_number < self.goals_number:
-            print('goals_num <= agents_num に設定してください.\n')
+        if self.agents_number > self.goals_number:
+            print('goals_num >= agents_num に設定してください.\n')
             sys.exit()
 
         # 学習開始メッセージ

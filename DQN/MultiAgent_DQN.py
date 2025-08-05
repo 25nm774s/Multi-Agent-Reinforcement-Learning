@@ -60,9 +60,9 @@ class MultiAgent_DQN:
         強化学習のメイン実行ループ.
         指定されたエピソード数だけ環境とのインタラクションと学習を行います。
         """
-        # 事前条件チェック: ゴール数はエージェント数以下である必要がある
-        if self.agents_num < self.goals_num:
-            print('goals_num <= agents_num に設定してください.\n')
+        # 事前条件チェック: エージェント数はゴール数以下である必要がある
+        if self.agents_num > self.goals_num:
+            print('goals_num >= agents_num に設定してください.\n')
             sys.exit()
 
         # 学習開始メッセージ

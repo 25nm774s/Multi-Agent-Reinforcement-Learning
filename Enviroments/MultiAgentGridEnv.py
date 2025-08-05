@@ -161,10 +161,10 @@ class MultiAgentGridEnv:
 
         # 4. 報酬を計算します
         # 報酬計算は Grid の更新後の位置に基づいて行います
-        reward = self._calculate_reward()
+        done_mode = 2
+        reward = self._calculate_reward(done_mode=done_mode)
 
         # 5. 終了条件をチェックします
-        done_mode = 2
         done = self._check_done_condition(done_mode=done_mode)
 
         # 6. 次の観測を取得します
@@ -356,12 +356,12 @@ class MultiAgentGridEnv:
         return float(total_distance)
 
 
-    def _calculate_reward(self) -> float:
+    def _calculate_reward(self,done_mode) -> float:
         """
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
         reward = 0.0
-        done = self._check_done_condition() # 報酬計算のために完了ステータスをチェック
+        done = self._check_done_condition(done_mode) # 報酬計算のために完了ステータスをチェック
 
         agent_positions = list(self.get_agent_positions().values())
         current_agents_pos_set = set(agent_positions)

@@ -156,14 +156,16 @@ class MultiAgentGridEnv:
 
         # Grid クラスの衝突解決メソッドを呼び出し、位置を更新してもらう
         # このメソッド内で Grid インスタンスの_object_positionsが更新されます
-        final_agent_positions_dict = self._grid.resolve_agent_movements(agent_actions)
+        #final_agent_positions_dict = self._grid.resolve_agent_movements(agent_actions)
+        self._grid.resolve_agent_movements(agent_actions)
 
         # 4. 報酬を計算します
         # 報酬計算は Grid の更新後の位置に基づいて行います
         reward = self._calculate_reward()
 
         # 5. 終了条件をチェックします
-        done = self._check_done_condition()
+        done_mode = 2
+        done = self._check_done_condition(done_mode=done_mode)
 
         # 6. 次の観測を取得します
         # Grid が既に更新されているので、_get_observation は現在のグリッド状態を反映します
@@ -367,7 +369,7 @@ class MultiAgentGridEnv:
 
 
         if self.reward_mode == 0:
-            # モード 0: 全ゴールに到達 +100、それ以外 0
+            # モード 0: 完了条件を満たしていれば +100、それ以外 0
             reward = 100.0 if done else 0.0
 
         elif self.reward_mode == 1:
@@ -420,7 +422,7 @@ class MultiAgentGridEnv:
 
         return reward
 
-
+    '''
     def _check_done_condition(self) -> bool:
         """
         エピソードが終了したかチェックします (全ゴールが少なくとも1つのエージェントによって占有されているか)。
@@ -431,3 +433,30 @@ class MultiAgentGridEnv:
 
         # 全てのゴール位置が現在のエージェント位置のセットに存在する場合、エピソードは終了です
         return all(goal in current_agents_pos_set for goal in goal_positions)
+    '''
+
+    def _check_done_condition(self,done_mode) -> bool:
+        """
+        エピソードが終了したかチェックします。完了条件は self.done_mode に依存します。
+        - done_mode 0: 全てのゴールが少なくとも1つのエージェントによって占有されているか。
+        - done_mode 1: いずれかのゴールが少なくとも1つのエージェントによって占有されているか。
+        - done_mode 2: 全てのエージェントがいずれかのゴール位置にいるか。
+        """
+        agent_positions = list(self.get_agent_positions().values())
+        current_agents_pos_set = set(agent_positions)
+        goal_positions = list(self.get_goal_positions().values())
+        goal_positions_set = set(goal_positions)
+
+
+        if done_mode == 0:
+            # Rule 1: 全てのゴールがエージェントによって占有されているか
+            return all(goal in current_agents_pos_set for goal in goal_positions)
+        elif done_mode == 1:
+            # Rule 2: いずれかのゴールがエージェントによって占有されているか
+             return any(goal in current_agents_pos_set for goal in goal_positions)
+        elif done_mode == 2:
+            # Rule 3: 全てのエージェントがいずれかのゴール位置にいるか
+             return all(agent_pos in goal_positions_set for agent_pos in agent_positions)
+        else:
+            print(f"Warning: 未知の完了条件モード: {done_mode}。常に False を返します。")
+            return False

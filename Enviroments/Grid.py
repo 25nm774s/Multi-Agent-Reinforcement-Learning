@@ -57,7 +57,7 @@ class Grid:
         """
         return self._object_positions.copy() # 外部からの変更を防ぐためにコピーを返します。
 
-    def is_position_occupied(self, position: tuple[int, int], exclude_obj_id: str = None) -> bool:
+    def is_position_occupied(self, position: tuple[int, int], exclude_obj_id: str = None) -> bool:#type:ignore
         """
         指定された位置が何らかのオブジェクトによって占有されているかチェックします。
 

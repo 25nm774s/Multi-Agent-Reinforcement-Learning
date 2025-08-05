@@ -78,7 +78,14 @@ if __name__ == '__main__':
         parser.add_argument('--window_height', default=500, type=int)
         parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
         parser.add_argument('--pause_duration', default=0.1, type=float)
-        
+        # Add PER parameters (Step 10)
+        parser.add_argument('--alpha', default=0.6, type=float, help='PER alpha parameter (prioritization exponent)')
+        parser.add_argument('--beta', default=0.4, type=float, help='PER beta parameter (importance sampling exponent, starts at this value)')
+        parser.add_argument('--beta_anneal_steps', default=20000, type=int, help='Number of episodes over which beta is annealed to 1.0')
+        # Add --use_per argument
+        #parser.add_argument('--use_per', action='store_true', default=False, help='Enable Prioritized Experience Replay')
+        parser.add_argument('--use_per', choices=[0, 1], default=0, type=int, help='Enable Prioritized Experience Replay')
+
         return parser.parse_args()
 
     args = parse_args()
@@ -142,7 +149,7 @@ if __name__ == '__main__':
         """
 
         #agents = [Agent_DQN(args, i) for i in range(args.agents_number)]
-        agents = [Agent_DQN(args) for _ in range(args.agents_number)]
+        agents = [Agent_DQN(args,args.use_per) for _ in range(args.agents_number)]
         ma_dqn = MultiAgent_DQN(args, agents)
 
         ma_dqn.run()

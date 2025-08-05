@@ -25,7 +25,7 @@ class MultiAgent_DQN:
             args: 実行設定を含むオブジェクト.
                   (reward_mode, render_mode, episode_number, max_timestep,
                    agents_number, goals_num, grid_size, load_model, mask,
-                   save_agent_states, alpha, beta, beta_anneal_steps 属性を持つことを想定)
+                   save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
             agents (list[Agent_DQN]): 使用するエージェントオブジェクトのリスト.
         """
         self.env = MultiAgentGridEnv(args)
@@ -39,17 +39,14 @@ class MultiAgent_DQN:
         self.goals_num = args.goals_number
         self.grid_size = args.grid_size
         self.load_model = args.load_model
-        #self.mask = args.mask
+        self.mask = args.mask
 
         self.save_agent_states = args.save_agent_states
 
         # 結果保存ディレクトリの設定と作成
         save_dir = os.path.join(
             "output",
-            #f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
-            f"DQN_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]"
-            # PERを使用する場合、ディレクトリ名にPER関連パラメータを含めるとより分かりやすい
-            # f"DQN_PER_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]"
+            f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
         )
         if not os.path.exists(save_dir): os.makedirs(save_dir)
 
@@ -69,7 +66,7 @@ class MultiAgent_DQN:
             sys.exit()
 
         # 学習開始メッセージ
-        print(f"{GREEN}DQN{RESET} で学習中...\n")
+        print(f"{GREEN}DQN{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})" if self.agents[0].use_per else "") + "\n")
 
         total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
@@ -114,7 +111,7 @@ class MultiAgent_DQN:
 
 
             # 各エピソード開始時に環境をリセット
-            current_global_state:tuple[tuple[int, int], ...] = self.env.reset()
+            current_global_state = self.env.reset()
 
             done = False # エピソード完了フラグ
             step_count = 0 # 現在のエピソードのステップ数
@@ -141,11 +138,9 @@ class MultiAgent_DQN:
                 # エージェントの状態を保存（オプション）
                 # 全体状態からエージェント部分を抽出 し、Saverでログ記録
                 if self.save_agent_states:
-                    # current_global_state の構造に依存してエージェント部分を抽出
-                    # モックの構造に合わせて、agent_pos は goals_num 以降とする
                     agent_positions_in_global_state = current_global_state[self.goals_num:]
                     for i, agent_pos in enumerate(agent_positions_in_global_state):
-                        self.saver.log_agent_states(i, agent_pos[0],agent_pos[1])
+                        self.saver.log_agent_states(i, agent_pos[0], agent_pos[1])
 
                 # 環境にステップを与えて状態を更新し、結果を取得
                 # 入力に現在の全体状態と全エージェントの行動を使用

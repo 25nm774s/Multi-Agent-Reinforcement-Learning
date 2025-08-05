@@ -43,6 +43,10 @@ class QNet(nn.Module):
 # Modify DQNModel.update to accept IS weights and sampled indices and return TD errors
 # Modify DQNModel._perform_standard_dqn_update to apply IS weights and return TD errors
 
+from typing import Optional, Tuple, List
+# Modify DQNModel.__init__ to accept use_per flag
+# Modify DQNModel.update to accept IS weights and sampled indices and return TD errors
+# Modify DQNModel._perform_standard_dqn_update to apply IS weights and return TD errors
 class DQNModel:
     """
     DQN (Deep Q-Network) の学習ロジックを管理するクラス.
@@ -50,6 +54,7 @@ class DQNModel:
     Prioritized Experience Replay (PER) に対応.
     """
 
+    # Add use_per parameter to __init__ (Step 1)
     def __init__(self, optimizer_type: str, gamma: float, batch_size: int, agent_num: int,
                  goals_num: int, load_model: int, learning_rate: float, mask: bool, device:str, target_update_frequency: int = 100, use_per: bool = False):
         """
@@ -66,7 +71,7 @@ class DQNModel:
             mask (bool): 状態にマスキングを適用するかどうか (True: 自身の位置のみ, False: 全体状態).
             device (str): device名
             target_update_frequency (int, optional): ターゲットネットワークを更新する頻度 (エピソード数). Defaults to 100.
-            use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 5)
+            use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
         self.gamma: float = gamma
         self.batch_size: int = batch_size
@@ -79,7 +84,7 @@ class DQNModel:
         self.target_update_frequency: int = target_update_frequency
         self.device: torch.device = torch.device(device) # Use passed device string directly
 
-        # PERを使用するかどうかのフラグ (Step 5)
+        # PERを使用するかどうかのフラグ (Step 1)
         self.use_per = use_per
 
         # mask設定に応じた入力サイズ計算
@@ -99,6 +104,7 @@ class DQNModel:
             self.optimizer: optim.Optimizer = optim.Adam(self.qnet.parameters(), lr=self.lr)
 
 
+    # Modify huber_loss to apply IS weights only if self.use_per is True and is_weights is not None (Step 2)
     def huber_loss(self, q: torch.Tensor, target: torch.Tensor, is_weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Huber Loss を計算する. PERを使用する場合は重要度サンプリング重みを適用する.
@@ -125,7 +131,7 @@ class DQNModel:
         L1: torch.Tensor = HUBER_LOSS_DELTA * (abs_td_errors - 0.5 * HUBER_LOSS_DELTA)
         loss_per_sample: torch.Tensor = torch.where(cond, L2, L1) # 形状: (batch_size,)
 
-        # PERを使用する場合、損失に重要度サンプリング重みを適用 (Step 7)
+        # PERを使用する場合、損失に重要度サンプリング重みを適用 (Step 2)
         if self.use_per and is_weights is not None:
             # 損失 (batch_size,) に IS重み (batch_size,) を要素ごとに乗算
             weighted_loss = loss_per_sample * is_weights # 形状: (batch_size,)
@@ -257,8 +263,8 @@ class DQNModel:
         self.qnet_target.load_state_dict(self.qnet.state_dict())
 
 
-    # Modify _perform_standard_dqn_update to accept IS weights and return TD errors (Step 7)
-    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int, is_weights_batch: Optional[torch.Tensor] = None) -> Tuple[float, torch.Tensor]:
+    # Modify _perform_standard_dqn_update to accept IS weights and return TD errors conditionally (Step 3)
+    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int, is_weights_batch: Optional[torch.Tensor] = None) -> Tuple[float, torch.Tensor | None]:
         """
         通常のDQN学習ロジックを実行する。
         (入力は特定エージェントの状態バッチ) PER対応済み。
@@ -270,12 +276,12 @@ class DQNModel:
             next_agent_states_batch (torch.Tensor): 次のエージェントの状態バッチ (形状: (batch_size, agent_state_dim)).
             done_batch (torch.Tensor): 完了フラグのバッチ (形状: (batch_size,)).
             episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
-            is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)). (Step 7)
+            is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)).
 
         Returns:
-            Tuple[float, torch.Tensor]:
+            Tuple[float, torch.Tensor | None]:
                 - 計算された損失の平均値 (スカラー).
-                - 計算されたTD誤差 (絶対値) (形状: (batch_size,)).
+                - 計算されたTD誤差 (絶対値) (形状: (batch_size,)) (PER有効時のみ)、または None (PER無効時).
         """
         # Q値の計算 (特定エージェントの状態バッチを使用)
         predicted_q: torch.Tensor = self._calculate_q_values(agent_states_batch, action_batch)
@@ -284,7 +290,7 @@ class DQNModel:
         # ターゲットQ値の計算
         target_q: torch.Tensor = self._calculate_target_q_values(reward_batch, done_batch, next_max_q)
 
-        # 損失の計算と最適化 (IS重みを渡す) (Step 7)
+        # 損失の計算と最適化 (IS重みを渡す) (Step 3)
         loss, abs_td_errors = self.huber_loss(predicted_q, target_q, is_weights_batch) # TD誤差もここで計算されて返される
 
         self._optimize_network(loss)
@@ -298,8 +304,8 @@ class DQNModel:
              self.sync_qnet()
              # print(f"Episode {episode_num}: Target network synced.") # デバッグ用
 
-        # 計算された損失とTD誤差の絶対値を返す (Step 7)
-        return scalar_loss, abs_td_errors
+        # Return TD errors only if use_per is True (Step 3)
+        return scalar_loss, abs_td_errors if self.use_per else None
 
 
     def _perform_knowledge_distillation_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> Tuple[float, None]:
@@ -325,7 +331,7 @@ class DQNModel:
         true_q: torch.Tensor = true_qs_batch[batch_indices, action_batch].detach()
 
         # 損失の計算と最適化 (IS重みは使用しない)
-        loss, _ = self.huber_loss(predicted_q, true_q) # TD誤差は不要なので無視
+        loss, _ = self.huber_loss(predicted_q, true_q, is_weights=None) # TD誤差は不要なので無視
 
         self._optimize_network(loss)
 
@@ -340,7 +346,7 @@ class DQNModel:
         return scalar_loss, None
 
 
-    # Modify update to accept IS weights and sampled indices, and return TD errors (Step 6)
+    # Modify update to accept IS weights and sampled indices, and return TD errors conditionally (Step 4)
     def update(self, i: int, global_states_batch: torch.Tensor, actions_batch: torch.Tensor, rewards_batch: torch.Tensor, next_global_states_batch: torch.Tensor, dones_batch: torch.Tensor, episode_num: int, is_weights_batch: Optional[torch.Tensor] = None, sampled_indices: Optional[List[int]] = None) -> Tuple[float | None, torch.Tensor | None]:
         """
         Qネットワークのメインの更新ロジック。学習モードによって処理を分岐する。
@@ -354,13 +360,13 @@ class DQNModel:
             next_global_states_batch (torch.Tensor): リプレイバッバからサンプリングされた次の全体状態のバッチ.
             dones_batch (torch.Tensor): リプレイバッファからサンプリングされた完了フラグのバッチ.
             episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
-            is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)). (Step 6)
-            sampled_indices (Optional[List[int]]): PERでサンプリングされた経験の元のバッファ内インデックスリスト. (Step 6)
+            is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)).
+            sampled_indices (Optional[List[int]]): PERでサンプリングされた経験の元のバッファ内インデックスリスト.
 
         Returns:
             Tuple[float | None, torch.Tensor | None]:
                 - 計算された損失の平均値 (学習が行われた場合)、または None.
-                - 計算されたTD誤差 (絶対値) (形状: (batch_size,)) (通常学習時のみ)、または None.
+                - 計算されたTD誤差 (絶対値) (形状: (batch_size,)) (PER有効時のみ)、または None.
         """
         # load_model == 1 の場合は学習は行わない
         if self.load_model == 1:
@@ -372,15 +378,15 @@ class DQNModel:
         # 2. 学習モードの分岐と実行 (特定エージェントの状態バッチを使用)
         if self.load_model == 0:
             # 通常のDQN学習モード (PER対応)
-            # _perform_standard_dqn_update に IS重みを渡し、損失とTD誤差を受け取る (Step 6)
-            loss, td_errors = self._perform_standard_dqn_update(agent_states_batch, actions_batch, rewards_batch, next_agent_states_batch, dones_batch, episode_num, is_weights_batch)
-            return loss, td_errors # 損失とTD誤差を返す
+            # Pass IS weights conditionally, _perform_standard_dqn_update returns TD errors conditionally (Step 4)
+            loss, td_errors = self._perform_standard_dqn_update(agent_states_batch, actions_batch, rewards_batch, next_agent_states_batch, dones_batch, episode_num, is_weights_batch if self.use_per else None)
+            # Return TD errors conditionally (Step 4)
+            return loss, td_errors if self.use_per else None
         elif self.load_model == 2:
-             # 特殊な学習モード (知識蒸留/模倣学習など) (PER非対応)
-             # _perform_knowledge_distillation_update は損失のみを返し、TD誤差は None (Step 8)
-             loss, td_errors = self._perform_knowledge_distillation_update(agent_states_batch, actions_batch)
-             return loss, td_errors # 損失とNoneを返す
+            # 特殊な学習モード (知識蒸留/模倣学習など) (PER非対応)
+            # _perform_knowledge_distillation_updateはTD誤差を返さない
+            loss, td_errors = self._perform_knowledge_distillation_update(agent_states_batch, actions_batch)
+            return loss, None # TD誤差は常にNone
         else: # load_model が 0, 1, 2 以外の値の場合 (予期しない値)
             print(f"Warning: Unexpected load_model value: {self.load_model}. No learning performed.")
-            return None, None # 損失とTD誤差の両方をNoneで返す
-        
+            return None, None # 損失とTD誤差の両方をNoneで返す        

@@ -4,32 +4,13 @@
 """
 import torch
 import numpy as np
-#import os
-#import sys
-
 
 from utils.replay_buffer import ReplayBuffer
 from DQN.dqn import DQNModel
-#from DQN.dqn import QNet
-
-import torch
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.01
 
-# Assuming these modules are available in the environment or will be provided
-# from env import GridWorld
-# from DQN.Agent_DQN import Agent_DQN # Modified below
-# from DQN.MultiAgent_DQN import MultiAgent_DQN # Modified below
-# from utils.Model_Saver import Saver # Modified below
-# from utils.plot_results import PlotResults
-# from utils.grid_renderer import GridRenderer
-from DQN.dqn import DQNModel # Modified below
-from utils.replay_buffer import ReplayBuffer # Modified below
-
-
-# Add beta and beta_anneal_steps to Agent_DQN.__init__
-# Modify Agent_DQN.learn_from_experience to use sample(self.beta), pass indices/weights to model.update, and update beta
 class Agent_DQN:
     """
     DQN エージェントクラス.
@@ -37,7 +18,8 @@ class Agent_DQN:
     環境とのインタラクション、経験の収集、リプレイバッファへの保存、
     および DQN モデルの学習ロジックを管理します。
     """
-    def __init__(self, args):
+    # Add use_per parameter to __init__ (Step 1)
+    def __init__(self, args, use_per: bool = False):
         """
         Agent_DQN クラスのコンストラクタ.
 
@@ -47,6 +29,7 @@ class Agent_DQN:
                   load_model, goals_num, mask, device, buffer_size,
                   optimizer, gamma, learning_rate, target_update_frequency,
                   alpha, beta, beta_anneal_steps.
+            use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
         self.agents_num = args.agents_number
         self.batch_size = args.batch_size
@@ -58,22 +41,22 @@ class Agent_DQN:
         self.mask = args.mask
         self.device = torch.device(args.device)
 
-        # PER パラメータの追加 (Step 1)
         self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
         self.beta = args.beta if hasattr(args, 'beta') else 0.4 # Betaの初期値
         self.beta_anneal_steps = args.beta_anneal_steps if hasattr(args, 'beta_anneal_steps') else args.episode_number # ベータを1.0まで増加させるエピソード数
+        self.use_per = use_per
 
-        # ReplayBuffer の初期化 (PER パラメータ alpha を渡す) (Step 1 & 10)
+        # ReplayBuffer の初期化 (PER パラメータ alpha と use_per を渡す) (Step 2)
         # learning_mode は ReplayBuffer の get_batch の挙動に影響するため、args から渡すか適切に設定する必要がある
         # 現在の ReplayBuffer 実装は 'V', 'Q', 'else' で分岐しており、DQNでは 'else' が使われる想定
         # 'else' ブランチに学習モードを指定する必要はないが、ReplayBuffer の __init__ に learning_mode があるため仮に渡す
         # args に learning_mode がない場合はデフォルト値を設定するか、args に追加が必要
         """　将来learning_modeはなくす　"""
-        # Pass alpha to ReplayBuffer (Step 10)
-        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device, alpha=self.alpha)
+        # Pass alpha and use_per to ReplayBuffer (Step 2)
+        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device, alpha=self.alpha, use_per=self.use_per)
 
 
-        # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 5)
+        # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 3)
         self.model = DQNModel(
             args.optimizer,
             args.gamma,
@@ -84,8 +67,8 @@ class Agent_DQN:
             args.learning_rate,
             args.mask,
             args.device,
-            100,#args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100,
-            use_per=True # PERを使用することをモデルに伝える (Step 5)
+            args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100,
+            use_per=self.use_per # Pass use_per to DQNModel (Step 3)
         )
 
     def get_action(self, i: int, global_state: tuple) -> int:
@@ -206,9 +189,11 @@ class Agent_DQN:
         if len(self.replay_buffer) < self.batch_size:
             return None
 
-        # 1. バッチデータの取得 (PER対応 sample メソッドを使用) (Step 2)
+        # 1. バッチデータの取得 (PER対応 sample メソッドを使用) (Step 4)
         # ReplayBuffer の sample メソッドは経験データに加え、IS重みとサンプリングされたインデックスを返す
-        batch_data = self.replay_buffer.sample(self.beta) # betaを渡してサンプリング (Step 2)
+        # Pass beta only if use_per is True (Step 4)
+        # 修正: self.use_per が True の場合に self.beta を渡すように修正
+        batch_data = self.replay_buffer.sample(self.beta if self.use_per else 0.0) # Pass beta conditionally
 
         if batch_data is None:
              return None
@@ -217,8 +202,7 @@ class Agent_DQN:
         global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices = batch_data
 
         # 2. モデルの更新
-        # DQNModel の update メソッドにバッチデータ、IS重み、サンプリングされたインデックスを渡す (Step 3)
-        # update メソッドは float | None (学習損失) と TD誤差 (PER用) を返すように修正されている
+        # DQNModel の update メソッドにバッチデータ、IS重み、サンプリングされたインデックスを渡す (Step 5)
         loss, td_errors = self.model.update(
             i,
             global_states_batch,
@@ -227,19 +211,20 @@ class Agent_DQN:
             next_global_states_batch,
             dones_batch,
             episode_num,
-            is_weights_batch, # IS重みを渡す (Step 3)
-            sampled_indices # サンプリングされたインデックスを渡す (PERの優先度更新はReplayBufferで行うが、TD誤差計算はModelで行うためここで渡す必要はないかもしれない -> update内でTD誤差を計算して返すようにする)
+            is_weights_batch if self.use_per else None, # Pass IS weights conditionally
+            sampled_indices if self.use_per else None # Pass sampled indices conditionally
         )
 
-        # 3. PER: 優先度の更新 (Step 9)
+        # 3. PER: 優先度の更新 (Step 6)
         # モデルの update メソッドから計算されたTD誤差の絶対値を取得し、リプレイバッファの優先度を更新
-        if td_errors is not None and sampled_indices is not None:
+        if self.use_per and td_errors is not None and sampled_indices is not None:
              self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
 
-        # 4. PER: Betaの線形アニーリング (Step 4)
+        # 4. PER: Betaの線形アニーリング (Step 7)
         # エピソードの進行に応じて beta を線形的に 1.0 まで増加させる
-        # beta_increment_per_episode = (1.0 - args.beta) / args.beta_anneal_steps # args.beta_anneal_steps は総エピソード数か、βを1にするステップ数
-        beta_increment_per_episode = (1.0 - (self.beta)) / (self.beta_anneal_steps)
-        self.beta = min(1.0, self.beta + beta_increment_per_episode)
+        # Perform beta annealing only if use_per is True (Step 7)
+        if self.use_per:
+            beta_increment_per_episode = (1.0 - (self.beta)) / (self.beta_anneal_steps)
+            self.beta = min(1.0, self.beta + beta_increment_per_episode)
 
         return loss

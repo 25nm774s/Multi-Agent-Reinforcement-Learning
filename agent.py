@@ -3,7 +3,11 @@
 import os
 from typing import Tuple, List
 
-from Q_learn.QTable import QState, QTable
+# QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
+# (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
+from Q_learn.QTable import QState
+
+from Q_learn.QTable import QTable
 from Q_learn.strategys.action_selection import StandardActionSelection
 from Q_learn.strategys.learning import StandardQLearning
 from Q_learn.strategys.masked_strategies import MaskedQLearning, MaskedActionSelection

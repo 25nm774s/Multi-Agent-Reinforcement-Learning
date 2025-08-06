@@ -30,7 +30,6 @@ class MultiAgent_Q:
         # Save directory calculation remains the same
         save_dir = os.path.join(
             "output",
-            #f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]"
             f"Q_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
         # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
@@ -63,7 +62,6 @@ class MultiAgent_Q:
         # メインループ（各エピソード）
         # ----------------------------------
         for episode_num in range(1, self.episode_number + 1):
-            # print('■', end='',flush=True)  # 進捗表示 - コメントアウトしてログを見やすくする
             if episode_num % 10 == 0:
                 print(f"Episode {episode_num} / {self.episode_number}", end='\r', flush=True)
 
@@ -73,10 +71,14 @@ class MultiAgent_Q:
                 print() # 改行して進捗表示をクリア
                 avg_reward = avg_reward_temp / 100
                 avg_step = avg_step_temp / 100
+                # エピソードごとの平均損失も計算し、表示に追加
+                avg_loss = sum(losses) / len(losses) if losses else 0 # ここで losses は過去100エピソードの平均損失リスト
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {avg_reward:.2f}{RESET}\n") # Corrected variable name
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss   : {GREEN}{avg_loss:.4f}{RESET}\n")
                 avg_reward_temp, avg_step_temp = 0, 0
-
+                losses = [] # 100エピソードごとに損失リストもリセット
+                
             # --------------------------------------------
             # 各エピソード開始時に環境をリセット
             # これによりエージェントが再配置される
@@ -104,7 +106,7 @@ class MultiAgent_Q:
                 # エージェントの状態を保存（オプション）
                 # states はゴール位置 + エージェント位置のタプルになっている
                 # エージェントの位置は states の self.goals_num 以降
-                # TODO: GridWorldのget_agent_positionsメソッドの使用を検討 (MockGridWorldには実装済み)
+                # TODO: GridWorldのget_agent_positionsメソッドの使用を検討
                 agent_positions_dict = self.env.get_agent_positions() # GridWorldのメソッドを使用
                 # The get_agent_positions method returns a dictionary {agent_id: (x, y)}
                 # Need to iterate through agent_ids to get positions in order
@@ -173,4 +175,3 @@ class MultiAgent_Q:
         print("Saving results...")
         self.plot_results.draw()
         self.plot_results.draw_heatmap()
-        

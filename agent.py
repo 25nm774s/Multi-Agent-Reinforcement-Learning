@@ -1,142 +1,184 @@
-"""
-エージェントの行動を出力.
-学習器の更新など.
-"""
+# Update the Agent class __init__ method to select strategies based on 'mask'
 
-import torch
-import numpy as np
 import os
-import sys
+from typing import Tuple, List
 
-from core.linear import Linear
-from core.replay_buffer import ReplayBuffer
-from core.dqn import DQN
-
-np.random.seed(0)
-torch.manual_seed(0)
-
-# ターミナルの表示関連
-RED = '\033[91m'
-GREEN = '\033[92m'
-RESET = '\033[0m'
-
-MAX_EPSILON = 1
-MIN_EPSILON = 0.01
+from Q_learn.QTable import QState, QTable
+from Q_learn.strategys.action_selection import StandardActionSelection
+from Q_learn.strategys.learning import StandardQLearning
+from Q_learn.strategys.masked_strategies import MaskedQLearning, MaskedActionSelection
 
 class Agent:
-    def __init__(self, args, model_path):
-        self.agents_num = args.agents_number
-        self.batch_size = args.batch_size
-        self.decay_epsilon_step = args.decay_epsilon
-        self.action_size = 5
-        self.epsilon = None
-        self.learning_mode = args.learning_mode
-        self.load_model = args.load_model
+    """
+    エージェント個別のロジックを管理するクラス.
+    QTableインスタンスを持ち、行動選択、ε-greedy、ε減衰、学習プロセスを担う.
+    ストラテジーパターンを使用して行動選択と学習ロジックをカプセル化する.
+    """
+    def __init__(self, args, agent_id: int): # Added mask argument with a default
+        """
+        Agent コンストラクタ.
+
+        Args:
+            args: 環境設定を含むオブジェクト (mask属性を含む).
+            agent_id (int): このエージェントのID.
+        """
+        self.agent_id = agent_id
+        self.grid_size = args.grid_size
         self.goals_num = args.goals_number
-        self.mask = args.mask
-        self.model_path = model_path
-        self.device = torch.device(args.device)
-        self.replay_buffer = ReplayBuffer(args)
+        self.action_size = 5 # UP, DOWN, LEFT, RIGHT, STAY
+        self.total_agents = args.agents_number # Store total agents for masked strategy
 
-        # モデルのロード
-        if self.load_model == 1 or self.load_model == 2:
-            if self.learning_mode == 'V':
-                self.model_path = model_path.replace('V', 'Q')
-            else:
-                self.model_path = model_path
-            self.loading_model(self.model_path)
+        # Determine strategy based on args.mask
+        mask = getattr(args, 'mask', 0) # Get mask value, default to 0 if not present
 
-        if self.learning_mode == 'V' or self.learning_mode == 'Q':
-            #print(f"model_path:{self.model_path}")
-            #self.linear = Linear(args, self.action_size, new_model_path)
-            self.linear = Linear(args, self.action_size, self.model_path)
-        elif self.learning_mode == 'DQN':
-            #from core.dqn import DQN
-            self.model = DQN(args, self.action_size, self.model_path)
-        elif self.learning_mode == 'DDQN':
+        if mask == 1:
+            # Use Masked Strategies
+            self._action_selection_strategy = MaskedActionSelection(
+                grid_size=self.grid_size,
+                goals_num=self.goals_num,
+                agent_id=self.agent_id,
+                total_agents=self.total_agents
+            )
+            self._learning_strategy = MaskedQLearning(
+                grid_size=self.grid_size,
+                goals_num=self.goals_num,
+                agent_id=self.agent_id,
+                total_agents=self.total_agents
+            )
+            print(f"Agent {self.agent_id}: Using Masked Strategies")
+        else:
+            # Use Standard Strategies
+            self._action_selection_strategy = StandardActionSelection()
+            self._learning_strategy = StandardQLearning()
+            print(f"Agent {self.agent_id}: Using Standard Strategies")
+
+
+        # Model path for QTable remains the same
+        save_dir = getattr(args, 'dir_path', 'models')
+        self.model_path = os.path.join(save_dir, f'agent_{self.agent_id}_q_table.pkl')
+
+        # QTable Instance (shared state managed by the agent)
+        self.q_table = QTable(
+            action_size=self.action_size,
+            learning_rate=getattr(args, 'learning_rate', 0.1),
+            discount_factor=getattr(args, 'discount_factor', 0.99),
+            load_model=args.load_model,
+            model_path=self.model_path
+        )
+
+        # ε-greedyのためのパラメータを保持
+        self.epsilon = getattr(args, 'epsilon', 1.0)
+        self.min_epsilon = getattr(args, 'min_epsilon', 0.01)
+        self.max_epsilon = getattr(args, 'max_epsilon', 1.0)
+
+
+    def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+        """
+        環境の全体状態から、このエージェントにとってのQテーブル用の状態表現を抽出・生成する.
+        (Same as before)
+        """
+        # global_state の構造: ((g1_x, g1_y), ..., (a1_x, a1_y), ...)
+        goal_positions = global_state[:self.goals_num]
+
+        if self.goals_num + self.agent_id >= len(global_state):
+            raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
+
+        agent_position = global_state[self.goals_num + self.agent_id]
+
+        flat_state_list: List[int] = []
+        for pos in goal_positions:
+            if not isinstance(pos, tuple) or len(pos) != 2:
+                raise ValueError(f"Unexpected goal position format: {pos}")
+            flat_state_list.extend(pos)
+
+        if not isinstance(agent_position, tuple) or len(agent_position) != 2:
+            raise ValueError(f"Unexpected agent position format: {agent_position}")
+        flat_state_list.extend(agent_position)
+
+        return tuple(flat_state_list)
+
+
+    def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:
+        """
+        現在の全体状態に基づいて、エージェントの行動を決定する.
+        行動選択ロジックは ActionSelectionStrategy オブジェクトに委譲される.
+
+        Args:
+            global_state (Tuple[Tuple[int, int], ...]): 環境の現在の全体状態タプル.
+
+        Returns:
+            int: 選択された行動 (0:UP, 1:DOWN, 2:LEFT, 3:RIGHT, 4:STAY).
+        """
+        # Qテーブル用の状態表現を取得
+        q_state = self._get_q_state(global_state)
+
+        # 行動選択ロジックをストラテジーオブジェクトに委譲
+        # ストラテジーにQTableインスタンス自体を渡すことで、ストラテジーはQTableのメソッドを使用できる
+        return self._action_selection_strategy.select_action(
+            self.q_table,      # QTableインスタンス
+            q_state,           # 現在の状態
+            self.action_size,  # 行動空間サイズ
+            self.epsilon       # ε値
+        )
+
+
+    def decay_epsilon_pow(self, step:int, alpha=0.90):
+        """
+        ステップ数に基づいてεをべき乗減衰させる.
+        (Same as before)
+        """
+        effect_step = max(1,step)
+        if alpha >= 1.0 or alpha <= 0.0:
             pass
-            # self.model = DDQN(args, self.action_size)
-        elif self.learning_mode == 'Dueling':
-            pass
-            # self.model = Dueling(args, self.action_size)
 
-    # 学習済みモデルの存在の確認
-    def loading_model(self, model_path):
-        if os.path.exists(model_path):
-            print('モデルを読み込みました.')
-            print(f"from {GREEN}{model_path}{RESET}\n")
-        else:
-            print(f"学習済みモデル {RED}{model_path}{RESET} が見つかりません.")
-            print('学習する場合, load_model=0 に変更してください.\n')
-            sys.exit()
+        self.epsilon = self.max_epsilon * (1.0 / effect_step**alpha)
+        self.epsilon = max(self.epsilon, self.min_epsilon)
 
-    def get_action(self, i, states):
-        if self.learning_mode == 'V' or self.learning_mode == 'Q':
-            return self.linear_greedy_actor(i, states)
-        else:
-            return self.nn_greedy_actor(i, states)
 
-    # 線形関数近似のε-greedy
-    def linear_greedy_actor(self, i, states):
-        goals_pos = [list(pos) for pos in states[:self.goals_num]]#なぜか不使用変数
-        agents_pos = [list(pos) for pos in states[self.goals_num:]]
-        agent_pos = agents_pos[i]
+    def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:
+        """
+        単一の経験に基づいてQテーブルを更新するプロセスをAgentが管理する.
+        学習ロジックは LearningStrategy オブジェクトに委譲される.
 
-        agents_pos.pop(i)
+        Args:
+            global_state (Tuple[Tuple[int, int], ...]): 経験の現在の全体状態.
+            action (int): エージェントが取った行動.
+            reward (float): 行動によって得られた報酬.
+            next_global_state (Tuple[Tuple[int, int], ...]): 経験の次の全体状態.
+            done (bool): エピソードが完了したかどうかのフラグ.
 
-        if np.random.rand() <= self.epsilon:
-            return np.random.choice(self.action_size)
-        else:
-            return np.argmax([self.linear.getQ(agents_pos, agent_pos, action) for action in range(self.action_size)])
+        Returns:
+            float: 更新に使用されたTD誤差の絶対値 (LearningStrategyから返される).
+        """
+        # エージェント固有の状態表現を取得
+        current_q_state = self._get_q_state(global_state)
+        next_q_state = self._get_q_state(next_global_state)
 
-    # Q系列のNNモデル使用時のε-greedy
-    def nn_greedy_actor(self, i, states):
-        if self.mask:
-            states = states[self.goals_num + i]
+        # 学習ロジックをストラテジーオブジェクトに委譲
+        # ストラテジーにQTableインスタンス、状態、行動、報酬、次の状態、doneフラグを渡す
+        td_delta = self._learning_strategy.update_q_value(
+            self.q_table,         # QTableインスタンス
+            current_q_state,      # 現在の状態
+            action,               # 取られた行動
+            reward,               # 報酬
+            next_q_state,         # 次の状態
+            done                  # 完了フラグ
+        )
 
-        if np.random.rand() < self.epsilon:
-            return np.random.choice(self.action_size)
-        else:
-            # stateがタプルの場合の整形
-            if isinstance(states, tuple):
-                flat_state = np.array(states).flatten()
-                states = torch.tensor(flat_state, dtype=torch.float32) # 1次元のテンソルに変換
-            elif isinstance(states, torch.Tensor):
-                pass
+        return td_delta
 
-            states = states.to(self.device)
-            qs = self.model.qnet(states)
-            return qs.argmax().item()
 
-    # epsilonの線形アニーリング
-    def decay_epsilon(self, step):
-        if step < self.decay_epsilon_step:
-            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
+    def save_q_table(self) -> None:
+        """
+        このエージェントのQテーブルをファイルに保存する.
+        Agentに紐づけられたmodel_pathを使用する.
+        (Same as before - QTable object handles saving)
+        """
+        self.q_table.save_q_table(self.model_path)
 
-    # 価値更新
-    def update_brain(self, i, states, action, reward, next_state, done, episode_num, step):
-        self.replay_buffer.add(states, action, reward, next_state, done)
-
-        if len(self.replay_buffer) < self.batch_size:
-            return
-        states, action, reward, next_state, done = self.replay_buffer.get_batch()
-
-        # 線形関数近似器
-        if self.learning_mode == 'V' or self.learning_mode == 'Q':
-            if self.load_model == 1:
-                scalar_loss = None # 学習済みモデル使用時, 更新しない
-            else:
-                scalar_loss = []
-                # 修正：ループ範囲を実際のバッチサイズ len(states) に変更
-                for j in range(len(states)): # ここではバッチサイズ分のlossを平均
-                    scalar_loss.append(self.linear.update(i, states[j], action[j], reward[j], next_state[j], done[j], step))
-                scalar_loss = np.mean(scalar_loss)
-
-        # NNモデル使用時
-        else:
-            if self.load_model == 1:
-                scalar_loss = None # 学習済みモデル使用時, 更新しない
-            else:
-                scalar_loss = self.model.update(i, states, action, reward, next_state, done, episode_num)
-
-        return scalar_loss
+    def get_q_table_size(self) -> int:
+        """
+        このエージェントのQテーブルに登録されている状態の数を返す.
+        (Same as before - Delegate to QTable object)
+        """
+        return self.q_table.get_q_table_size()

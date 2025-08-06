@@ -25,12 +25,13 @@ class MultiAgent_Q:
         self.grid_size = args.grid_size
 
         self.load_model = args.load_model
-        self.mask = args.mask
+        # self.mask = args.mask # Remove this line
 
         # Save directory calculation remains the same
         save_dir = os.path.join(
             "output",
-            f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]"
+            #f"Q_mask[{self.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]"
+            f"Q_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
         # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
         args.dir_path = save_dir
@@ -48,11 +49,12 @@ class MultiAgent_Q:
 
         # 学習開始メッセージ
         # IQL/CQLの表示はAgentクラスの実装に依存するが、ここではMultiAgent_QがQ学習を orchestrate していることを示す
-        if self.mask:
-            # Note: The mask logic might need to be handled within the Agent's learn method
-            print(f"{GREEN}IQL/CQL (Q学習ベース) で学習中{RESET}\n")
-        else:
-            print(f"{GREEN}Q学習で学習中{RESET}\n")
+        # if self.mask: # Remove this if condition
+        #     # Note: The mask logic might need to be handled within the Agent's learn method
+        #     print(f"{GREEN}IQL/CQL (Q学習ベース) で学習中{RESET}\n")
+        # else:
+        print(f"{GREEN}Q学習で学習中{RESET}\n")
+
 
         total_step = 0
         avg_reward_temp, avg_step_temp = 0, 0
@@ -122,6 +124,7 @@ class MultiAgent_Q:
                 step_losses = [] # 各ステップでのエージェントごとの損失
                 if self.load_model == 0: # 学習モードの場合のみ
                     for i, agent in enumerate(self.agents):
+                        # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
                         # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
                         # Note: In a multi-agent setting, the reward might be individual or shared.
                         # The current implementation passes the single global reward to all agents.
@@ -170,3 +173,4 @@ class MultiAgent_Q:
         print("Saving results...")
         self.plot_results.draw()
         self.plot_results.draw_heatmap()
+        

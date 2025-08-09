@@ -7,7 +7,7 @@ RESET = '\033[0m'
 
 from Q_learn.Agent_Q import Agent
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
-from utils.Model_Saver import Saver
+from utils.Saver import Saver
 from utils.plot_results import PlotResults
 
 class MultiAgent_Q:

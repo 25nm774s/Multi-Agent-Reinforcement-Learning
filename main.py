@@ -74,41 +74,71 @@ if __name__ == '__main__':
         parser.add_argument('--learning_mode', choices=['Q', 'DQN'], default='DQN')
         parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--load_model', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2], default=0, type=int)
+        parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
+        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=0, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
-        parser.add_argument('--episode_number', default=5000, type=int)
+        parser.add_argument('--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.000005, type=float)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)
         parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
-        parser.add_argument('--pause_duration', default=0.1, type=float)
+        parser.add_argument('--window_width', default=500, type=int)
+        parser.add_argument('--window_height', default=500, type=int)
         parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
+        parser.add_argument('--pause_duration', default=0.1, type=float)
+        parser.add_argument('--target_update_frequency', default=100, type=int)
+        # Add PER parameters
+        parser.add_argument('--alpha', default=0.6, type=float, help='PER alpha parameter (prioritization exponent)')
+        parser.add_argument('--beta', default=0.4, type=float, help='PER beta parameter (importance sampling exponent, starts at this value)')
+        parser.add_argument('--beta_anneal_steps', default=20000, type=int, help='Number of episodes over which beta is annealed to 1.0')
+        # Add --use_per argument
+        parser.add_argument('--use_per', choices=[0, 1], default=0, type=int, help='Enable Prioritized Experience Replay')
+        
         return parser.parse_args()
+    
 
-    args = parse_args()
+    config = parse_args()
 
     # auto選択時のデバイス決定ロジックを追加
-    if args.device == 'auto':
+    if config.device == 'auto':
         if torch.cuda.is_available():
-            args.device = 'cuda'
+            config.device = 'cuda'
         elif torch.backends.mps.is_available():
-            args.device = 'mps'
+            config.device = 'mps'
         else:
-            args.device = 'cpu'
-        print(f"自動選択されたデバイス: {GREEN}{args.device}{RESET}\n")
+            config.device = 'cpu'
+        print(f"自動選択されたデバイス: {GREEN}{config.device}{RESET}\n")
 
     def q_learning():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
-        config = parse_args()
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
         simulation.run()
 
         simulation.result_save()
+    
+    def dqn_process():
+        from DQN.MultiAgent_DQN import MultiAgent_DQN
+        from DQN.Agent_DQN import Agent_DQN
+        agents:list = [Agent_DQN(config,config.use_per) for i in range(config.agents_number)]
 
-    q_learning()
+        simulation = MultiAgent_DQN(config,agents)
+
+        simulation.run()
+
+        simulation.result_save()
+
+        simulation.save_model_weights()
+    
+
+    if config.learning_mode == "Q":
+        print(f"device:{config.device}")
+        q_learning()
+    elif config.learning_mode == "DQN":
+        dqn_process()
+    else:
+        print("未実装\n")

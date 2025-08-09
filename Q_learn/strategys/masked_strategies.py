@@ -103,4 +103,4 @@ class MaskedQLearning(LearningStrategy):
         # For now, it's the same as StandardQLearning but prepared for masking:
         return q_table.learn(state, action, reward, next_state, done)
 
-print("Masked action selection and learning strategies defined as placeholders.")
+#print("Masked action selection and learning strategies defined as placeholders.")

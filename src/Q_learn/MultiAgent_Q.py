@@ -5,9 +5,10 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-from Q_learn.Agent_Q import Agent
+from agent import Agent
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
+from utils.Model_IO import Model_IO
 from utils.plot_results import PlotResults
 
 class MultiAgent_Q:
@@ -32,10 +33,9 @@ class MultiAgent_Q:
             "output",
             f"Q_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
-        # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
-        args.dir_path = save_dir
 
-        self.saver = Saver(save_dir=save_dir,grid_size=self.grid_size)
+        self.saver = Saver(save_dir,self.grid_size)
+        self.model_io = Model_IO(save_dir)
         self.plot_results = PlotResults(save_dir)
 
 
@@ -165,11 +165,14 @@ class MultiAgent_Q:
         print("Mock save_model_weights called - Not applicable for Q-Learning.")
         pass # DQNではないため何もしない
 
-    def save_Qtable(self):
+    def save_Qtable(self) -> None:
         print("Saving Q-Tables for each agent...")
-        # Agentクラスのsave_q_tableメソッドを呼び出す
-        for i, agent in enumerate(self.agents):
-            agent.save_q_table() # Agentは自身の保存パスを知っている
+        # Agentクラスのsave_q_tableメソッドを呼び出すのではなく、Model_IOに委譲
+        self.model_io.save_q_table(self.agents)
+    
+    def load_Qtable(self) -> None:
+        loaded_result = self.model_io.load_q_table(self.agents)
+        print("Loaded Qtable\n")
 
     def result_save(self):
         print("Saving results...")

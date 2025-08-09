@@ -120,6 +120,8 @@ if __name__ == '__main__':
         simulation.run()
 
         simulation.result_save()
+        simulation.save_Qtable()
+        simulation.load_Qtable()
     
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN

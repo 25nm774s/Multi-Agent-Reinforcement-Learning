@@ -18,8 +18,7 @@ class QTable:
     Qテーブルのデータ構造と学習ロジックを管理するクラス.
     エージェントIDや行動選択ロジックは含まない.
     """
-    def __init__(self, action_size: int, learning_rate: float, discount_factor: float,
-                load_model: bool, model_path: str):
+    def __init__(self, action_size: int, learning_rate: float, discount_factor: float):
         """
         QTable コンストラクタ.
 
@@ -40,11 +39,7 @@ class QTable:
         # Q値の初期化に使用する値
         self._initial_q_value = 0.0
 
-        self.model_path = model_path
-
-        # ロードフラグが立っている場合はQテーブルをロード
-        if load_model:
-            self.load_q_table(self.model_path)
+        #self.model_path = model_path
 
 
     def learn(self, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
@@ -85,35 +80,40 @@ class QTable:
 
         return abs(td_delta) # TD誤差の絶対値を返す (損失の目安として)
 
-    def save_q_table(self, file_path: str) -> None:
+    def save_q_table(self, model_path) -> None:
         """
         Qテーブルをファイルに保存する (pickle形式).
         """
         # ディレクトリ部分を取得し、空でない場合にディレクトリを作成
-        save_dir = os.path.dirname(file_path)
-        if save_dir: # ディレクトリが指定されている場合のみ作成
+        save_dir = os.path.dirname(model_path)
+        #print(f"save_dir:{save_dir},file_path:{file_path}")
+        if save_dir:
             os.makedirs(save_dir, exist_ok=True)
+        
         try:
-            with open(file_path, 'wb') as f:
+            with open(model_path, 'wb') as f:
                 pickle.dump(self.q_table, f)
-            print(f"Qテーブルを {file_path} に保存しました.")
+            print(f"Qテーブルを {model_path} に保存しました.")
         except Exception as e:
             print(f"Qテーブルの保存中にエラーが発生しました: {e}")
 
-    def load_q_table(self, file_path: str) -> None:
+    def load_q_table(self, model_path) -> QTableType:
         """
-        ファイルからQテーブルをロードする (pickle形式).
+        ファイルからQテーブルを読み込む (pickle形式).
         """
-        if not os.path.exists(file_path):
-            print(f"指定されたQテーブルファイルが見つかりません: {file_path}")
-            return
-
         try:
-            with open(file_path, 'rb') as f:
-                self.q_table = pickle.load(f)
-            print(f"Qテーブルを {file_path} からロードしました.")
+            if os.path.exists(model_path):
+                with open(model_path, 'rb') as f:
+                    self.q_table:QTableType = pickle.load(f)
+                print(f"Qテーブルを {model_path} から読み込みました.")
+            else:
+                print(f"指定されたファイル {model_path} が存在しません。新しいQテーブルを作成します。")
+                self.q_table:QTableType = {} # ファイルが存在しない場合は新しいQテーブルを初期化
         except Exception as e:
-            print(f"Qテーブルのロード中にエラーが発生しました: {e}")
+            print(f"Qテーブルの読み込み中にエラーが発生しました: {e}")
+            self.q_table = {} # エラー発生時は新しいQテーブルを初期化
+        
+        return self.q_table
 
     def get_q_table_size(self) -> int:
         """

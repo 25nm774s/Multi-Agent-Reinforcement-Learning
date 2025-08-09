@@ -5,7 +5,7 @@ from typing import Tuple, List
 
 # QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
 # (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-from Q_learn.QTable import QState
+from Q_learn.QTable import QTableType, QState
 
 from Q_learn.QTable import QTable
 from Q_learn.strategys.action_selection import StandardActionSelection
@@ -57,17 +57,13 @@ class Agent:
             print(f"Agent {self.agent_id}: Using Standard Strategies")
 
 
-        # Model path for QTable remains the same
-        save_dir = getattr(args, 'dir_path', 'models')
-        self.model_path = os.path.join(save_dir, f'agent_{self.agent_id}_q_table.pkl')
-
         # QTable Instance (shared state managed by the agent)
         self.q_table = QTable(
             action_size=self.action_size,
             learning_rate=getattr(args, 'learning_rate', 0.1),
-            discount_factor=getattr(args, 'discount_factor', 0.99),
-            load_model=args.load_model,
-            model_path=self.model_path
+            discount_factor=getattr(args, 'discount_factor', 0.99)
+            #load_model=args.load_model
+            #model_path=model_save_dir
         )
 
         # ε-greedyのためのパラメータを保持
@@ -172,13 +168,28 @@ class Agent:
         return td_delta
 
 
-    def save_q_table(self) -> None:
+    def save_q_table(self, model_dir, path_print=False) -> None:
         """
-        このエージェントのQテーブルをファイルに保存する.
-        Agentに紐づけられたmodel_pathを使用する.
-        (Same as before - QTable object handles saving)
+        このエージェントのQテーブルをファイルに保存する(個別).
+        Model_IOオブジェクトを使用して保存処理を委譲する.
         """
-        self.q_table.save_q_table(self.model_path)
+        #print(f'Agent {self.agent_id}: Qテーブル保存中...')
+        model_path = os.path.join(model_dir, "models", f'agent_{self.agent_id}_Qtable.pkl')
+        if path_print: print(f"model_path:{model_path}")
+        
+        self.q_table.save_q_table(model_path)
+
+    def load_q_table(self, model_dir, path_print=False) -> QTableType:
+        """
+        このエージェントのQテーブルをファイルから読み込む.
+        Model_IOオブジェクトを使用して読み込み処理を委譲する.
+        """
+        #print(f'Agent {self.agent_id}: Qテーブル読み込み中...')
+        model_path = os.path.join(model_dir, "models", f'agent_{self.agent_id}_Qtable.pkl')
+        if path_print: print(f"model_path:{model_path}")
+        
+        loaded_data:QTableType = self.q_table.load_q_table(model_path)
+        return loaded_data
 
     def get_q_table_size(self) -> int:
         """

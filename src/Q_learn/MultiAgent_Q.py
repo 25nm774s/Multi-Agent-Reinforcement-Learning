@@ -25,7 +25,7 @@ class MultiAgent_Q:
         self.goals_number = args.goals_number
         self.grid_size = args.grid_size
 
-        self.load_model = args.load_model
+        #self.load_model = args.load_model
         # self.mask = args.mask # Remove this line
 
         # Save directory calculation remains the same
@@ -76,11 +76,17 @@ class MultiAgent_Q:
                 print() # 改行して進捗表示をクリア
                 avg_reward = avg_reward_temp / 100
                 avg_step = avg_step_temp / 100
+                
                 # エピソードごとの平均損失も計算し、表示に追加
                 avg_loss = sum(losses) / len(losses) if losses else 0 # ここで losses は過去100エピソードの平均損失リスト
+
+                q_table_size = [agent.q_table.get_q_table_size() for agent in self.agents]
+
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss   : {GREEN}{avg_loss:.4f}{RESET}\n")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}\n")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
+                
                 avg_reward_temp, avg_step_temp = 0, 0
                 losses = [] # 100エピソードごとに損失リストもリセット
                 
@@ -129,15 +135,15 @@ class MultiAgent_Q:
 
                 # Q学習は経験ごとに逐次更新
                 step_losses = [] # 各ステップでのエージェントごとの損失
-                if self.load_model == 0: # 学習モードの場合のみ
-                    for i, agent in enumerate(self.agents):
-                        # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
-                        # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
-                        # Note: In a multi-agent setting, the reward might be individual or shared.
-                        # The current implementation passes the single global reward to all agents.
-                        # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
-                        loss = agent.learn(current_states, actions[i], reward, next_observation, done)
-                        step_losses.append(loss)
+                #if 0 == 0: # 学習モードの場合のみ
+                for i, agent in enumerate(self.agents):
+                    # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
+                    # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
+                    # Note: In a multi-agent setting, the reward might be individual or shared.
+                    # The current implementation passes the single global reward to all agents.
+                    # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
+                    loss = agent.learn(current_states, actions[i], reward, next_observation, done)
+                    step_losses.append(loss)
 
                 # ステップの平均損失をエピソード損失リストに追加
                 avg_step_loss = sum(step_losses) / len(step_losses) if step_losses else 0

@@ -120,8 +120,8 @@ if __name__ == '__main__':
         simulation.run()
 
         simulation.result_save()
-        simulation.save_Qtable()
-        simulation.load_Qtable()
+        simulation.save_model()
+        simulation.load_model()
     
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
@@ -138,7 +138,6 @@ if __name__ == '__main__':
     
 
     if config.learning_mode == "Q":
-        print(f"device:{config.device}")
         q_learning()
     elif config.learning_mode == "DQN":
         dqn_process()

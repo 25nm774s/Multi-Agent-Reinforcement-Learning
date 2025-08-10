@@ -49,12 +49,12 @@ class Agent:
                 agent_id=self.agent_id,
                 total_agents=self.total_agents
             )
-            print(f"Agent {self.agent_id}: Using Masked Strategies")
+            #print(f"Agent {self.agent_id}: Using Masked Strategies")
         else:
             # Use Standard Strategies
             self._action_selection_strategy = StandardActionSelection()
             self._learning_strategy = StandardQLearning()
-            print(f"Agent {self.agent_id}: Using Standard Strategies")
+            #print(f"Agent {self.agent_id}: Using Standard Strategies")
 
 
         # QTable Instance (shared state managed by the agent)

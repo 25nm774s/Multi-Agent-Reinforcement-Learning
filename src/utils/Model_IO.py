@@ -1,9 +1,12 @@
 import os
 
 from Q_learn.QTable import QTableType
+from DQN.dqn import QNet
 
 import os
 import pickle
+import torch
+
 
 class Model_IO:
     """
@@ -41,6 +44,13 @@ class Model_IO:
             print(f"Qテーブルを {file_path} に保存しました.")
         except Exception as e:
             print(f"Qテーブルの保存中にエラーが発生しました: {e}")
+    
+    def save_model_weights(self, agent_id: int, qnet: QNet):
+        qnet_dict = qnet.state_dict()
+        file_path = os.path.join(self.model_dir, f"model_{agent_id}.pth")
+        
+        torch.save(qnet_dict, file_path)
+        print("saved model")
 
     def load_q_table(self, agent_id: int) -> QTableType:
         """
@@ -67,4 +77,14 @@ class Model_IO:
             print(f"Qテーブルの読み込み中にエラーが発生しました: {e}")
             q_table = {} # エラー発生時は新しいQテーブルを初期化
 
-        return q_table    
+        return q_table
+    
+    def load_model_weights(self, agent_id) -> QNet:
+        file_path: str  = os.path.join(self.model_dir, f"model_{agent_id}.pth")
+        try:
+            load_data: QNet = torch.load(file_path)
+            print("model loaded")
+        except Exception as e:
+            raise ValueError(f"エラー発生: {e}")
+        
+        return load_data

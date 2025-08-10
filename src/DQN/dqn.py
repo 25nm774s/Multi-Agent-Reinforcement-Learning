@@ -390,3 +390,13 @@ class DQNModel:
         else: # load_model が 0, 1, 2 以外の値の場合 (予期しない値)
             print(f"Warning: Unexpected load_model value: {self.load_model}. No learning performed.")
             return None, None # 損失とTD誤差の両方をNoneで返す        
+
+
+    def get_weights(self) ->tuple[QNet,QNet,dict]:
+        return self.qnet,self.qnet_target,self.optimizer.state_dict()
+
+    def set_model_weights(self, qnet: QNet):
+        self.qnet = qnet
+        
+    def set_target_weights(self, qnet_target: QNet):
+        self.qnet_target = qnet_target

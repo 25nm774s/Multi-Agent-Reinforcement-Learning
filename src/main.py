@@ -135,6 +135,7 @@ if __name__ == '__main__':
         simulation.result_save()
 
         simulation.save_model_weights()
+        simulation.load_model_weights()
     
 
     if config.learning_mode == "Q":

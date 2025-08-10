@@ -1,33 +1,70 @@
 import os
 
-from agent import Agent
 from Q_learn.QTable import QTableType
 
+import os
+import pickle
+
 class Model_IO:
-    def __init__(self, model_dir:str):
+    """
+    モデルデータ（この場合はQテーブル）のファイルへの保存とファイルからの読み込みを担当するクラス.
+    具体的なモデルの実装には依存せず、汎用的なIO処理を提供する.
+    """
+    def __init__(self, save_dir):
         """
-        モデルの保存・ロードを担当
+        Model_IOクラスのコンストラクタ.
 
-        args:
-            model_dir(str):モデル保存のディレクトリ (ex)./output/Q_Reward[0]_...
+        Args:
+            save_dir (str): モデルを保存するルートディレクトリのパス.
         """
-        self.model_dir = model_dir
-        os.makedirs(self.model_dir, exist_ok=True)
+        self.model_dir: str = os.path.join(save_dir, "models")
 
-    def save_q_table(self, agents:list[Agent]) -> None:
-        """
-        Qテーブルをファイルに保存する (pickle形式).
-        """
-        for agent in agents:
-            agent.save_q_table(self.model_dir)
+        # モデル保存ディレクトリが存在しない場合は作成
+        if not os.path.exists(self.model_dir):
+            os.makedirs(self.model_dir)
+            print(f"ディレクトリ {self.model_dir} を作成しました。")
 
-    def load_q_table(self, agents:list[Agent]) -> list[QTableType]:
+    def save_q_table(self, agent_id: int, q_table: QTableType) -> None:
         """
-        ファイルからQテーブルを読み込む (pickle形式).
+        指定されたエージェントIDのQテーブルデータをファイルに保存する (pickle形式).
+
+        Args:
+            agent_id (int): 保存するQテーブルのエージェントID.
+            q_table (QTableType): 保存するQテーブルのデータ.
         """
-        load_data:list[QTableType] = []
-        for agent in agents:
-            qtable:QTableType = agent.load_q_table(self.model_dir)
-            load_data.append(qtable)
-        
-        return load_data
+        # file_path 引数は削除し、内部で self.model_dir を使用してパスを生成
+        file_path = os.path.join(self.model_dir, f'agent_{agent_id}_Qtable.pkl')
+
+        try:
+            with open(file_path, 'wb') as f:
+                pickle.dump(q_table, f)
+            print(f"Qテーブルを {file_path} に保存しました.")
+        except Exception as e:
+            print(f"Qテーブルの保存中にエラーが発生しました: {e}")
+
+    def load_q_table(self, agent_id: int) -> QTableType:
+        """
+        指定されたエージェントIDのQテーブルデータをファイルから読み込む (pickle形式).
+
+        Args:
+            agent_id (int): 読み込むQテーブルのエージェントID.
+
+        Returns:
+            QTableType: 読み込まれたQテーブルのデータ. ファイルが存在しない場合や読み込みエラーが発生した場合は空の辞書を返す.
+        """
+        # save_dir 引数は削除し、内部で self.model_dir を使用してパスを生成
+        file_path = os.path.join(self.model_dir, f'agent_{agent_id}_Qtable.pkl')
+
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    q_table:QTableType = pickle.load(f)
+                print(f"Qテーブルを {file_path} から読み込みました.")
+            else:
+                print(f"指定されたファイル {file_path} が存在しません。新しいQテーブルを作成します。")
+                q_table:QTableType = {} # ファイルが存在しない場合は新しいQテーブルを初期化
+        except Exception as e:
+            print(f"Qテーブルの読み込み中にエラーが発生しました: {e}")
+            q_table = {} # エラー発生時は新しいQテーブルを初期化
+
+        return q_table    

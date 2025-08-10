@@ -25,12 +25,13 @@ class LearningStrategy(abc.ABC):
         """
         pass
 
-class StandardQLearning(LearningStrategy):
-    """Concrete Strategy for Standard Q-Learning Update."""
+class SelfishQLearning(LearningStrategy):
+    """Concrete Strategy for Selfish/Independent Q-Learning Update (mask=1)."""
 
     def update_q_value(self, q_table: QTable, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
         """
-        Perform a standard Q-learning update on the agent's Q-table.
+        Perform a standard Q-learning update on the agent's Q-table,
+        ignoring other agents' positions (as they are not in state/next_state for this strategy).
         """
         # QTable.learn already implements the standard Q-learning update logic.
         # This strategy simply delegates the learning responsibility to the QTable instance.

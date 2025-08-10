@@ -22,12 +22,13 @@ class ActionSelectionStrategy(abc.ABC):
         """
         pass
 
-class StandardActionSelection(ActionSelectionStrategy):
-    """Concrete Strategy for Standard Epsilon-Greedy Action Selection."""
+class SelfishActionSelection(ActionSelectionStrategy):
+    """Concrete Strategy for Selfish/Independent Epsilon-Greedy Action Selection (mask=1)."""
 
     def select_action(self, q_table: QTable, q_state: QState, action_size: int, epsilon: float) -> int:
         """
-        Select an action using standard epsilon-greedy based on the agent's Q-table.
+        Select an action using standard epsilon-greedy based on the agent's Q-table,
+        ignoring other agents' positions (as they are not in q_state for this strategy).
         """
         if np.random.rand() < epsilon:
             # Explore: Choose a random action

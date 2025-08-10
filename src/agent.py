@@ -1,15 +1,14 @@
 # Update the Agent class __init__ method to select strategies based on 'mask'
 
-import os
 from typing import Tuple, List
 
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
 from Q_learn.QTable import QState, QTableType
 
 from Q_learn.QTable import QTable
-from Q_learn.strategys.action_selection import StandardActionSelection
-from Q_learn.strategys.learning import StandardQLearning
-from Q_learn.strategys.masked_strategies import MaskedQLearning, MaskedActionSelection
+from Q_learn.strategys.action_selection import SelfishActionSelection
+from Q_learn.strategys.learning import SelfishQLearning
+from Q_learn.strategys.masked_strategies import CooperativeActionSelection, CooperativeQLearning
 
 class Agent:
     """
@@ -17,7 +16,7 @@ class Agent:
     QTableインスタンスを持ち、行動選択、ε-greedy、ε減衰、学習プロセスを担う.
     ストラテジーパターンを使用して行動選択と学習ロジックをカプセル化する.
     """
-    def __init__(self, args, agent_id: int): # Added mask argument with a default
+    def __init__(self, args, agent_id: int):
         """
         Agent コンストラクタ.
 
@@ -34,32 +33,31 @@ class Agent:
         # Determine strategy based on args.mask
         mask = getattr(args, 'mask', 0) # Get mask value, default to 0 if not present
 
-        # maskの定義を反転
-        # mask = 0 (協調的): 他のエージェントを考慮 -> Masked Strategies (現状は全状態を含むが、実際の協調ロジックはMaskedクラスに実装)
-        # mask = 1 (自己中心的): 他のエージェントを無視 -> Standard Strategies (自身の位置とゴールのみを状態として使用)
+        # mask = 0 (協調的): 他のエージェントを考慮 -> Cooperative Strategies
+        # mask = 1 (自己中心的): 他のエージェントを無視 -> Selfish Strategies
         if mask == 0:
             # mask=0: 他のエージェントを考慮するモード (協調的)
-            # Masked Strategies クラスが、他のエージェントの位置を含む状態を扱うように設計されています。
-            # 実際の協調ロジックは MaskedActionSelection/MaskedQLearning に実装されます。
-            self._action_selection_strategy = MaskedActionSelection(
+            # Cooperative Strategies クラスが、他のエージェントの位置を含む状態を扱うように設計されています。
+            # 実際の協調ロジックは CooperativeActionSelection/CooperativeQLearning に実装されます。
+            self._action_selection_strategy = CooperativeActionSelection(
                 grid_size=self.grid_size,
                 goals_num=self.goals_num,
                 agent_id=self.agent_id,
                 total_agents=self.total_agents
             )
-            self._learning_strategy = MaskedQLearning(
+            self._learning_strategy = CooperativeQLearning(
                 grid_size=self.grid_size,
                 goals_num=self.goals_num,
                 agent_id=self.agent_id,
                 total_agents=self.total_agents
             )
-            print(f"Agent {self.agent_id}: Using Masked Strategies (Cooperative mode, mask=0)")
+            print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
         else:
             # mask=1: 他のエージェントを考慮しないモード (自己中心的)
-            # Standard Strategies クラスが、自身の位置とゴールのみを状態として扱うように設計されています。
-            self._action_selection_strategy = StandardActionSelection()
-            self._learning_strategy = StandardQLearning()
-            print(f"Agent {self.agent_id}: Using Standard Strategies (Selfish mode, mask=1)")
+            # Selfish Strategies クラスが、自身の位置とゴールのみを状態として扱うように設計されています。
+            self._action_selection_strategy = SelfishActionSelection()
+            self._learning_strategy = SelfishQLearning()
+            print(f"Agent {self.agent_id}: Using Selfish Strategies (mask=1)")
 
         # QTable Instance (shared state managed by the agent)
         self.q_table = QTable(
@@ -84,27 +82,24 @@ class Agent:
         agent_positions = global_state[self.goals_num:] # 全てのエージェント位置
 
 
-        # 現在の行動選択ストラテジーが MaskedActionSelection か StandardActionSelection かによって状態表現を切り替える
-        # これは Agent.__init__ で設定されたストラテジーに基づきます
-        # MaskedActionSelection を使う場合 (mask=0、協調モードを意図): 全てのエージェント位置を含む
-        # StandardActionSelection を使う場合 (mask=1、自己中心モードを意図): 自身の位置のみを含む
-        if isinstance(self._action_selection_strategy, MaskedActionSelection):
-            # マスクなし（協調モード、mask=0）の意図: 全エージェント位置を状態に含める
+        # 現在の行動選択ストラテジーが CooperativeActionSelection (mask=0) か SelfishActionSelection (mask=1) かによって状態表現を切り替える
+        if isinstance(self._action_selection_strategy, CooperativeActionSelection):
+            # Cooperative モード (mask=0): 全エージェント位置を状態に含める
             flat_state_list: List[int] = []
             for pos in goal_positions:
-                if not isinstance(pos, tuple) or len(pos) != 2:
-                    raise ValueError(f"Unexpected goal position format: {pos}")
-                flat_state_list.extend(pos)
+                 if not isinstance(pos, tuple) or len(pos) != 2:
+                     raise ValueError(f"Unexpected goal position format: {pos}")
+                 flat_state_list.extend(pos)
 
             for pos in agent_positions:
-                if not isinstance(pos, tuple) or len(pos) != 2:
-                    raise ValueError(f"Unexpected agent position format: {pos}")
-                flat_state_list.extend(pos) # 全てのエージェント位置を追加
+                 if not isinstance(pos, tuple) or len(pos) != 2:
+                     raise ValueError(f"Unexpected agent position format: {pos}")
+                 flat_state_list.extend(pos) # 全てのエージェント位置を追加
 
             return tuple(flat_state_list)
 
-        elif isinstance(self._action_selection_strategy, StandardActionSelection):
-            # マスクあり（自己中心モード、mask=1）の意図: 自身の位置のみを状態に含める
+        elif isinstance(self._action_selection_strategy, SelfishActionSelection):
+            # Selfish モード (mask=1): 自身の位置のみを状態に含める
             if self.goals_num + self.agent_id >= len(global_state):
                 raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
 
@@ -112,12 +107,12 @@ class Agent:
 
             flat_state_list: List[int] = []
             for pos in goal_positions:
-                if not isinstance(pos, tuple) or len(pos) != 2:
-                    raise ValueError(f"Unexpected goal position format: {pos}")
-                flat_state_list.extend(pos)
+                 if not isinstance(pos, tuple) or len(pos) != 2:
+                     raise ValueError(f"Unexpected goal position format: {pos}")
+                 flat_state_list.extend(pos)
 
             if not isinstance(agent_position, tuple) or len(agent_position) != 2:
-                raise ValueError(f"Unexpected agent position format: {agent_position}")
+                 raise ValueError(f"Unexpected agent position format: {agent_position}")
             flat_state_list.extend(agent_position) # そのエージェント自身の位置を追加
 
             return tuple(flat_state_list)
@@ -144,7 +139,7 @@ class Agent:
 
         # 行動選択ロジックをストラテジーオブジェクトに委譲
         # ストラテジーにQTableインスタンス自体を渡すことで、ストラテジーはQTableのメソッドを使用できる
-        # MaskedActionSelection (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
+        # CooperativeActionSelection (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
         # 内部ロジックで使用するために、それらの情報にアクセスする方法を持つか、引数として受け取る必要があるかもしれません。
         # 現状の select_action シグネチャでは global_state 全体は渡されていませんが、
         # _get_q_state で状態表現自体は切り替わっています。
@@ -193,7 +188,7 @@ class Agent:
 
         # 学習ロジックをストラテジーオブジェクトに委譲
         # ストラテジーにQTableインスタンス、状態、行動、報酬、次の状態、doneフラグを渡す
-        # MaskedQLearning (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
+        # CooperativeQLearning (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
         # 内部ロジックで使用するために、それらの情報にアクセスする方法を持つか、引数として受け取る必要があるかもしれません。
         # 現状の update_q_value シグネチャでは global_state 全体は渡されていませんが、
         # _get_q_state で状態表現自体は切り替わっています。

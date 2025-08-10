@@ -34,8 +34,13 @@ class MultiAgent_Q:
             f"Q_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
+        # 学習で発生したデータを保存するクラス
         self.saver = Saver(save_dir,self.grid_size)
+        
+        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
         self.model_io = Model_IO(save_dir)
+
+        # saverクラスで保存されたデータを使ってグラフを作るクラス
         self.plot_results = PlotResults(save_dir)
 
 
@@ -165,14 +170,28 @@ class MultiAgent_Q:
         print("Mock save_model_weights called - Not applicable for Q-Learning.")
         pass # DQNではないため何もしない
 
-    def save_Qtable(self) -> None:
-        print("Saving Q-Tables for each agent...")
-        # Agentクラスのsave_q_tableメソッドを呼び出すのではなく、Model_IOに委譲
-        self.model_io.save_q_table(self.agents)
-    
-    def load_Qtable(self) -> None:
-        loaded_result = self.model_io.load_q_table(self.agents)
-        print("Loaded Qtable\n")
+    def save_model(self):
+        """
+        保持している各AgentのQテーブルをファイルに保存する.
+        Model_IOクラスを使用して保存処理を行う.
+        """
+        print("Qテーブル保存中...")
+        for agent in self.agents:
+            # AgentからQテーブルデータを取得し、Model_IOに渡して保存
+            q_table_data = agent.get_Qtable()
+            self.model_io.save_q_table(agent.agent_id, q_table_data)
+
+    def load_model(self):
+        """
+        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する.
+        Model_IOクラスを使用して読み込み処理を行う.
+        """
+        print("Qテーブル読み込み中...")
+        for agent in self.agents:
+            # Model_IOからQテーブルデータを読み込み
+            load_data = self.model_io.load_q_table(agent.agent_id)
+            # 読み込んだデータをAgentに設定
+            agent.set_Qtable(load_data)
 
     def result_save(self):
         print("Saving results...")

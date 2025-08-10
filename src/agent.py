@@ -3,9 +3,8 @@
 import os
 from typing import Tuple, List
 
-# QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
-# (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-from Q_learn.QTable import QTableType, QState
+# 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
+from Q_learn.QTable import QState, QTableType
 
 from Q_learn.QTable import QTable
 from Q_learn.strategys.action_selection import StandardActionSelection
@@ -35,8 +34,13 @@ class Agent:
         # Determine strategy based on args.mask
         mask = getattr(args, 'mask', 0) # Get mask value, default to 0 if not present
 
-        if mask == 1:
-            # Use Masked Strategies
+        # maskの定義を反転
+        # mask = 0 (協調的): 他のエージェントを考慮 -> Masked Strategies (現状は全状態を含むが、実際の協調ロジックはMaskedクラスに実装)
+        # mask = 1 (自己中心的): 他のエージェントを無視 -> Standard Strategies (自身の位置とゴールのみを状態として使用)
+        if mask == 0:
+            # mask=0: 他のエージェントを考慮するモード (協調的)
+            # Masked Strategies クラスが、他のエージェントの位置を含む状態を扱うように設計されています。
+            # 実際の協調ロジックは MaskedActionSelection/MaskedQLearning に実装されます。
             self._action_selection_strategy = MaskedActionSelection(
                 grid_size=self.grid_size,
                 goals_num=self.goals_num,
@@ -49,13 +53,13 @@ class Agent:
                 agent_id=self.agent_id,
                 total_agents=self.total_agents
             )
-            #print(f"Agent {self.agent_id}: Using Masked Strategies")
+            print(f"Agent {self.agent_id}: Using Masked Strategies (Cooperative mode, mask=0)")
         else:
-            # Use Standard Strategies
+            # mask=1: 他のエージェントを考慮しないモード (自己中心的)
+            # Standard Strategies クラスが、自身の位置とゴールのみを状態として扱うように設計されています。
             self._action_selection_strategy = StandardActionSelection()
             self._learning_strategy = StandardQLearning()
-            #print(f"Agent {self.agent_id}: Using Standard Strategies")
-
+            print(f"Agent {self.agent_id}: Using Standard Strategies (Selfish mode, mask=1)")
 
         # QTable Instance (shared state managed by the agent)
         self.q_table = QTable(
@@ -73,27 +77,54 @@ class Agent:
     def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
         """
         環境の全体状態から、このエージェントにとってのQテーブル用の状態表現を抽出・生成する.
-        (Same as before)
+        行動選択ストラテジーに応じて、他のエージェントの位置を含むか含まないかを決定する.
         """
         # global_state の構造: ((g1_x, g1_y), ..., (a1_x, a1_y), ...)
         goal_positions = global_state[:self.goals_num]
+        agent_positions = global_state[self.goals_num:] # 全てのエージェント位置
 
-        if self.goals_num + self.agent_id >= len(global_state):
-            raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
 
-        agent_position = global_state[self.goals_num + self.agent_id]
+        # 現在の行動選択ストラテジーが MaskedActionSelection か StandardActionSelection かによって状態表現を切り替える
+        # これは Agent.__init__ で設定されたストラテジーに基づきます
+        # MaskedActionSelection を使う場合 (mask=0、協調モードを意図): 全てのエージェント位置を含む
+        # StandardActionSelection を使う場合 (mask=1、自己中心モードを意図): 自身の位置のみを含む
+        if isinstance(self._action_selection_strategy, MaskedActionSelection):
+            # マスクなし（協調モード、mask=0）の意図: 全エージェント位置を状態に含める
+            flat_state_list: List[int] = []
+            for pos in goal_positions:
+                if not isinstance(pos, tuple) or len(pos) != 2:
+                    raise ValueError(f"Unexpected goal position format: {pos}")
+                flat_state_list.extend(pos)
 
-        flat_state_list: List[int] = []
-        for pos in goal_positions:
-            if not isinstance(pos, tuple) or len(pos) != 2:
-                raise ValueError(f"Unexpected goal position format: {pos}")
-            flat_state_list.extend(pos)
+            for pos in agent_positions:
+                if not isinstance(pos, tuple) or len(pos) != 2:
+                    raise ValueError(f"Unexpected agent position format: {pos}")
+                flat_state_list.extend(pos) # 全てのエージェント位置を追加
 
-        if not isinstance(agent_position, tuple) or len(agent_position) != 2:
-            raise ValueError(f"Unexpected agent position format: {agent_position}")
-        flat_state_list.extend(agent_position)
+            return tuple(flat_state_list)
 
-        return tuple(flat_state_list)
+        elif isinstance(self._action_selection_strategy, StandardActionSelection):
+            # マスクあり（自己中心モード、mask=1）の意図: 自身の位置のみを状態に含める
+            if self.goals_num + self.agent_id >= len(global_state):
+                raise IndexError(f"Invalid agent_id {self.agent_id} or global_state structure.")
+
+            agent_position = global_state[self.goals_num + self.agent_id] # そのエージェント自身の位置
+
+            flat_state_list: List[int] = []
+            for pos in goal_positions:
+                if not isinstance(pos, tuple) or len(pos) != 2:
+                    raise ValueError(f"Unexpected goal position format: {pos}")
+                flat_state_list.extend(pos)
+
+            if not isinstance(agent_position, tuple) or len(agent_position) != 2:
+                raise ValueError(f"Unexpected agent position format: {agent_position}")
+            flat_state_list.extend(agent_position) # そのエージェント自身の位置を追加
+
+            return tuple(flat_state_list)
+
+        else:
+            # 未知のストラテジーが設定されている場合
+            raise TypeError(f"Unknown action selection strategy type: {type(self._action_selection_strategy)}")
 
 
     def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:
@@ -108,13 +139,19 @@ class Agent:
             int: 選択された行動 (0:UP, 1:DOWN, 2:LEFT, 3:RIGHT, 4:STAY).
         """
         # Qテーブル用の状態表現を取得
+        # _get_q_state メソッドが、現在設定されているストラテジーに基づいて適切な状態を生成する
         q_state = self._get_q_state(global_state)
 
         # 行動選択ロジックをストラテジーオブジェクトに委譲
         # ストラテジーにQTableインスタンス自体を渡すことで、ストラテジーはQTableのメソッドを使用できる
+        # MaskedActionSelection (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
+        # 内部ロジックで使用するために、それらの情報にアクセスする方法を持つか、引数として受け取る必要があるかもしれません。
+        # 現状の select_action シグネチャでは global_state 全体は渡されていませんが、
+        # _get_q_state で状態表現自体は切り替わっています。
+        # より高度なマスクロジックでは、select_action メソッドのシグネチャ変更が必要になるかもしれません。
         return self._action_selection_strategy.select_action(
             self.q_table,      # QTableインスタンス
-            q_state,           # 現在の状態
+            q_state,           # 現在の状態 (ストラテジーによって内容が異なる)
             self.action_size,  # 行動空間サイズ
             self.epsilon       # ε値
         )
@@ -149,17 +186,24 @@ class Agent:
             float: 更新に使用されたTD誤差の絶対値 (LearningStrategyから返される).
         """
         # エージェント固有の状態表現を取得
+        # _get_q_state メソッドが、現在設定されているストラテジーに基づいて適切な状態を生成する
         current_q_state = self._get_q_state(global_state)
         next_q_state = self._get_q_state(next_global_state)
 
+
         # 学習ロジックをストラテジーオブジェクトに委譲
         # ストラテジーにQTableインスタンス、状態、行動、報酬、次の状態、doneフラグを渡す
+        # MaskedQLearning (mask=0時) は、必要に応じて global_state 全体や他のエージェント位置を
+        # 内部ロジックで使用するために、それらの情報にアクセスする方法を持つか、引数として受け取る必要があるかもしれません。
+        # 現状の update_q_value シグネチャでは global_state 全体は渡されていませんが、
+        # _get_q_state で状態表現自体は切り替わっています。
+        # より高度なマスクロジックでは、update_q_value メソッドのシグネチャ変更が必要になるかもしれません。
         td_delta = self._learning_strategy.update_q_value(
             self.q_table,         # QTableインスタンス
-            current_q_state,      # 現在の状態
+            current_q_state,      # 現在の状態 (ストラテジーによって内容が異なる)
             action,               # 取られた行動
             reward,               # 報酬
-            next_q_state,         # 次の状態
+            next_q_state,         # 次の状態 (ストラテジーによって内容が異なる)
             done                  # 完了フラグ
         )
 
@@ -168,21 +212,11 @@ class Agent:
 
     def get_Qtable(self) -> QTableType:
         """
-        このエージェントが保持するQテーブルのデータを返す.
-
-        Returns:
-            QTableType: Qテーブルのデータ（状態をキー、行動価値のリストを値とする辞書）.
+        このエージェントのQテーブルをファイルに保存する.
+        Agentに紐づけられたmodel_pathを使用する.
+        (Same as before - Delegate to QTable object)
         """
         return self.q_table.get_Qtable()
-
-    def set_Qtable(self, q_table: QTableType) -> None:
-        """
-        このエージェントのQテーブルデータを設定する.
-
-        Args:
-            q_table (QTableType): 設定する新しいQテーブルのデータ.
-        """
-        self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
         """
@@ -190,3 +224,4 @@ class Agent:
         (Same as before - Delegate to QTable object)
         """
         return self.q_table.get_q_table_size()
+

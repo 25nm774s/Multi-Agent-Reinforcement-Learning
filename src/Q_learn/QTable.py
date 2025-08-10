@@ -3,10 +3,7 @@
 # GREEN = '\033[92m'
 # RESET = '\033[0m'
 
-import numpy as np
 from typing import Tuple, Dict, List, Any
-import pickle
-import os
 
 # Define the type aliases again for clarity within this cell
 QState = Tuple[int, ...]
@@ -38,8 +35,6 @@ class QTable:
 
         # Q値の初期化に使用する値
         self._initial_q_value = 0.0
-
-        #self.model_path = model_path
 
 
     def learn(self, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
@@ -132,3 +127,4 @@ class QTable:
             float: その状態における最大Q値.
         """
         return max(self.get_q_values(state))
+    

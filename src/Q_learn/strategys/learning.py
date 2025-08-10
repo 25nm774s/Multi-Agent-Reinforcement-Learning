@@ -1,6 +1,6 @@
 import abc
 
-from ..QTable import QTable,QState,QTableType
+from ..QTable import QTable,QState
 
 
 

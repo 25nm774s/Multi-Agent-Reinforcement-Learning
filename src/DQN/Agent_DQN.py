@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 from utils.replay_buffer import ReplayBuffer
-from DQN.dqn import DQNModel
+from DQN.dqn import DQNModel, QNet
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.01
@@ -228,3 +228,9 @@ class Agent_DQN:
             self.beta = min(1.0, self.beta + beta_increment_per_episode)
 
         return loss
+    
+    def get_weights(self):
+        return self.model.get_weights()
+
+    def set_weights(self, qnet: QNet):
+        self.model.set_model_weights(qnet)

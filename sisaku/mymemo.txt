@@ -1,0 +1,1071 @@
+python main.py --load_model 0 --grid_size 4 --max_timestep 40 --episode_number 3000 --learning_mode "Q" --buffer_size 1024
+
+
+
+feat: Saver/PlotResults クラスのリファクタリングとテスト修正
+
+- Saver クラス:
+  - 100 エピソードごとの集計スコアを scores_summary100.csv に保存するよう変更。
+  - エージェントの訪問回数を visited_coordinates.npy に保存するよう変更。
+  - 残りのエピソードデータ保存処理を修正。
+- PlotResults クラス:
+  - 集計データを scores_summary100.csv から読み込むよう変更。
+  - ヒートマッププロットのファイル形式を.pdf に変更。
+  - 不要な add_episode_data/add_agent_state メソッド呼び出しを削除。
+- テストコード (TestSaver, TestPlotResults) の修正:
+  - 上記変更に合わせてテストコードを更新。
+  - test_draw_heatmap および test_draw のモックアサーションを修正。
+
+
+  
+        # ステップ数の平均値の推移をプロット
+        plt.subplot(1, 3, 1)
+        plt.plot(grouped_data['episode_group_end'], grouped_data['avg_time_step'], marker='o', markersize=4)
+        plt.xlabel('Episode Group End') #plt.xlabel('終了エピソード群')
+        plt.ylabel('Average Steps')     #plt.ylabel('平均ステップ数')
+        plt.title('Average Steps per 100 Episodes') #plt.title('100エピソードごとの平均ステップ数')
+        plt.grid(True)
+
+        # 報酬の平均値の推移をプロット
+        plt.subplot(1, 3, 2)
+        plt.plot(grouped_data['episode_group_end'], grouped_data['avg_reward'], marker='o', markersize=4)
+        plt.xlabel('Episode Group End') #plt.xlabel('終了エピソード群')
+        plt.ylabel('Average Reward')    #plt.ylabel('平均報酬')
+        plt.title('Average Reward per 100 Episodes')    #plt.title('100エピソードごとの平均報酬')
+        plt.grid(True)
+
+        # 損失の平均値の推移をプロット
+        plt.subplot(1, 3, 3)
+        plt.plot(grouped_data['episode_group_end'], grouped_data['avg_loss'], marker='o', markersize=4)
+        plt.xlabel('Episode Group End') #plt.xlabel('終了エピソード群')
+        plt.ylabel('Average Loss')      #plt.ylabel('平均損失')
+        plt.title('Average Loss per 100 Episodes')  #plt.title('100エピソードごとの平均損失')
+        plt.grid(True)
+
+
+    ax.set_title(f'Agent {agent_id} Visit Frequency Heatmap', fontsize=title_fontsize)
+    cbar = fig.colorbar(im, ax=ax, label='Visit Count')
+
+----急務-----
+
+grid_size:8が限界
+
+ep 0.9は早すぎ
+0.4 1000,6~7%
+
+次回の目標: ヒートマップ生成処理を効率化するため、各エージェントがエピソード中に訪れたグリッドセルの訪問回数をカウントし、エピソード終了時にその集計データを保存する仕組みを実装する。
+この目標に取り組むことで、大量のステップごとの座標データを扱う必要がなくなり、ヒートマップ生成にかかる時間とリソースを大幅に削減できる見込みです。
+
+デバッグのためには現在のイプシロンを表記もOK?
+----TODO-----
+
+MultiAgent_Q.py: 197:: モデルをロードしたからと言ってイプシロンを0.1に固定する必要はない気がする。
+
+結果掃き出しフォルダはハードコーディング（固定）でよい。
+
+処理内容と時間を追跡する
+
+reward:3.5のような記述ではなく100回中何回成功したかを%で記述する方がそれらしい？特にreward_mode==1のとき
+また、その際平均のステップ数はオーバーしたエピソードを除いたもので計算したほうがよかったり？
+
+4x4,DQN,のとき、100ステップがおよそ50秒
+後半ほど最適解をしっているから100ステップ到達が早い 
+全体で25分くらいかかった。
+
+Maxstepは100は過剰
+->一回当たり最大100かかるから削れば大幅な時短
+[4x4,Maxstep:50]で10分に(15分短縮)
+
+----そのうち-----
+
+posisionで3_3のように_でつなげているが、普通にx,yで保存したほうが見やすいのでは？
+- 速度の兼ね合いがあるならdbファイルなどバイナリで扱えばクリア？
+
+学習済がどんな挙動をとるか見たい
+
+lossって何のloss?
+
+ゴールは最初にランダム生成であるが、それ専用モデルになっているような気がする？
+[提案]
+->初期位置のマスを完全ランダムではなくある程度限定にする。
+
+学習済を真の正解としたとき、学習中に差を見たい
+-> 挙動を(見る/実行する)メソッドを追加(以前ちょうど遊びで作った、事前学習後にepisodeを1回追加し、ゆっくり見るやつ)
+
+===============================================概念============================================================
+class MultiAgentBase(ABC):
+    # ... (省略) ...
+
+    # run() メソッドは共通化された基本的なループ構造を持つ
+    def run(self):
+        # 事前条件チェック (共通)
+        if self.agents_num < self.goals_num:
+            print('goals_num <= agents_num に設定してください.\n')
+            sys.exit()
+
+        # 学習開始メッセージ (共通化可能 - アルゴリズム名は args から取得など)
+        print(f"{GREEN}{self.__class__.__name__} で学習中...{RESET}\n") # クラス名を表示
+
+        total_step = 0
+        # 集計用一時変数の初期化 (共通)
+        avg_reward_temp = 0
+        avg_step_temp = 0
+        achieved_episodes_temp = 0
+        avg_loss_temp = 0 # 損失の集計方法によっては共通化が難しいかも
+        learning_steps_in_period = 0 # 同上
+
+        for episode_num in range(1, self.episode_num + 1):
+            # 集計期間の開始時処理 (共通)
+            if (episode_num - 1) % 100 == 0:
+                avg_reward_temp = 0
+                avg_step_temp = 0
+                achieved_episodes_temp = 0
+                avg_loss_temp = 0
+                learning_steps_in_period = 0
+
+            print('■', end='',flush=True)  # 進捗表示 (共通)
+
+            # 集計結果の出力 (共通化可能 - 平均損失の計算部分は調整が必要)
+            if episode_num % 100 == 0:
+                print()
+                avg_reward = avg_reward_temp / 100
+                avg_step = avg_step_temp / 100 # または達成エピソード数で割るロジック
+                achievement_rate = achieved_episodes_temp / 100 # 達成率の計算ロジックも共通化可能
+
+                # 平均損失の計算部分は、派生クラスに任せるか、引数で渡すなど工夫が必要
+                # avg_loss = self.calculate_average_loss_for_period(...) # 派生クラスのヘルパーメソッドを呼ぶなど
+
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}")
+                # print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}\n") # 損失表示も調整
+
+            # 各エピソード開始時に環境をリセット (共通)
+            current_global_state = self.env.reset()
+
+            done = False
+            step_count = 0
+            ep_reward = 0.0
+
+            # ---------------------------
+            # 1 エピソードのステップループ
+            # ---------------------------
+            while not done and step_count < self.max_ts:
+                # 各エージェントの行動を選択 (共通化可能)
+                actions = []
+                for i, agent in enumerate(self.agents):
+                    agent.decay_epsilon_power(total_step)
+                    actions.append(agent.get_action(i, current_global_state)) # Agent の get_action は共通化できると仮定
+
+                # エージェントの状態を保存（オプション - 共通化可能）
+                if self.save_agent_states:
+                    agent_positions_in_global_state = self.env.get_agent_positions(current_global_state) # 環境のメソッド使用
+                    for i, pos in enumerate(agent_positions_in_global_state):
+                        self.saver.log_agent_states(episode_num, step_count, i, pos)
+
+                # 環境にステップを与えて状態を更新 (共通)
+                next_global_state, reward, done = self.env.step(current_global_state, actions)
+
+                # 各ステップで獲得した報酬を加算 (共通)
+                ep_reward += reward
+
+                # ****** ここがポイント ******
+                # 経験の蓄積と学習のステップを派生クラスに委譲する
+                # このメソッド内で、経験をリプレイバッファにストアしたり、
+                # 逐次学習を行ったりするロジックが実装される
+                step_loss = self.process_step_experience(current_global_state, actions, reward, next_global_state, done, episode_num, total_step)
+
+                # 損失の集計 (共通化可能だが、step_loss の定義に依存)
+                # if step_loss is not None:
+                #    ep_total_loss += step_loss
+                #    ep_learning_steps += 1
+                #    avg_loss_temp += step_loss
+                #    learning_steps_in_period += 1
+
+
+                # 全体状態を次の状態に更新 (共通)
+                current_global_state = next_global_state
+
+                step_count += 1
+                total_step += 1
+
+            # ---------------------------
+            # エピソード終了後の処理 (共通化可能)
+            # ---------------------------
+            if done:
+                achieved_episodes_temp += 1
+                avg_step_temp += step_count
+
+            # エピソード平均損失の計算 (共通化可能だが、集計方法に依存)
+            # ep_avg_loss = ep_total_loss / ep_learning_steps if ep_learning_steps > 0 else 0
+
+
+            # Saver でエピソードごとのスコアをログに記録 (共通)
+            # self.saver.log_scores(episode_num, step_count, ep_reward, ep_avg_loss) # ep_avg_loss の部分を調整
+
+            avg_reward_temp += ep_reward # 平均報酬の累積 (共通)
+
+        print() # 全エピソード終了後に改行 (共通)
+
+    @abstractmethod
+    def process_step_experience(self, current_state, actions, reward, next_state, done, episode_num, total_step):
+        """
+        各ステップで得られた経験を処理し、学習を行う抽象メソッド.
+        派生クラスで、リプレイバッファへのストア、逐次学習、バッチ学習などを実装する.
+        学習が発生した場合、損失を返すことを推奨.
+        """
+        pass
+
+    @abstractmethod
+    def save_results(self):
+        """
+        学習結果（モデル重みや Q テーブルなど）を保存する抽象メソッド.
+        """
+        pass
+
+    # result_show はそのまま共通メソッドとして使える
+    # def result_show(self): ...
+===============================================================================================================
+
+
+
+16:45?
+4:5?
+6:
+
+構成案
+/project_root
+├── agents/                  # エージェントの基底クラスや汎用的なエージェント実装
+│   ├── base_agent.py
+│   └── common_agent.py
+├── envs/                    # 環境の基底クラスや汎用的な環境実装
+│   ├── base_env.py
+│   └── custom_env.py
+├── algorithms/              # 各強化学習アルゴリズムの実装
+│   ├── q_learning/
+│   │   ├── q_agent.py      # Q学習に特化したエージェント（base_agentを継承など）
+│   │   └── q_core.py       # Q学習の主要ロジック
+│   ├── dqn/
+│   │   ├── dqn_agent.py    # DQNに特化したエージェント（base_agentを継承など）
+│   │   └── dqn_core.py     # DQNの主要ロジック
+│   └── ... (他のアルゴリズム)
+├── utils/                   # 共通のユーティリティ関数やヘルパークラス
+│   ├── replay_buffer.py
+│   └── networks.py
+├── main.py                  # メインの実行スクリプト
+├── config.py                # 設定ファイル
+└── README.md
+
+
+
+
+"""
+main.py
+
+プロジェクトの主要な実行スクリプト。
+コマンドライン引数の解析、学習モードの選択、および対応するアルゴリズムと
+環境の初期化と実行を統括します。
+
+このファイルは、システム全体の高レベルなオーケストレーションを担い、
+具体的な学習ロジックは 'algorithms/' ディレクトリ以下の各アルゴリズムや、
+'agents/'、'envs/'、'utils/' などの専門モジュールに委譲します。
+依存性注入 (Dependency Injection) の原則に従い、必要なオブジェクトを
+初期化し、各コンポーネントに渡します。
+"""
+# 既存のimport文の上に追記
+
+# 例: 必要なモジュールのインポート（実際の構造に合わせて調整してください）
+import argparse
+import torch
+# from config import Config # config.py を使用する場合
+# from envs.custom_env import CustomEnv # 環境のインポート
+# from algorithms.q_learning.q_agent import QAgent
+# from algorithms.dqn.dqn_agent import DQNAgent
+# from multi_agent_system import MultiAgentSystem # 仮の共通MultiAgentクラス
+
+# ... 既存のコード ...
+
+# parse_args() 関数やデバイス選択ロジックはこのファイルにのみ存在し、
+# MultiAgent_Q.py や MultiAgent_DQN.py からは削除されます。
+
+
+
+project_root/agents/base_agent.py
+"""
+base_agent.py
+
+強化学習エージェントの基底抽象クラス（またはインターフェース）を定義します。
+すべての子エージェントクラスは、ここで定義された主要なメソッドを実装する必要があります。
+これにより、MultiAgentSystem などの上位コンポーネントは、具体的なエージェントの
+種類に依存することなく、統一された方法でエージェントとやり取りできます（ポリモーフィズム）。
+
+主要なメソッド:
+- __init__(self, ...) : エージェントの初期化
+- act(self, state)    : 現在の状態に基づいて行動を選択
+- update(self, ...)   : 経験（状態、行動、報酬など）に基づいてエージェントの学習器を更新
+- save_model(self, path) : モデルを保存
+- load_model(self, path) : モデルを読み込み
+"""
+from abc import ABC, abstractmethod
+
+class BaseAgent(ABC):
+    def __init__(self, args, model_path): # argsやmodel_pathは引数の例。実際の依存性注入に合わせて調整。
+        self.args = args
+        self.model_path = model_path
+        # ... 他の共通初期化 ...
+
+    @abstractmethod
+    def act(self, state):
+        """現在の状態に基づいて行動を選択します。"""
+        pass
+
+    @abstractmethod
+    def update(self, *args, **kwargs):
+        """経験に基づいてエージェントの学習器を更新します。"""
+        pass
+
+    # 必要に応じて他の共通インターフェースメソッドを追加
+    # @abstractmethod
+    # def save_model(self, path):
+    #     pass
+
+    # @abstractmethod
+    # def load_model(self, path):
+    #     pass
+
+
+project_root/agents/common_agent.py
+"""
+common_agent.py
+
+複数の強化学習アルゴリズムで共通して利用できる汎用的なエージェントの振る舞いや
+ヘルパー機能を提供します。
+
+例:
+- epsilon-greedy 行動選択の共通実装
+- 経験再生バッファとの基本的な連携ロジック
+- 共通のハイパーパラメータ管理（ベースクラスから継承し、ここではデフォルト値のオーバーライドなど）
+
+BaseAgent を継承し、特定アルゴリズムに依存しない共通機能を提供することで、
+各アルゴリズムのエージェントクラス（q_agent.py, dqn_agent.py など）での
+コード重複を防ぎます。
+"""
+from agents.base_agent import BaseAgent # BaseAgentを継承
+
+class CommonAgent(BaseAgent):
+    def __init__(self, args, model_path, action_size):
+        super().__init__(args, model_path)
+        self.action_size = action_size
+        self.epsilon = args.initial_epsilon # argsから取得するなど
+        self.decay_epsilon_step = args.decay_epsilon_step
+
+    def decay_epsilon(self, step):
+        """epsilon の線形アニーリングを行います。"""
+        # 共通のepsilon減衰ロジック
+        MAX_EPSILON = 1.0
+        MIN_EPSILON = 0.01
+        if step < self.decay_epsilon_step:
+            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * \
+                           (self.decay_epsilon_step - step) / self.decay_epsilon_step
+        else:
+            self.epsilon = MIN_EPSILON
+
+    # ここに共通の act() メソッドの実装の一部などを記述する可能性あり
+    # ただし、完全なactは各エージェントに任せる場合が多い
+    # def common_act_logic(self, state):
+    #     if np.random.rand() < self.epsilon:
+    #         return np.random.choice(self.action_size)
+    #     else:
+    #         # 具体的なQ値の計算は子クラスに委譲
+    #         return self._get_best_action(state)
+
+    # @abstractmethod を実装するのではなく、部分的な共通機能をここに書く
+
+
+project_root/envs/base_env.py
+"""
+base_env.py
+
+強化学習環境の基底抽象クラス（またはインターフェース）を定義します。
+OpenAI Gym 形式のインターフェースに準拠することを推奨します。
+すべての子環境クラスは、ここで定義された主要なメソッドを実装する必要があります。
+
+主要なメソッド:
+- __init__(self, ...) : 環境の初期化
+- reset(self)         : 環境を初期状態にリセットし、初期状態を返します
+- step(self, action)  : アクションを実行し、次の状態、報酬、完了フラグなどを返します
+- render(self)        : 環境を可視化します
+- close(self)         : 環境を閉じます
+"""
+from abc import ABC, abstractmethod
+
+class BaseEnv(ABC):
+    def __init__(self, args):
+        self.args = args
+        # 環境固有の初期化
+
+    @abstractmethod
+    def reset(self):
+        """環境を初期状態にリセットし、初期状態を返します。"""
+        pass
+
+    @abstractmethod
+    def step(self, action):
+        """アクションを実行し、次の状態、報酬、完了フラグなどを返します。"""
+        pass
+
+    @abstractmethod
+    def render(self):
+        """環境を可視化します。"""
+        pass
+
+    @abstractmethod
+    def close(self):
+        """環境を閉じます。"""
+        pass
+
+    # 必要に応じて、observation_space, action_space などのプロパティも抽象プロパティとして定義
+    # @property
+    # @abstractmethod
+    # def observation_space(self):
+    #     pass
+
+    # @property
+    # @abstractmethod
+    # def action_space(self):
+    #     pass
+
+
+project_root/envs/custom_env.py
+"""
+custom_env.py
+
+このプロジェクトで使用するカスタム強化学習環境の実装です。
+envs/base_env.py で定義された BaseEnv クラスを継承し、具体的な環境のロジックを実装します。
+
+グリッドワールド、ロボットシミュレーション、ゲームなど、具体的な課題をここに記述します。
+"""
+from envs.base_env import BaseEnv
+import numpy as np
+# その他、環境の実装に必要なライブラリをインポート
+
+class CustomEnv(BaseEnv):
+    def __init__(self, args):
+        super().__init__(args)
+        self.grid_size = args.grid_size
+        self.agents_number = args.agents_number
+        # ... 環境固有の初期化 ...
+
+    def reset(self):
+        # 環境を初期状態にリセットする具体的なロジック
+        # エージェントの初期位置、ゴール位置などを設定
+        # 例: return initial_state
+        pass
+
+    def step(self, actions): # マルチエージェントなので actions はリストやタプル
+        # 各エージェントのアクションに基づいて環境を更新する具体的なロジック
+        # 例: return next_states, rewards, dones, infos
+        pass
+
+    def render(self):
+        # 環境の可視化ロジック
+        pass
+
+    def close(self):
+        # 環境を閉じるロジック
+        pass
+
+    # @property
+    # def observation_space(self):
+    #     # 観測空間の定義 (例: Box(low=0, high=self.grid_size-1, shape=(N, 2)))
+    #     pass
+
+    # @property
+    # def action_space(self):
+    #     # 行動空間の定義 (例: Discrete(5) for 5 actions)
+    #     pass
+
+project_root/algorithms/q_learning/q_agent.py
+"""
+q_learning/q_agent.py
+
+Q学習アルゴリズムに特化したエージェントの実装です。
+agents/base_agent.py (または agents/common_agent.py) を継承し、
+Q学習特有の行動選択（例: Qテーブルの参照）や、学習器の更新を担います。
+Q値の更新などの主要な学習ロジックは q_core.py に委譲されます。
+"""
+from agents.common_agent import CommonAgent # CommonAgentを継承することが多い
+# from algorithms.q_learning.q_core import QCore # QCoreをインポートし、依存性注入で受け取る
+from utils.replay_buffer import ReplayBuffer # Q学習でもreplay_bufferを使う場合
+
+class QAgent(CommonAgent):
+    def __init__(self, args, model_path, observation_space_dim, action_size, q_core):
+        super().__init__(args, model_path, action_size)
+        self.observation_space_dim = observation_space_dim
+        self.q_core = q_core # QCoreのインスタンスを依存性注入で受け取る
+        self.device = torch.device(args.device) # デバイスはmain.pyで決定されargs経由で渡される
+        self.replay_buffer = ReplayBuffer("Q", args.buffer_size, args.batch_size) # Q学習でもバッファを使う場合
+
+    def act(self, state):
+        """
+        現在の状態に基づいてQ学習の行動選択を行います。
+        epsilon-greedy戦略など。
+        """
+        if np.random.rand() < self.epsilon:
+            return np.random.choice(self.action_size)
+        else:
+            # QCore を使って最適な行動を選択
+            return self.q_core.get_best_action(state, self.device)
+
+    def update(self, states, action, reward, next_state, done, episode_num, step):
+        """
+        経験を replay_buffer に追加し、QCore を使ってQ値を更新します。
+        """
+        self.replay_buffer.add(states, action, reward, next_state, done)
+
+        if len(self.replay_buffer) < self.args.batch_size:
+            return None # バッチサイズに満たない場合は更新しない
+
+        batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = self.replay_buffer.get_batch()
+        loss = self.q_core.update_q_values(
+            batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
+        )
+        return loss
+
+    # Q学習モデルの保存・読み込み
+    def save_model(self, path):
+        self.q_core.save_model(path)
+
+    def load_model(self, path):
+        self.q_core.load_model(path)
+
+project_root/algorithms/q_learning/q_core.py
+"""
+q_learning/q_core.py
+
+Q学習の主要なアルゴリズムロジックを実装します。
+Q値の計算、Qテーブルの更新、損失関数の定義などがここに含まれます。
+エージェントクラス (q_agent.py) から呼び出され、具体的な学習計算を担います。
+"""
+import torch
+import torch.nn as nn
+import torch.optim as optim
+# from utils.networks import QNetwork # QテーブルをNNで近似する場合
+
+class QCore:
+    def __init__(self, args):
+        self.gamma = args.gamma
+        self.learning_rate = args.learning_rate
+        self.device = torch.device(args.device)
+        self.action_size = 5 # 実際は環境から取得するなど
+        # Qテーブルを直接使うか、NNで近似するかによって実装が異なる
+        # 例: self.q_table = np.zeros((state_dim, action_size)) # Qテーブルの場合
+        self.qnet = QNetwork(...) # QNNの場合
+        self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
+        self.criterion = nn.MSELoss() # 損失関数
+
+    def get_best_action(self, state, device):
+        """Q値に基づいて最適な行動を返します。"""
+        # Qテーブル参照、またはQNNからの推論
+        if isinstance(state, tuple):
+            flat_state = np.array(state).flatten()
+            state = torch.tensor(flat_state, dtype=torch.float32)
+        elif isinstance(state, torch.Tensor):
+            pass
+
+        state = state.to(device)
+        self.qnet.eval() # 評価モード
+        with torch.no_grad():
+            qs = self.qnet(state)
+        return qs.argmax().item()
+
+
+    def update_q_values(self, states, actions, rewards, next_states, dones):
+        """
+        Q値の更新ロジックを実装します。
+        バッチデータを受け取り、Q学習の更新式を適用します。
+        """
+        # データをテンソルに変換し、デバイスに移動
+        states = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.int64).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+
+        # 現在の状態のQ値 (行動に対応するQ値)
+        current_q_values = self.qnet(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+
+        # 次の状態の最大Q値 (DQNのターゲット計算)
+        next_q_values = self.qnet(next_states).max(1)[0]
+        # 完了フラグがTrueの場合は次の状態のQ値を0にする
+        target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
+
+        # 損失計算とバックプロパゲーション
+        loss = self.criterion(current_q_values, target_q_values.detach())
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        return loss.item()
+
+    def save_model(self, path):
+        """Q学習モデル（QテーブルまたはQNNの重み）を保存します。"""
+        torch.save(self.qnet.state_dict(), path)
+
+    def load_model(self, path):
+        """Q学習モデルを読み込みます。"""
+        self.qnet.load_state_dict(torch.load(path, map_location=self.device))
+        self.qnet.eval() # 評価モードに設定
+
+project_root/algorithms/dqn/dqn_agent.py
+"""
+dqn/dqn_agent.py
+
+DQNアルゴリズムに特化したエージェントの実装です。
+agents/base_agent.py (または agents/common_agent.py) を継承し、
+DQN特有の行動選択（例: ニューラルネットワークからの推論）や、学習器の更新を担います。
+DQNの主要な学習ロジック（損失計算、ネットワーク更新）は dqn_core.py に委譲されます。
+"""
+from agents.common_agent import CommonAgent
+# from algorithms.dqn.dqn_core import DQNCore # DQNCoreをインポートし、依存性注入で受け取る
+from utils.replay_buffer import ReplayBuffer # DQNは必須
+import torch
+import numpy as np
+
+class DQNAgent(CommonAgent):
+    def __init__(self, args, model_path, observation_space_dim, action_size, dqn_core):
+        super().__init__(args, model_path, action_size)
+        self.observation_space_dim = observation_space_dim
+        self.dqn_core = dqn_core # DQNCoreのインスタンスを依存性注入で受け取る
+        self.device = torch.device(args.device)
+        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, args.batch_size) # DQNはReplayBufferが必須
+
+    def act(self, state):
+        """
+        現在の状態に基づいてDQNの行動選択を行います。
+        epsilon-greedy戦略など。
+        """
+        if np.random.rand() < self.epsilon:
+            return np.random.choice(self.action_size)
+        else:
+            # DQNCore を使って最適な行動を選択
+            return self.dqn_core.get_best_action(state, self.device)
+
+    def update(self, states, action, reward, next_state, done, episode_num, step):
+        """
+        経験を replay_buffer に追加し、DQNCore を使ってQネットワークを更新します。
+        """
+        self.replay_buffer.add(states, action, reward, next_state, done)
+
+        if len(self.replay_buffer) < self.args.batch_size:
+            return None # バッチサイズに満たない場合は更新しない
+
+        # バッチデータを取得し、DQNCore に学習を委譲
+        batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = self.replay_buffer.get_batch()
+        loss = self.dqn_core.update_q_network(
+            batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
+        )
+        return loss
+
+    # DQNモデルの保存・読み込み
+    def save_model(self, path):
+        self.dqn_core.save_model(path)
+
+    def load_model(self, path):
+        self.dqn_core.load_model(path)
+
+project_root/algorithms/dqn/dqn_core.py
+"""
+dqn/dqn_core.py
+
+DQNの主要なアルゴリズムロジックを実装します。
+Qネットワークとターゲットネットワークの定義、損失関数の計算、
+ネットワークの最適化、ターゲットネットワークの更新などがここに含まれます。
+エージェントクラス (dqn_agent.py) から呼び出され、具体的な学習計算を担います。
+"""
+import torch
+import torch.nn as nn
+import torch.optim as optim
+# from utils.networks import DQNNetwork # Qネットワークの定義
+
+class DQNCore:
+    def __init__(self, args, q_network, target_q_network=None): # ネットワークをDI
+        self.gamma = args.gamma
+        self.learning_rate = args.learning_rate
+        self.device = torch.device(args.device)
+        self.update_target_freq = args.update_target_freq # ターゲットネットワーク更新頻度
+
+        self.qnet = q_network.to(self.device) # Qネットワーク
+        self.target_qnet = target_q_network.to(self.device) if target_q_network else type(q_network)(q_network.input_dim, q_network.output_dim).to(self.device)
+        self.target_qnet.load_state_dict(self.qnet.state_dict()) # 初期はQnetと同じ重み
+        self.target_qnet.eval() # ターゲットネットワークは評価モード
+
+        self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
+        self.criterion = nn.MSELoss() # 損失関数
+
+    def get_best_action(self, state, device):
+        """Qネットワークの出力に基づいて最適な行動を返します。"""
+        if isinstance(state, tuple):
+            flat_state = np.array(state).flatten()
+            state = torch.tensor(flat_state, dtype=torch.float32)
+        elif isinstance(state, torch.Tensor):
+            pass
+
+        state = state.to(device)
+        self.qnet.eval() # 評価モード
+        with torch.no_grad():
+            qs = self.qnet(state)
+        return qs.argmax().item()
+
+    def update_q_network(self, states, actions, rewards, next_states, dones):
+        """
+        Qネットワークの更新ロジックを実装します。
+        バッチデータを受け取り、DQNの損失を計算し、バックプロパゲーションを実行します。
+        """
+        # データをテンソルに変換し、デバイスに移動
+        states = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.int64).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+
+        self.qnet.train() # Qネットワークを訓練モードに設定
+
+        # 現在の状態のQ値 (行動に対応するQ値)
+        current_q_values = self.qnet(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+
+        # 次の状態の最大Q値 (ターゲットネットワークから)
+        with torch.no_grad(): # ターゲットネットワークは勾配計算しない
+            next_q_values = self.target_qnet(next_states).max(1)[0]
+
+        # ターゲットQ値の計算
+        target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
+
+        # 損失計算とバックプロパゲーション
+        loss = self.criterion(current_q_values, target_q_values)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        # 勾配クリッピング (安定化のため)
+        torch.nn.utils.clip_grad_norm_(self.qnet.parameters(), 1.0)
+        self.optimizer.step()
+
+        return loss.item()
+
+    def update_target_network(self):
+        """ターゲットネットワークの重みをQネットワークの重みに同期させます。"""
+        self.target_qnet.load_state_dict(self.qnet.state_dict())
+
+    def save_model(self, path):
+        """DQNモデル（Qネットワークとターゲットネットワークの重み）を保存します。"""
+        torch.save(self.qnet.state_dict(), path)
+
+    def load_model(self, path):
+        """DQNモデルを読み込みます。"""
+        self.qnet.load_state_dict(torch.load(path, map_location=self.device))
+        self.target_qnet.load_state_dict(torch.load(path, map_location=self.device)) # ターゲットも同じ重みに
+        self.qnet.eval()
+        self.target_qnet.eval()
+
+
+project_root/algorithms/dqn/dqn_agent.py に追加するコメント
+Python
+
+"""
+dqn/dqn_agent.py
+
+DQNアルゴリズムに特化したエージェントの実装です。
+agents/base_agent.py (または agents/common_agent.py) を継承し、
+DQN特有の行動選択（例: ニューラルネットワークからの推論）や、学習器の更新を担います。
+DQNの主要な学習ロジック（損失計算、ネットワーク更新）は dqn_core.py に委譲されます。
+"""
+from agents.common_agent import CommonAgent
+# from algorithms.dqn.dqn_core import DQNCore # DQNCoreをインポートし、依存性注入で受け取る
+from utils.replay_buffer import ReplayBuffer # DQNは必須
+import torch
+import numpy as np
+
+class DQNAgent(CommonAgent):
+    def __init__(self, args, model_path, observation_space_dim, action_size, dqn_core):
+        super().__init__(args, model_path, action_size)
+        self.observation_space_dim = observation_space_dim
+        self.dqn_core = dqn_core # DQNCoreのインスタンスを依存性注入で受け取る
+        self.device = torch.device(args.device)
+        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, args.batch_size) # DQNはReplayBufferが必須
+
+    def act(self, state):
+        """
+        現在の状態に基づいてDQNの行動選択を行います。
+        epsilon-greedy戦略など。
+        """
+        if np.random.rand() < self.epsilon:
+            return np.random.choice(self.action_size)
+        else:
+            # DQNCore を使って最適な行動を選択
+            return self.dqn_core.get_best_action(state, self.device)
+
+    def update(self, states, action, reward, next_state, done, episode_num, step):
+        """
+        経験を replay_buffer に追加し、DQNCore を使ってQネットワークを更新します。
+        """
+        self.replay_buffer.add(states, action, reward, next_state, done)
+
+        if len(self.replay_buffer) < self.args.batch_size:
+            return None # バッチサイズに満たない場合は更新しない
+
+        # バッチデータを取得し、DQNCore に学習を委譲
+        batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones = self.replay_buffer.get_batch()
+        loss = self.dqn_core.update_q_network(
+            batch_states, batch_actions, batch_rewards, batch_next_states, batch_dones
+        )
+        return loss
+
+    # DQNモデルの保存・読み込み
+    def save_model(self, path):
+        self.dqn_core.save_model(path)
+
+    def load_model(self, path):
+        self.dqn_core.load_model(path)
+
+project_root/algorithms/dqn/dqn_core.py に追加するコメント
+Python
+
+"""
+dqn/dqn_core.py
+
+DQNの主要なアルゴリズムロジックを実装します。
+Qネットワークとターゲットネットワークの定義、損失関数の計算、
+ネットワークの最適化、ターゲットネットワークの更新などがここに含まれます。
+エージェントクラス (dqn_agent.py) から呼び出され、具体的な学習計算を担います。
+"""
+import torch
+import torch.nn as nn
+import torch.optim as optim
+# from utils.networks import DQNNetwork # Qネットワークの定義
+
+class DQNCore:
+    def __init__(self, args, q_network, target_q_network=None): # ネットワークをDI
+        self.gamma = args.gamma
+        self.learning_rate = args.learning_rate
+        self.device = torch.device(args.device)
+        self.update_target_freq = args.update_target_freq # ターゲットネットワーク更新頻度
+
+        self.qnet = q_network.to(self.device) # Qネットワーク
+        self.target_qnet = target_q_network.to(self.device) if target_q_network else type(q_network)(q_network.input_dim, q_network.output_dim).to(self.device)
+        self.target_qnet.load_state_dict(self.qnet.state_dict()) # 初期はQnetと同じ重み
+        self.target_qnet.eval() # ターゲットネットワークは評価モード
+
+        self.optimizer = optim.Adam(self.qnet.parameters(), lr=self.learning_rate)
+        self.criterion = nn.MSELoss() # 損失関数
+
+    def get_best_action(self, state, device):
+        """Qネットワークの出力に基づいて最適な行動を返します。"""
+        if isinstance(state, tuple):
+            flat_state = np.array(state).flatten()
+            state = torch.tensor(flat_state, dtype=torch.float32)
+        elif isinstance(state, torch.Tensor):
+            pass
+
+        state = state.to(device)
+        self.qnet.eval() # 評価モード
+        with torch.no_grad():
+            qs = self.qnet(state)
+        return qs.argmax().item()
+
+    def update_q_network(self, states, actions, rewards, next_states, dones):
+        """
+        Qネットワークの更新ロジックを実装します。
+        バッチデータを受け取り、DQNの損失を計算し、バックプロパゲーションを実行します。
+        """
+        # データをテンソルに変換し、デバイスに移動
+        states = torch.tensor(states, dtype=torch.float32).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.int64).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+
+        self.qnet.train() # Qネットワークを訓練モードに設定
+
+        # 現在の状態のQ値 (行動に対応するQ値)
+        current_q_values = self.qnet(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+
+        # 次の状態の最大Q値 (ターゲットネットワークから)
+        with torch.no_grad(): # ターゲットネットワークは勾配計算しない
+            next_q_values = self.target_qnet(next_states).max(1)[0]
+
+        # ターゲットQ値の計算
+        target_q_values = rewards + self.gamma * next_q_values * (1 - dones)
+
+        # 損失計算とバックプロパゲーション
+        loss = self.criterion(current_q_values, target_q_values)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        # 勾配クリッピング (安定化のため)
+        torch.nn.utils.clip_grad_norm_(self.qnet.parameters(), 1.0)
+        self.optimizer.step()
+
+        return loss.item()
+
+    def update_target_network(self):
+        """ターゲットネットワークの重みをQネットワークの重みに同期させます。"""
+        self.target_qnet.load_state_dict(self.qnet.state_dict())
+
+    def save_model(self, path):
+        """DQNモデル（Qネットワークとターゲットネットワークの重み）を保存します。"""
+        torch.save(self.qnet.state_dict(), path)
+
+    def load_model(self, path):
+        """DQNモデルを読み込みます。"""
+        self.qnet.load_state_dict(torch.load(path, map_location=self.device))
+        self.target_qnet.load_state_dict(torch.load(path, map_location=self.device)) # ターゲットも同じ重みに
+        self.qnet.eval()
+        self.target_qnet.eval()
+
+project_root/utils/replay_buffer.py
+"""
+utils/replay_buffer.py
+
+強化学習で一般的に使用される経験再生バッファの実装です。
+エージェントの経験（状態、行動、報酬、次の状態、完了フラグ）を格納し、
+学習時にランダムにサンプリングして提供します。
+
+Q学習、DQNなど、オフポリシー学習アルゴリズムで幅広く利用されます。
+"""
+from collections import deque
+import random
+import numpy as np
+import torch # 必要に応じて
+
+class ReplayBuffer:
+    def __init__(self, buffer_type, capacity, batch_size):
+        self.buffer_type = buffer_type # 'Q' or 'DQN' など、将来的な拡張性のため
+        self.capacity = capacity
+        self.batch_size = batch_size
+        self.buffer = deque(maxlen=capacity)
+
+    def add(self, state, action, reward, next_state, done):
+        """経験をバッファに追加します。"""
+        self.buffer.append((state, action, reward, next_state, done))
+
+    def get_batch(self):
+        """
+        バッファからランダムに指定されたバッチサイズの経験をサンプリングして返します。
+        """
+        if len(self.buffer) < self.batch_size:
+            raise ValueError("バッファのサイズがバッチサイズよりも小さいです。")
+
+        batch = random.sample(self.buffer, self.batch_size)
+        states, actions, rewards, next_states, dones = zip(*batch)
+
+        # 必要に応じて、ここでnumpy配列やtorchテンソルに変換する
+        states = np.array(states)
+        actions = np.array(actions)
+        rewards = np.array(rewards)
+        next_states = np.array(next_states)
+        dones = np.array(dones)
+
+        return states, actions, rewards, next_states, dones
+
+    def __len__(self):
+        """バッファに格納されている経験の数を返します。"""
+        return len(self.buffer)
+
+networks
+"""
+utils/networks.py
+
+強化学習で使用されるニューラルネットワークモデルの定義を格納します。
+Qネットワーク、ポリシーネットワーク、バリューネットワークなど、
+様々な種類のネットワークアーキテクチャをここに実装します。
+
+各アルゴリズムは、ここから必要なネットワークモデルをインポートして利用します。
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class QNetwork(nn.Module):
+    """
+    Q学習（またはシンプルなDQN）で使用されるQネットワークの例。
+    線形層で構成された簡単なMLP (多層パーセプトロン)。
+    """
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, output_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
+
+class PolicyNetwork(nn.Module):
+    """
+    ポリシー勾配法などで使用されるポリシーネットワークの例。
+    """
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        # ... 実装 ...
+
+    def forward(self, x):
+        # ... 実装 ...
+        pass
+
+# 必要に応じて他のネットワーククラス（CNN, RNNなど）を追加
+
+"""
+config.py
+
+プロジェクト全体の様々な設定やハイパーパラメータを一元的に管理します。
+コマンドライン引数のデフォルト値、パス設定、学習パラメータなどを定義します。
+
+main.py や他のモジュールからインポートして利用されます。
+"""
+
+class Config:
+    def __init__(self):
+        # 環境設定
+        self.grid_size = 10
+        self.agents_number = 2
+        self.goals_number = 2
+        self.mask = 0 # 0: False, 1: True
+        self.render_mode = 0 # 0: 非表示, 1: 表示
+
+        # エージェント/学習共通設定
+        self.episode_number = 5000
+        self.max_timestep = 100
+        self.load_model = 0 # 0: 新規学習, 1: モデル読み込み
+        self.save_model_interval = 100 # モデル保存間隔
+        self.save_agent_states = 1 # エージェントの状態を保存するか
+        self.device = 'auto' # 'auto', 'cpu', 'cuda', 'mps'
+
+        # Q学習/DQN共通のハイパーパラメータ
+        self.gamma = 0.95
+        self.learning_rate = 0.000005
+        self.buffer_size = 10000
+        self.batch_size = 32 # バッチサイズは通常はQ/DQNで共通化
+
+        # epsilon-greedy 探索関連
+        self.decay_epsilon_step = 500000
+        self.initial_epsilon = 1.0
+        self.min_epsilon = 0.01
+
+        # DQN特有のハイパーパラメータ (Q学習では使用しない)
+        self.update_target_freq = 1000 # ターゲットネットワークの更新頻度
+
+        # パス設定
+        self.model_dir = "models"
+        self.log_dir = "logs"
+        self.agent_states_dir = "agent_states"
+
+    def update_from_args(self, args):
+        """
+        argparse で解析された引数で設定を更新します。
+        args の属性が Config の属性と一致する場合に更新します。
+        """
+        for arg_name, arg_value in vars(args).items():
+            if hasattr(self, arg_name) and arg_value is not None:
+                setattr(self, arg_name, arg_value)

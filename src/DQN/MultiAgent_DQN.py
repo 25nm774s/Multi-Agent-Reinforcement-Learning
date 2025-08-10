@@ -4,8 +4,8 @@ import os
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from DQN.Agent_DQN import Agent_DQN
 from utils.plot_results import PlotResults
-from utils.Model_Saver import Saver
-
+from utils.Saver import Saver
+from utils.Model_IO import Model_IO
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -52,6 +52,7 @@ class MultiAgent_DQN:
 
         # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(save_dir,self.grid_size)
+        self.model_io = Model_IO(save_dir)
         self.plot_results = PlotResults(save_dir)
 
 
@@ -198,8 +199,14 @@ class MultiAgent_DQN:
 
     def save_model_weights(self):
         """学習済みモデルの重みを保存する."""
-        # モデル保存を Saver に依頼
-        self.saver.save_dqn_weights(self.agents)
+        for id, agent in enumerate(self.agents):
+            model_weight, _, _ = agent.get_weights()
+            self.model_io.save_model_weights(id, model_weight) 
+
+    def load_model_weights(self):
+        for id, agent in enumerate(self.agents):
+            qnet, _, _ = agent.get_weights()
+            self.model_io.load_model_weights(id)
 
     def save_Qtable(self):
         """

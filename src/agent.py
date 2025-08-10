@@ -5,7 +5,7 @@ from typing import Tuple, List
 
 # QState 定義 (エージェントクラスのメソッドの型ヒントに必要)
 # (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-from Q_learn.QTable import QState
+from Q_learn.QTable import QTableType, QState
 
 from Q_learn.QTable import QTable
 from Q_learn.strategys.action_selection import StandardActionSelection
@@ -49,25 +49,19 @@ class Agent:
                 agent_id=self.agent_id,
                 total_agents=self.total_agents
             )
-            print(f"Agent {self.agent_id}: Using Masked Strategies")
+            #print(f"Agent {self.agent_id}: Using Masked Strategies")
         else:
             # Use Standard Strategies
             self._action_selection_strategy = StandardActionSelection()
             self._learning_strategy = StandardQLearning()
-            print(f"Agent {self.agent_id}: Using Standard Strategies")
+            #print(f"Agent {self.agent_id}: Using Standard Strategies")
 
-
-        # Model path for QTable remains the same
-        save_dir = getattr(args, 'dir_path', 'models')
-        self.model_path = os.path.join(save_dir, f'agent_{self.agent_id}_q_table.pkl')
 
         # QTable Instance (shared state managed by the agent)
         self.q_table = QTable(
             action_size=self.action_size,
             learning_rate=getattr(args, 'learning_rate', 0.1),
-            discount_factor=getattr(args, 'discount_factor', 0.99),
-            load_model=args.load_model,
-            model_path=self.model_path
+            discount_factor=getattr(args, 'discount_factor', 0.99)
         )
 
         # ε-greedyのためのパラメータを保持
@@ -172,13 +166,23 @@ class Agent:
         return td_delta
 
 
-    def save_q_table(self) -> None:
+    def get_Qtable(self) -> QTableType:
         """
-        このエージェントのQテーブルをファイルに保存する.
-        Agentに紐づけられたmodel_pathを使用する.
-        (Same as before - QTable object handles saving)
+        このエージェントが保持するQテーブルのデータを返す.
+
+        Returns:
+            QTableType: Qテーブルのデータ（状態をキー、行動価値のリストを値とする辞書）.
         """
-        self.q_table.save_q_table(self.model_path)
+        return self.q_table.get_Qtable()
+
+    def set_Qtable(self, q_table: QTableType) -> None:
+        """
+        このエージェントのQテーブルデータを設定する.
+
+        Args:
+            q_table (QTableType): 設定する新しいQテーブルのデータ.
+        """
+        self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
         """

@@ -27,10 +27,10 @@ class Saver:
         self.scores_summary_100_path = os.path.join(self.save_dir, "scores_summary100.csv")
         # ヒートマップデータ用にファイル名と形式を.npyに変更
         self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
-        self.model_dir_path = os.path.join(self.save_dir, 'model_weights')
+        #self.model_dir_path = os.path.join(self.save_dir, 'model_weights')
 
         os.makedirs(self.save_dir, exist_ok=True)
-        os.makedirs(self.model_dir_path, exist_ok=True)
+        #os.makedirs(self.model_dir_path, exist_ok=True)
 
         # scores_summary.csvを作成 (集計前の個々のエピソードデータ用バッファ)
         if not os.path.exists(self.scores_summary_path):
@@ -68,28 +68,7 @@ class Saver:
             agents: Qテーブルを持つエージェントのリストまたは辞書。
             mask: 保存マスク (任意)。
         """
-        print('Qテーブル保存中...')
-        for i, agent in enumerate(agents):
-            path = (os.path.join(self.model_dir_path, f'{i}.csv')
-                    if mask else
-                    os.path.join(self.model_dir_path, 'common.csv'))
-
-            with open(path, 'w', newline='') as f:
-                writer = csv.writer(f)
-                if mask:
-                    # Assuming Agent_Q stores Q table in agent.linear.theta_list
-                    data = agent.linear.theta_list
-                else:
-                    # Assuming common Q table is in agent.linear.common_theta_list
-                    # and needs reshaping
-                    arr = np.array(agent.linear.common_theta_list)
-                    # Reshape to 2D: (states * actions) x 1
-                    data = arr.reshape(-1, arr.shape[2])
-                for row in data:
-                    writer.writerow(row)
-            if not mask: # Only save the common table once
-                break
-        print(f"保存先: {self.model_dir_path}\n")
+        print('Qテーブル保存プロセスはModel_IOに移行')
 
     def save_dqn_weights(self, agents):
         """
@@ -98,12 +77,7 @@ class Saver:
         Args:
             agents: DQNモデルを持つエージェントのリストまたは辞書。
         """
-        print('モデル重み保存中...')
-        for i, agent in enumerate(agents):
-            path = os.path.join(self.model_dir_path, f"{i}.pth")
-            # Assuming Agent_DQN stores the model in agent.model.qnet
-            torch.save(agent.model.qnet.state_dict(), path)
-        print(f"保存先: {self.model_dir_path}\n")
+        print('モデル重み保存プロセスはModel_IOに移行')
 
     # グリッド内のカウントをインクリメントするように修正
     def log_agent_states(self, agent_id, x, y):

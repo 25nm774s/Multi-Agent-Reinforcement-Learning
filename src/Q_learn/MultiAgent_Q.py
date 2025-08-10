@@ -5,9 +5,10 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-from Q_learn.Agent_Q import Agent
+from agent import Agent
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
-from utils.Model_Saver import Saver
+from utils.Saver import Saver
+from utils.Model_IO import Model_IO
 from utils.plot_results import PlotResults
 
 class MultiAgent_Q:
@@ -24,7 +25,7 @@ class MultiAgent_Q:
         self.goals_number = args.goals_number
         self.grid_size = args.grid_size
 
-        self.load_model = args.load_model
+        #self.load_model = args.load_model
         # self.mask = args.mask # Remove this line
 
         # Save directory calculation remains the same
@@ -32,10 +33,14 @@ class MultiAgent_Q:
             "output",
             f"Q_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
-        # argsにdir_path属性を追加 (Agentクラスの初期化で使用される)
-        args.dir_path = save_dir
 
-        self.saver = Saver(save_dir=save_dir,grid_size=self.grid_size)
+        # 学習で発生したデータを保存するクラス
+        self.saver = Saver(save_dir,self.grid_size)
+        
+        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
+        self.model_io = Model_IO(save_dir)
+
+        # saverクラスで保存されたデータを使ってグラフを作るクラス
         self.plot_results = PlotResults(save_dir)
 
 
@@ -71,11 +76,17 @@ class MultiAgent_Q:
                 print() # 改行して進捗表示をクリア
                 avg_reward = avg_reward_temp / 100
                 avg_step = avg_step_temp / 100
+                
                 # エピソードごとの平均損失も計算し、表示に追加
                 avg_loss = sum(losses) / len(losses) if losses else 0 # ここで losses は過去100エピソードの平均損失リスト
+
+                q_table_size = [agent.get_q_table_size() for agent in self.agents]
+
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss   : {GREEN}{avg_loss:.4f}{RESET}\n")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
+                
                 avg_reward_temp, avg_step_temp = 0, 0
                 losses = [] # 100エピソードごとに損失リストもリセット
                 
@@ -124,15 +135,15 @@ class MultiAgent_Q:
 
                 # Q学習は経験ごとに逐次更新
                 step_losses = [] # 各ステップでのエージェントごとの損失
-                if self.load_model == 0: # 学習モードの場合のみ
-                    for i, agent in enumerate(self.agents):
-                        # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
-                        # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
-                        # Note: In a multi-agent setting, the reward might be individual or shared.
-                        # The current implementation passes the single global reward to all agents.
-                        # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
-                        loss = agent.learn(current_states, actions[i], reward, next_observation, done)
-                        step_losses.append(loss)
+                #if 0 == 0: # 学習モードの場合のみ
+                for i, agent in enumerate(self.agents):
+                    # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
+                    # Agentクラスのlearnメソッドを呼び出し (global_state, action, reward, next_global_state, doneを渡す)
+                    # Note: In a multi-agent setting, the reward might be individual or shared.
+                    # The current implementation passes the single global reward to all agents.
+                    # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
+                    loss = agent.learn(current_states, actions[i], reward, next_observation, done)
+                    step_losses.append(loss)
 
                 # ステップの平均損失をエピソード損失リストに追加
                 avg_step_loss = sum(step_losses) / len(step_losses) if step_losses else 0
@@ -165,11 +176,28 @@ class MultiAgent_Q:
         print("Mock save_model_weights called - Not applicable for Q-Learning.")
         pass # DQNではないため何もしない
 
-    def save_Qtable(self):
-        print("Saving Q-Tables for each agent...")
-        # Agentクラスのsave_q_tableメソッドを呼び出す
-        for i, agent in enumerate(self.agents):
-            agent.save_q_table() # Agentは自身の保存パスを知っている
+    def save_model(self):
+        """
+        保持している各AgentのQテーブルをファイルに保存する.
+        Model_IOクラスを使用して保存処理を行う.
+        """
+        print("Qテーブル保存中...")
+        for agent in self.agents:
+            # AgentからQテーブルデータを取得し、Model_IOに渡して保存
+            q_table_data = agent.get_Qtable()
+            self.model_io.save_q_table(agent.agent_id, q_table_data)
+
+    def load_model(self):
+        """
+        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する.
+        Model_IOクラスを使用して読み込み処理を行う.
+        """
+        print("Qテーブル読み込み中...")
+        for agent in self.agents:
+            # Model_IOからQテーブルデータを読み込み
+            load_data = self.model_io.load_q_table(agent.agent_id)
+            # 読み込んだデータをAgentに設定
+            agent.set_Qtable(load_data)
 
     def result_save(self):
         print("Saving results...")

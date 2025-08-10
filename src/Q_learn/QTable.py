@@ -18,8 +18,7 @@ class QTable:
     Qテーブルのデータ構造と学習ロジックを管理するクラス.
     エージェントIDや行動選択ロジックは含まない.
     """
-    def __init__(self, action_size: int, learning_rate: float, discount_factor: float,
-                load_model: bool, model_path: str):
+    def __init__(self, action_size: int, learning_rate: float, discount_factor: float):
         """
         QTable コンストラクタ.
 
@@ -40,11 +39,7 @@ class QTable:
         # Q値の初期化に使用する値
         self._initial_q_value = 0.0
 
-        self.model_path = model_path
-
-        # ロードフラグが立っている場合はQテーブルをロード
-        if load_model:
-            self.load_q_table(self.model_path)
+        #self.model_path = model_path
 
 
     def learn(self, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
@@ -85,35 +80,23 @@ class QTable:
 
         return abs(td_delta) # TD誤差の絶対値を返す (損失の目安として)
 
-    def save_q_table(self, file_path: str) -> None:
+    def get_Qtable(self) -> QTableType:
         """
-        Qテーブルをファイルに保存する (pickle形式).
-        """
-        # ディレクトリ部分を取得し、空でない場合にディレクトリを作成
-        save_dir = os.path.dirname(file_path)
-        if save_dir: # ディレクトリが指定されている場合のみ作成
-            os.makedirs(save_dir, exist_ok=True)
-        try:
-            with open(file_path, 'wb') as f:
-                pickle.dump(self.q_table, f)
-            print(f"Qテーブルを {file_path} に保存しました.")
-        except Exception as e:
-            print(f"Qテーブルの保存中にエラーが発生しました: {e}")
+        保持しているQテーブルのデータを返す.
 
-    def load_q_table(self, file_path: str) -> None:
+        Returns:
+            QTableType: Qテーブルのデータ（状態をキー、行動価値のリストを値とする辞書）.
         """
-        ファイルからQテーブルをロードする (pickle形式).
-        """
-        if not os.path.exists(file_path):
-            print(f"指定されたQテーブルファイルが見つかりません: {file_path}")
-            return
+        return self.q_table
 
-        try:
-            with open(file_path, 'rb') as f:
-                self.q_table = pickle.load(f)
-            print(f"Qテーブルを {file_path} からロードしました.")
-        except Exception as e:
-            print(f"Qテーブルのロード中にエラーが発生しました: {e}")
+    def set_Qtable(self, q_table: QTableType) -> None:
+        """
+        Qテーブルのデータを設定する.
+
+        Args:
+            q_table (QTableType): 設定する新しいQテーブルのデータ.
+        """
+        self.q_table = q_table
 
     def get_q_table_size(self) -> int:
         """

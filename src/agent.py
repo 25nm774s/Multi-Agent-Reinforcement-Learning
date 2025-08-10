@@ -217,6 +217,9 @@ class Agent:
         (Same as before - Delegate to QTable object)
         """
         return self.q_table.get_Qtable()
+    
+    def set_Qtable(self, q_table):
+        self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
         """

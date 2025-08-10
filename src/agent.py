@@ -62,8 +62,6 @@ class Agent:
             action_size=self.action_size,
             learning_rate=getattr(args, 'learning_rate', 0.1),
             discount_factor=getattr(args, 'discount_factor', 0.99)
-            #load_model=args.load_model
-            #model_path=model_save_dir
         )
 
         # ε-greedyのためのパラメータを保持
@@ -168,28 +166,23 @@ class Agent:
         return td_delta
 
 
-    def save_q_table(self, model_dir, path_print=False) -> None:
+    def get_Qtable(self) -> QTableType:
         """
-        このエージェントのQテーブルをファイルに保存する(個別).
-        Model_IOオブジェクトを使用して保存処理を委譲する.
-        """
-        #print(f'Agent {self.agent_id}: Qテーブル保存中...')
-        model_path = os.path.join(model_dir, "models", f'agent_{self.agent_id}_Qtable.pkl')
-        if path_print: print(f"model_path:{model_path}")
-        
-        self.q_table.save_q_table(model_path)
+        このエージェントが保持するQテーブルのデータを返す.
 
-    def load_q_table(self, model_dir, path_print=False) -> QTableType:
+        Returns:
+            QTableType: Qテーブルのデータ（状態をキー、行動価値のリストを値とする辞書）.
         """
-        このエージェントのQテーブルをファイルから読み込む.
-        Model_IOオブジェクトを使用して読み込み処理を委譲する.
+        return self.q_table.get_Qtable()
+
+    def set_Qtable(self, q_table: QTableType) -> None:
         """
-        #print(f'Agent {self.agent_id}: Qテーブル読み込み中...')
-        model_path = os.path.join(model_dir, "models", f'agent_{self.agent_id}_Qtable.pkl')
-        if path_print: print(f"model_path:{model_path}")
-        
-        loaded_data:QTableType = self.q_table.load_q_table(model_path)
-        return loaded_data
+        このエージェントのQテーブルデータを設定する.
+
+        Args:
+            q_table (QTableType): 設定する新しいQテーブルのデータ.
+        """
+        self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
         """

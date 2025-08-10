@@ -80,40 +80,23 @@ class QTable:
 
         return abs(td_delta) # TD誤差の絶対値を返す (損失の目安として)
 
-    def save_q_table(self, model_path) -> None:
+    def get_Qtable(self) -> QTableType:
         """
-        Qテーブルをファイルに保存する (pickle形式).
-        """
-        # ディレクトリ部分を取得し、空でない場合にディレクトリを作成
-        save_dir = os.path.dirname(model_path)
-        #print(f"save_dir:{save_dir},file_path:{file_path}")
-        if save_dir:
-            os.makedirs(save_dir, exist_ok=True)
-        
-        try:
-            with open(model_path, 'wb') as f:
-                pickle.dump(self.q_table, f)
-            print(f"Qテーブルを {model_path} に保存しました.")
-        except Exception as e:
-            print(f"Qテーブルの保存中にエラーが発生しました: {e}")
+        保持しているQテーブルのデータを返す.
 
-    def load_q_table(self, model_path) -> QTableType:
+        Returns:
+            QTableType: Qテーブルのデータ（状態をキー、行動価値のリストを値とする辞書）.
         """
-        ファイルからQテーブルを読み込む (pickle形式).
-        """
-        try:
-            if os.path.exists(model_path):
-                with open(model_path, 'rb') as f:
-                    self.q_table:QTableType = pickle.load(f)
-                print(f"Qテーブルを {model_path} から読み込みました.")
-            else:
-                print(f"指定されたファイル {model_path} が存在しません。新しいQテーブルを作成します。")
-                self.q_table:QTableType = {} # ファイルが存在しない場合は新しいQテーブルを初期化
-        except Exception as e:
-            print(f"Qテーブルの読み込み中にエラーが発生しました: {e}")
-            self.q_table = {} # エラー発生時は新しいQテーブルを初期化
-        
         return self.q_table
+
+    def set_Qtable(self, q_table: QTableType) -> None:
+        """
+        Qテーブルのデータを設定する.
+
+        Args:
+            q_table (QTableType): 設定する新しいQテーブルのデータ.
+        """
+        self.q_table = q_table
 
     def get_q_table_size(self) -> int:
         """

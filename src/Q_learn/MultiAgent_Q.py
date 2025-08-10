@@ -80,7 +80,7 @@ class MultiAgent_Q:
                 # エピソードごとの平均損失も計算し、表示に追加
                 avg_loss = sum(losses) / len(losses) if losses else 0 # ここで losses は過去100エピソードの平均損失リスト
 
-                q_table_size = [agent.q_table.get_q_table_size() for agent in self.agents]
+                q_table_size = [agent.get_q_table_size() for agent in self.agents]
 
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")

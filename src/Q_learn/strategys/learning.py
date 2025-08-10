@@ -3,7 +3,6 @@ import abc
 from ..QTable import QTable,QState
 
 
-
 class LearningStrategy(abc.ABC):
     """Abstract Base Class for Learning Strategies."""
 
@@ -28,13 +27,18 @@ class LearningStrategy(abc.ABC):
 class SelfishQLearning(LearningStrategy):
     """Concrete Strategy for Selfish/Independent Q-Learning Update (mask=1)."""
 
+    def __init__(self, grid_size: int, goals_num: int, agent_id: int, total_agents: int):
+        """
+        Initializes the SelfishQLearning strategy.
+        Added __init__ to accept necessary parameters.
+        """
+        self.grid_size = grid_size
+        self.goals_num = goals_num
+        self.agent_id = agent_id
+        self.total_agents = total_agents
+
     def update_q_value(self, q_table: QTable, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
         """
-        Perform a standard Q-learning update on the agent's Q-table,
-        ignoring other agents' positions (as they are not in state/next_state for this strategy).
+        Perform a standard Q-learning update on the agent's Q-table.
         """
-        # QTable.learn already implements the standard Q-learning update logic.
-        # This strategy simply delegates the learning responsibility to the QTable instance.
         return q_table.learn(state, action, reward, next_state, done)
-
-#print("Abstract base classes and standard concrete strategies designed.")

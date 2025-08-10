@@ -2,6 +2,7 @@
 
 # Assuming QState is defined (it is in previous cells)
 import numpy as np
+from typing import List, Tuple
 #QState = Tuple[int, ...]
 from Q_learn.QTable import QTable, QState
 
@@ -15,47 +16,54 @@ class CooperativeActionSelection(ActionSelectionStrategy):
     def __init__(self, grid_size: int, goals_num: int, agent_id: int, total_agents: int):
         """
         Initializes the CooperativeActionSelection strategy.
-
-        Args:
-            grid_size (int): The size of the grid.
-            goals_num (int): The number of goals.
-            agent_id (int): The ID of the agent using this strategy.
-            total_agents (int): The total number of agents in the environment.
         """
         self.grid_size = grid_size
         self.goals_num = goals_num
         self.agent_id = agent_id
         self.total_agents = total_agents
-        # Add other necessary parameters for future cooperative logic if needed
-        # e.g., a reference to the environment or a method to get other agents' positions
 
     def select_action(self, q_table: QTable, q_state: QState, action_size: int, epsilon: float) -> int:
         """
-        Select an action using epsilon-greedy, potentially applying cooperative logic
-        based on other agents' positions (which are included in q_state for this strategy).
-
-        This is a placeholder implementation. Actual cooperative logic (e.g., preventing
-        moves to occupied cells, prioritizing moves towards unoccupied goals, coordinating
-        movements with other agents) would be implemented here using information about
-        other agents' positions (available in q_state for mask=0).
+        Select an action using epsilon-greedy, potentially applying cooperative logic.
         """
         if np.random.rand() < epsilon:
-            # Explore: Choose a random action
             return np.random.choice(action_size)
         else:
-            # Exploit: Choose the best action based on Q-values, potentially with cooperative adjustments
             q_values = q_table.get_q_values(q_state)
-
-            # --- Cooperative Logic Placeholder ---
-            # In a real cooperative strategy, you would modify q_values or filter actions
-            # based on the current positions of other agents, which are included in q_state
-            # when mask=0. You might also need access to goal positions and your own position
-            # from the q_state to implement rules like collision avoidance or goal assignment.
-            # For now, it's the same as SelfishActionSelection but prepared for cooperative logic:
+            if not q_values:
+                return np.random.choice(action_size)
             max_q = max(q_values)
             best_actions = [a for a, q in enumerate(q_values) if q == max_q]
             return np.random.choice(best_actions)
 
+    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+        """
+        Generate the state representation for the Cooperative strategy (all goal positions + all agent positions).
+        """
+        expected_len = self.goals_num + self.total_agents
+        if len(global_state) != expected_len:
+            raise ValueError(f"Global state length mismatch in CooperativeActionSelection. Expected {expected_len}, got {len(global_state)}")
+
+        flat_state_list: List[int] = []
+
+        goal_positions = global_state[:self.goals_num]
+        for pos in goal_positions:
+            if not isinstance(pos, tuple) or len(pos) != 2:
+                raise ValueError(f"Unexpected goal position format: {pos} in CooperativeActionSelection.get_q_state_representation")
+            flat_state_list.extend(pos)
+
+        agent_positions = global_state[self.goals_num:]
+        if len(agent_positions) != self.total_agents:
+            raise ValueError(f"Agent positions length mismatch in CooperativeActionSelection. Expected {self.total_agents}, got {len(agent_positions)}")
+
+        for pos in agent_positions:
+            if not isinstance(pos, tuple) or len(pos) != 2:
+                raise ValueError(f"Unexpected agent position format: {pos} in CooperativeActionSelection.get_q_state_representation")
+            flat_state_list.extend(pos)
+
+        return tuple(flat_state_list)
+
+#print("Strategy classes (SelfishQLearning with __init__ fix) redefined.")
 
 class CooperativeQLearning(LearningStrategy):
     """

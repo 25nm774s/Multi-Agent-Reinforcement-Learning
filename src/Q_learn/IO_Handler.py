@@ -1,14 +1,12 @@
 import os
 
-from Q_learn.QTable import QTableType
-from DQN.dqn import QNet
+from Base.IO_Base import BaseModelIO
+from .QTable import QTableType
 
 import os
 import pickle
-import torch
 
-
-class Model_IO:
+class Model_IO(BaseModelIO):
     """
     モデルデータ（この場合はQテーブル）のファイルへの保存とファイルからの読み込みを担当するクラス.
     具体的なモデルの実装には依存せず、汎用的なIO処理を提供する.
@@ -27,7 +25,7 @@ class Model_IO:
             os.makedirs(self.model_dir)
             print(f"ディレクトリ {self.model_dir} を作成しました。")
 
-    def save_q_table(self, agent_id: int, q_table: QTableType) -> None:
+    def save(self, agent_id: int, q_table: QTableType) -> None:
         """
         指定されたエージェントIDのQテーブルデータをファイルに保存する (pickle形式).
 
@@ -45,14 +43,7 @@ class Model_IO:
         except Exception as e:
             print(f"Qテーブルの保存中にエラーが発生しました: {e}")
     
-    def save_model_weights(self, agent_id: int, qnet: QNet):
-        qnet_dict = qnet.state_dict()
-        file_path = os.path.join(self.model_dir, f"model_{agent_id}.pth")
-        
-        torch.save(qnet_dict, file_path)
-        print("saved model")
-
-    def load_q_table(self, agent_id: int) -> QTableType:
+    def load(self, agent_id: int) -> QTableType:
         """
         指定されたエージェントIDのQテーブルデータをファイルから読み込む (pickle形式).
 
@@ -78,13 +69,3 @@ class Model_IO:
             q_table = {} # エラー発生時は新しいQテーブルを初期化
 
         return q_table
-    
-    def load_model_weights(self, agent_id) -> QNet:
-        file_path: str  = os.path.join(self.model_dir, f"model_{agent_id}.pth")
-        try:
-            load_data: QNet = torch.load(file_path)
-            print("model loaded")
-        except Exception as e:
-            raise ValueError(f"エラー発生: {e}")
-        
-        return load_data

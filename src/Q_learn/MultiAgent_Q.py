@@ -8,8 +8,9 @@ RESET = '\033[0m'
 from agent import Agent
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
-from utils.Model_IO import Model_IO
 from utils.plot_results import PlotResults
+from .QTable import QTableType
+from .IO_Handler import Model_IO
 
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
@@ -183,7 +184,7 @@ class MultiAgent_Q:
         for agent in self.agents:
             # AgentからQテーブルデータを取得し、Model_IOに渡して保存
             q_table_data = agent.get_Qtable()
-            self.model_io.save_q_table(agent.agent_id, q_table_data)
+            self.model_io.save(agent.agent_id, q_table_data)
 
     def load_model(self):
         """
@@ -193,8 +194,7 @@ class MultiAgent_Q:
         print("Qテーブル読み込み中...")
         for agent in self.agents:
             # Model_IOからQテーブルデータを読み込み
-            load_data = self.model_io.load_q_table(agent.agent_id)
-            # 読み込んだデータをAgentに設定
+            load_data:QTableType = self.model_io.load(agent.agent_id)
             agent.set_Qtable(load_data)
 
     def result_save(self):

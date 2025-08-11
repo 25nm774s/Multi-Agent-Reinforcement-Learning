@@ -5,7 +5,8 @@ from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from DQN.Agent_DQN import Agent_DQN
 from utils.plot_results import PlotResults
 from utils.Saver import Saver
-from utils.Model_IO import Model_IO
+from .IO_Handler import Model_IO
+from .dqn import QNet
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -68,6 +69,7 @@ class MultiAgent_DQN:
 
         # 学習開始メッセージ
         print(f"{GREEN}DQN{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})" if self.agents[0].use_per else "") + "\n")
+        print(f"goals: {self.env.get_goal_positions().values()}")
 
         total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
@@ -201,12 +203,12 @@ class MultiAgent_DQN:
         """学習済みモデルの重みを保存する."""
         for id, agent in enumerate(self.agents):
             model_weight, _, _ = agent.get_weights()
-            self.model_io.save_model_weights(id, model_weight) 
+            self.model_io.save(id, model_weight) 
 
     def load_model_weights(self):
         for id, agent in enumerate(self.agents):
-            qnet, _, _ = agent.get_weights()
-            self.model_io.load_model_weights(id)
+            load_data: QNet = self.model_io.load(id)
+            agent.set_weights(load_data)
 
     def save_Qtable(self):
         """

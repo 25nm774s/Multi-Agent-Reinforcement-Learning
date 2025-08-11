@@ -31,13 +31,10 @@ class Agent:
         self.action_size = 5 # UP, DOWN, LEFT, RIGHT, STAY
         self.total_agents = args.agents_number
 
-        # Determine strategy based on args.mask
-        mask = getattr(args, 'mask', 0)
-
-        # Instantiate strategies based on mask value
-        # Pass necessary initialization arguments to strategies
-        if mask == 0:
-            # mask=0: Cooperative mode (consider other agents)
+        # マスク値に基づいて戦略をインスタンス化
+        # 戦略に必要な初期化引数を渡す
+        if args.mask == 0:
+            # mask==0: 協調モード (他のエージェントを考慮する)
             self._action_selection_strategy: ActionSelectionStrategy = CooperativeActionSelection(
                 grid_size=self.grid_size,
                 goals_num=self.goals_num,
@@ -52,7 +49,7 @@ class Agent:
             )
             print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
         else:
-            # mask=1: Selfish mode (ignore other agents)
+            # mask==1: 利己的モード（他のエージェントを無視する）
             self._action_selection_strategy: ActionSelectionStrategy = SelfishActionSelection(
                  grid_size=self.grid_size,
                  goals_num=self.goals_num,

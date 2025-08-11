@@ -25,13 +25,11 @@ class MultiAgent_Q:
         self.goals_number = args.goals_number
         self.grid_size = args.grid_size
 
-        #self.load_model = args.load_model
-        # self.mask = args.mask # Remove this line
-
-        # Save directory calculation remains the same
+        # IQL: maskあり/CQL: maskなし
+        Q_Strategy = "IQL" if args.mask else "CQL"
         save_dir = os.path.join(
             "output",
-            f"Q_mask[{args.mask}]_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
+            f"{Q_Strategy}_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
         # 学習で発生したデータを保存するクラス

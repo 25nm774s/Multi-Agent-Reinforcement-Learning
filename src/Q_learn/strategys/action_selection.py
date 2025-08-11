@@ -11,7 +11,7 @@ class ActionSelectionStrategy(abc.ABC):
     @abc.abstractmethod
     def select_action(self, q_table: QTable, q_state: QState, action_size: int, epsilon: float) -> int:
         """
-        Select an action based on the current state and Q-values using the strategy.
+        戦略に基づいて、現在の状態とQ値に基づいて行動を選択します。
 
         Args:
             q_table (QTable): The QTable instance containing Q-values.
@@ -27,7 +27,7 @@ class ActionSelectionStrategy(abc.ABC):
     @abc.abstractmethod
     def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
         """
-        Generate the Q-table state representation for this strategy from the global environment state.
+        この戦略のQテーブル状態表現を、グローバル環境状態から生成します。
 
         Args:
             global_state (Tuple[Tuple[int, int], ...]): The global state tuple
@@ -39,7 +39,7 @@ class ActionSelectionStrategy(abc.ABC):
         pass
 
 class SelfishActionSelection(ActionSelectionStrategy):
-    """Concrete Strategy for Selfish/Independent Epsilon-Greedy Action Selection (mask=1)."""
+    """利己的/独立したエプシロン・グリーディ行動選択のための具体的な戦略 (mask=1)."""
 
     def __init__(self, grid_size: int, goals_num: int, agent_id: int, total_agents: int):
         """
@@ -52,7 +52,7 @@ class SelfishActionSelection(ActionSelectionStrategy):
 
     def select_action(self, q_table: QTable, q_state: QState, action_size: int, epsilon: float) -> int:
         """
-        Select an action using standard epsilon-greedy based on the agent's Q-table.
+        エージェントのQテーブルに基づいて、標準的なε-グリーディー法を使用してアクションを選択します。
         """
         if np.random.rand() < epsilon:
             return np.random.choice(action_size)
@@ -66,11 +66,11 @@ class SelfishActionSelection(ActionSelectionStrategy):
 
     def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
         """
-        Generate the state representation for the Selfish strategy (own agent position + all goal positions).
+        利己的戦略の状態で表す（自身のエージェントの位置 + すべての目標の位置）。
         """
         expected_len = self.goals_num + self.total_agents
         if len(global_state) != expected_len:
-            raise ValueError(f"Global state length mismatch in SelfishActionSelection. Expected {expected_len}, got {len(global_state)}")
+            raise ValueError(f"SelfishActionSelection におけるグローバル状態のサイズが不一致。期待値は{expected_len}ですが、実際は{len(global_state)}でした。")
 
         goal_positions = global_state[:self.goals_num]
         agent_position = global_state[self.goals_num + self.agent_id]
@@ -78,11 +78,11 @@ class SelfishActionSelection(ActionSelectionStrategy):
         flat_state_list: List[int] = []
         for pos in goal_positions:
             if not isinstance(pos, tuple) or len(pos) != 2:
-                raise ValueError(f"Unexpected goal position format: {pos} in SelfishActionSelection.get_q_state_representation")
+                raise ValueError(f"予期しないゴール位置のフォーマット: {pos} in SelfishActionSelection.get_q_state_representation")
             flat_state_list.extend(pos)
 
         if not isinstance(agent_position, tuple) or len(agent_position) != 2:
-            raise ValueError(f"Unexpected agent position format: {agent_position} in SelfishActionSelection.get_q_state_representation")
+            raise ValueError(f"予期しないエージェント位置形式: {agent_position} in SelfishActionSelection.get_q_state_representation")
         flat_state_list.extend(agent_position)
 
         return tuple(flat_state_list)

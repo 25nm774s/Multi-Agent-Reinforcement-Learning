@@ -9,7 +9,7 @@ class LearningStrategy(abc.ABC):
     @abc.abstractmethod
     def update_q_value(self, q_table: QTable, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
         """
-        Update the Q-value based on a single experience using the strategy.
+        戦略を使用して、単一の経験に基づいてQ値を更新。
 
         Args:
             q_table (QTable): The QTable instance to update.
@@ -25,7 +25,7 @@ class LearningStrategy(abc.ABC):
         pass
 
 class SelfishQLearning(LearningStrategy):
-    """Concrete Strategy for Selfish/Independent Q-Learning Update (mask=1)."""
+    """利己的な/独立したQ学習の更新のための具体的な戦略（mask=1）。"""
 
     def __init__(self, grid_size: int, goals_num: int, agent_id: int, total_agents: int):
         """
@@ -39,6 +39,6 @@ class SelfishQLearning(LearningStrategy):
 
     def update_q_value(self, q_table: QTable, state: QState, action: int, reward: float, next_state: QState, done: bool) -> float:
         """
-        Perform a standard Q-learning update on the agent's Q-table.
+        エージェントのQテーブルに対して標準的なQ学習の更新を実行します。
         """
         return q_table.learn(state, action, reward, next_state, done)

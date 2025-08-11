@@ -2,11 +2,11 @@ from abc import ABC, abstractmethod
 
 class BaseModelIO(ABC):
     @abstractmethod
-    def save(self, agent_id: int, data):
+    def save(self, file_path, data):
         pass
 
     @abstractmethod
-    def load(self, agent_id: int):
+    def load(self, file_path):
         pass
 
 class BaseCheckpointHandlar(ABC):

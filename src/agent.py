@@ -162,7 +162,7 @@ class Agent:
         """
         return self.q_table.get_Qtable()
     
-    def set_Qtable(self, q_table):
+    def set_Qtable(self, q_table:QTableType):
         self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:

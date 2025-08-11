@@ -28,19 +28,16 @@ class MultiAgent_Q:
 
         # IQL: maskあり/CQL: maskなし
         Q_Strategy = "IQL" if args.mask else "CQL"
-        save_dir = os.path.join(
+        self.save_dir = os.path.join(
             "output",
             f"{Q_Strategy}_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
         # 学習で発生したデータを保存するクラス
-        self.saver = Saver(save_dir,self.grid_size)
+        self.saver = Saver(self.save_dir,self.grid_size)
         
-        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
-        self.model_io = Model_IO(save_dir)
-
         # saverクラスで保存されたデータを使ってグラフを作るクラス
-        self.plot_results = PlotResults(save_dir)
+        self.plot_results = PlotResults(self.save_dir)
 
 
     def run(self):
@@ -181,10 +178,17 @@ class MultiAgent_Q:
         Model_IOクラスを使用して保存処理を行う.
         """
         print("Qテーブル保存中...")
+        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
+        model_io = Model_IO()
+        model_dir = file_path = os.path.join(self.save_dir, "models")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
         for agent in self.agents:
             # AgentからQテーブルデータを取得し、Model_IOに渡して保存
             q_table_data = agent.get_Qtable()
-            self.model_io.save(agent.agent_id, q_table_data)
+            file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_Qtable.pkl')
+            model_io.save(file_path, q_table_data)
 
     def load_model(self):
         """
@@ -192,9 +196,12 @@ class MultiAgent_Q:
         Model_IOクラスを使用して読み込み処理を行う.
         """
         print("Qテーブル読み込み中...")
+        model_io = Model_IO()
+
         for agent in self.agents:
             # Model_IOからQテーブルデータを読み込み
-            load_data:QTableType = self.model_io.load(agent.agent_id)
+            file_path = os.path.join(self.save_dir, "models", f'agent_{agent.agent_id}_Qtable.pkl')
+            load_data:QTableType = model_io.load(file_path)
             agent.set_Qtable(load_data)
 
     def result_save(self):

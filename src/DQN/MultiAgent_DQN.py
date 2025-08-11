@@ -45,16 +45,15 @@ class MultiAgent_DQN:
         self.save_agent_states = args.save_agent_states
 
         # 結果保存ディレクトリの設定と作成
-        save_dir = os.path.join(
+        self.save_dir = os.path.join(
             "output",
             f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
         )
-        if not os.path.exists(save_dir): os.makedirs(save_dir)
+        if not os.path.exists(self.save_dir): os.makedirs(self.save_dir)
 
         # 結果保存およびプロット関連クラスの初期化
-        self.saver = Saver(save_dir,self.grid_size)
-        self.model_io = Model_IO(save_dir)
-        self.plot_results = PlotResults(save_dir)
+        self.saver = Saver(self.save_dir,self.grid_size)
+        self.plot_results = PlotResults(self.save_dir)
 
 
     def run(self):
@@ -201,13 +200,22 @@ class MultiAgent_DQN:
 
     def save_model_weights(self):
         """学習済みモデルの重みを保存する."""
+        model_io = Model_IO()
+        model_dir = file_path = os.path.join(self.save_dir, "models")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
         for id, agent in enumerate(self.agents):
             model_weight, _, _ = agent.get_weights()
-            self.model_io.save(id, model_weight) 
+            file_path = os.path.join(model_dir, f"model_{id}.pth")
+            model_io.save(file_path, model_weight) 
 
     def load_model_weights(self):
+        model_io = Model_IO()
+
         for id, agent in enumerate(self.agents):
-            load_data: QNet = self.model_io.load(id)
+            file_path = os.path.join(self.save_dir, "models", f"model_{id}.pth")
+            load_data: QNet = model_io.load(file_path)
             agent.set_weights(load_data)
 
     def save_Qtable(self):

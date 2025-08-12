@@ -5,10 +5,12 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-from agent import Agent
+
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
+
+from .Agent_Q import Agent
 from .QTable import QTableType
 from .IO_Handler import Model_IO
 
@@ -54,7 +56,7 @@ class MultiAgent_Q:
         #     print(f"{GREEN}IQL/CQL (Q学習ベース) で学習中{RESET}\n")
         # else:
         print(f"{GREEN}Q学習で学習中{RESET}\n")
-        print(f"ゴール位置: {self.env.get_goal_positions()}")
+        print(f"ゴール位置: {self.env.get_goal_positions().values()}")
 
         total_step = 0
         avg_reward_temp, avg_step_temp = 0, 0

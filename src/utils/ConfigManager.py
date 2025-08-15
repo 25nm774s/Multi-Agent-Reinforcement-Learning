@@ -75,10 +75,10 @@ class ConfigManager:
             self._stored_hash = self._hash_manager.load_hash(self.hash_file_path)
         except FileNotFoundError as e:
             # HashManager.load_hash が FileNotFoundError を発生させた (例: ハッシュファイルがない)
-            raise FileNotFoundError(f"エラー: ハッシュファイル '{self.hash_file_path}' が見つかりません: {e}")
+            raise #FileNotFoundError(f"エラー: ハッシュファイル '{self.hash_file_path}' が見つかりません: {e}")
         except IOError as e:
             # HashManager.load_hash が IOError を発生させた (例: ハッシュファイルの読み取り権限エラー)
-            raise IOError(f"エラー: ハッシュファイル '{self.hash_file_path}' の読み込み中にエラーが発生しました: {e}")
+            raise #IOError(f"エラー: ハッシュファイル '{self.hash_file_path}' の読み込み中にエラーが発生しました: {e}")
 
 
         # 設定ファイルが存在し、ハッシュファイルも存在する場合、ハッシュ値を比較する
@@ -222,23 +222,23 @@ class HashManager:
             print(f"エラー: ハッシュファイル '{hash_file_path}' の保存中にエラーが発生しました: {e}")
             raise # エラーを再度発生させる
 
-    def load_hash(self, hash_file_path):
+    def load_hash(self, hash_file_path) -> str:
         """
-        指定されたハッシュファイルからハッシュ値を読み込む。
-        ファイルが存在しない場合はNoneを返す。
+        指定されたハッシュファイルからハッシュ値を読み込む。。
 
         Args:
             hash_file_path (str): ハッシュファイルを読み込むパス。
 
         Returns:
-            str or None: 読み込まれたハッシュ値、またはファイルが存在しない場合はNone。
+            str: 読み込まれたハッシュ値
 
         Raises:
             IOError: ファイルの読み込み中にエラーが発生した場合。
+            FileNotFoundError ファイルが存在しない場合。
         """
         if not os.path.exists(hash_file_path):
-            print(f"ハッシュファイル {hash_file_path} が見つかりませんでした。")
-            return None
+            #print(f"ハッシュファイル {hash_file_path} が見つかりませんでした。")
+            raise FileNotFoundError(f"エラー: ハッシュファイル '{hash_file_path}' が見つかりません。")
 
         try:
             with open(hash_file_path, "r") as f:
@@ -246,8 +246,8 @@ class HashManager:
             print(f"ハッシュ値を {hash_file_path} から読み込みました。")
             return stored_hash
         except IOError as e:
-            print(f"エラー: ハッシュファイル '{hash_file_path}' の読み込み中にエラーが発生しました: {e}")
-            raise # エラーを再度発生させる
+            #print(f"エラー: ハッシュファイル '{hash_file_path}' の読み込み中にエラーが発生しました: {e}")
+            raise OSError(f"エラー: ハッシュファイル '{hash_file_path}' の読み込み中にエラーが発生しました: {e}")
 
 class ConfigLoader:
     """

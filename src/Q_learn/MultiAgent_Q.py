@@ -9,6 +9,7 @@ RESET = '\033[0m'
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
+from utils.ConfigManager import ConfigManager
 
 from .Agent_Q import Agent
 from .QTable import QTableType
@@ -34,6 +35,11 @@ class MultiAgent_Q:
             "output",
             f"{Q_Strategy}_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
+
+        cp_dir = os.path.join(self.save_dir, ".checkpoints")
+        json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
+        conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
+        print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)

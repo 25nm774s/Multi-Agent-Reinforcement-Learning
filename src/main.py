@@ -57,8 +57,6 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 import argparse
 import torch
 
-from agent import Agent
-
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
@@ -114,6 +112,7 @@ if __name__ == '__main__':
 
     def q_learning():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 

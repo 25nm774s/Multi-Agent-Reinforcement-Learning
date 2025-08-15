@@ -23,15 +23,15 @@ class TestConfigManager(unittest.TestCase):
     def tearDown(self):
         """各テストメソッドの実行後に呼び出されるクリーンアップメソッド"""
         # テスト用フォルダごと削除してクリーンアップする
-        #self._cleanup_folder()
+        self._cleanup_folder()
         pass
 
-    def _cleanup_files(self):
+    def _cleanup_files(self, del_test_file_path=False,del_test_hash_file_path=False):
         """テストファイルを削除するヘルパーメソッド"""
-        if os.path.exists(self.test_file_path):
+        if os.path.exists(self.test_file_path) and del_test_file_path:
             os.remove(self.test_file_path)
             #print(f"Cleaned up {self.test_file_path}")
-        if os.path.exists(self.test_hash_file_path):
+        if os.path.exists(self.test_hash_file_path) and del_test_hash_file_path:
             os.remove(self.test_hash_file_path)
             #print(f"Cleaned up {self.test_hash_file_path}")
 
@@ -42,24 +42,28 @@ class TestConfigManager(unittest.TestCase):
             #print(f"Cleaned up folder {self.test_dir}")
 
 
-    def _create_test_file(self, data=None, include_hash=True, tampered_content=False):
+    def _create_test_file(self, data=None, include_hash=True, tampered_content=False, invalid_json_string=None):
         """テスト用の設定ファイルとハッシュファイルを作成するヘルパーメソッド"""
         os.makedirs(self.test_dir, exist_ok=True)
-        if data is None:
-            data = {
-                "data1-str": "Initial Value",
-                "data2-float": 2.5,
-                "data3-int": 50,
-                "data4-bool": True
-            }
 
-        file_content = json.dumps(data, indent=4)
+        if invalid_json_string:
+             file_content = invalid_json_string
+        else:
+            if data is None:
+                data = {
+                    "data1-str": "Initial Value",
+                    "data2-float": 2.5,
+                    "data3-int": 50,
+                    "data4-bool": True
+                }
 
-        if tampered_content:
-            # 内容を意図的に変更してハッシュ不一致を引き起こす
-            tampered_data = data.copy()
-            tampered_data["data3-int"] = data.get("data3-int", 0) + 1 # 値を少し変える
-            file_content = json.dumps(tampered_data, indent=4)
+            file_content = json.dumps(data, indent=4)
+
+            if tampered_content:
+                # 内容を意図的に変更してハッシュ不一致を引き起こす
+                tampered_data = data.copy()
+                tampered_data["data3-int"] = data.get("data3-int", 0) + 1 # 値を少し変える
+                file_content = json.dumps(tampered_data, indent=4)
 
 
         # 設定ファイルを作成
@@ -67,7 +71,7 @@ class TestConfigManager(unittest.TestCase):
             f.write(file_content)
 
         # ハッシュファイルを作成（include_hash が True の場合のみ）
-        if include_hash:
+        if include_hash and not invalid_json_string: # 不正なJSONの場合はハッシュは計算しない
             # ファイル内容のハッシュを計算
             current_hash = hashlib.sha256(file_content.encode('utf-8')).hexdigest()
             with open(self.test_hash_file_path, "w") as f:
@@ -123,9 +127,6 @@ class TestConfigManager(unittest.TestCase):
         """設定ファイルは存在するがハッシュファイルがない場合のエラーテスト"""
         # 事前に設定ファイルだけを作成し、ハッシュファイルは作成しない
         initial_data = {"key": "value"}
-        #os.makedirs(self.test_dir, exist_ok=True)
-        #with open(self.test_file_path, "w") as f:
-        #    json.dump(initial_data, f, indent=4)
 
         self._create_test_file(data=initial_data, include_hash=False)
 
@@ -161,37 +162,32 @@ class TestConfigManager(unittest.TestCase):
 
         # ConfigManager初期化時にValueErrorが発生することを確認
         with self.assertRaisesRegex(ValueError, "設定ファイル .* の内容が変更された可能性があります"):
-            ConfigManager(initial_data)
-    '''
+            ConfigManager(initial_data, config_dir=self.test_dir)
+
     def test_05_invalid_json_error(self):
         """設定ファイルが不正なJSON形式の場合のエラーテスト"""
         # 事前に不正なJSON形式のファイルを作成
         invalid_json_content = '{"key": "value", "invalid"}' # JSON形式として不正
-        os.makedirs(self.test_dir, exist_ok=True)
-        with open(self.test_file_path, "w") as f:
-            f.write(invalid_json_content)
+        self._create_test_file(invalid_json_string=invalid_json_content, include_hash=False)
 
         # ハッシュファイルは作成しない（JSONパースエラーが先に発生するはず）
         self.assertTrue(os.path.exists(self.test_file_path))
         self.assertFalse(os.path.exists(self.test_hash_file_path))
 
-
         # ConfigManager初期化時にJSONDecodeErrorが発生することを確認
         with self.assertRaises(json.JSONDecodeError):
-            ConfigManager(invalid_json_content,config_dir=self.test_file_path)#type:ignore 理由: あえて不正な辞書を渡すため。
-        '''
+            ConfigManager({"dummy_key": "dummy_value"}, config_dir=self.test_dir)# ConfigManagerは初期化データを受け取るので、ダミーの辞書を渡す
+
 
     def test_06_file_not_found_error(self):
         """設定ファイルが存在しない場合のエラーテスト"""
+        self._create_test_file(data=None, include_hash=False)
+        #os.remove(self.test_file_path)
+        self._cleanup_files(del_test_file_path=True)
+
         # 設定ファイルが存在しないことを確認
         self.assertFalse(os.path.exists(self.test_file_path))
         self.assertFalse(os.path.exists(self.test_hash_file_path))
-
-        self._create_test_file(data=None, include_hash=False)
-        os.remove(self.test_file_path)
-
-        # 設定ファイルが存在しないことを確認
-        self.assertFalse(os.path.exists(self.test_file_path))
         # ConfigManager初期化時にFileNotFoundErrorが発生することを確認
         with self.assertRaises(FileNotFoundError):
-            ConfigManager({"key": "value"})
+            ConfigManager({"key": "value"}, config_dir=self.test_dir)

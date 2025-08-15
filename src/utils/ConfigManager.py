@@ -287,6 +287,7 @@ class ConfigLoader:
         """
         デフォルト設定データを使用して新しい設定ファイルを作成する内部メソッド。
         ファイル作成に失敗した場合は例外を発生させる。
+        また、入力されたjson_dataが有効なJSON形式であるかチェックする。
         """
         default_data = {
             "data1-str": "Default Value",
@@ -296,11 +297,17 @@ class ConfigLoader:
         }
 
         input_data = default_data if json_data is None else json_data
-        file_content = json.dumps(input_data, indent=4)
+
+        # JSON形式のチェック
+        try:
+            file_content = json.dumps(input_data, indent=4)
+        except TypeError as e:
+            raise TypeError(f"エラー: 提供されたデータは有効なJSON形式ではありません: {e}")
+
         try:
             with open(self.file_path, "w") as f:
                 f.write(file_content)
-            self.data = default_data
+            self.data = input_data # 作成されたデータを自身のデータとして保持
             print(f"設定を {self.file_path} に書き込みました。")
         except IOError as e:
             raise IOError(f"エラー: 設定ファイル '{self.file_path}' の作成に失敗しました: {e}")

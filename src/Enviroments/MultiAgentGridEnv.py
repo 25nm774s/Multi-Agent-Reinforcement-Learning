@@ -1,12 +1,10 @@
 # Implementation of Grid and MultiAgentGridEnv classes based on the design
 
 import random
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-#from IPython.display import display # Jupyter Notebook/Colab で図を表示するためにインポート
 
-from .Grid import Grid
+from .Grid import Grid, PositionType
+from .CollisionResolver import CollisionResolver
 from utils.grid_renderer import GridRenderer
 
 # GridRenderer クラスは以前のセルで定義され、利用可能であることを想定しています。
@@ -40,6 +38,8 @@ class MultiAgentGridEnv:
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)
+        self.collision_resolver = CollisionResolver(self._grid)
+
         self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
@@ -62,12 +62,12 @@ class MultiAgentGridEnv:
         self._setup_fixed_goals()
 
 
-    def reset(self, initial_agent_positions: list[tuple[int, int]] = None, placement_mode: str = 'random'):
+    def reset(self, initial_agent_positions: list[PositionType] = None, placement_mode: str = 'random'):#type:ignore
         """
         新しいエピソードのために環境をリセットします。
 
         Args:
-            initial_agent_positions (list[tuple[int, int]], optional): エージェントの明示的な開始位置のリスト。
+            initial_agent_positions (list[PositionType], optional): エージェントの明示的な開始位置のリスト。
                 None の場合、placement_mode が使用されます。デフォルトは 'random'。
             placement_mode (str): initial_agent_positions が None の場合のエージェント配置モード ('random' または 'near_goals')。デフォルトは 'random'。
 
@@ -111,7 +111,7 @@ class MultiAgentGridEnv:
                 except (RuntimeError, ValueError) as e: # ロジックからの特定のエラーを捕捉
                     print(f"ゴール近傍にエージェントを配置できませんでした: {e}")
                     print("このエピソードではランダム配置にフォールバックします。")
-                    agent_positions:list[tuple[int, int]] = self._generate_unique_positions(
+                    agent_positions:list[PositionType] = self._generate_unique_positions(
                         self.agents_number, existing_positions, self.grid_size
                     )
             else:
@@ -120,9 +120,7 @@ class MultiAgentGridEnv:
         # グリッドにエージェントを追加します
         for i, pos in enumerate(agent_positions):
             # エージェント位置がゴールと重複していないか、追加前にチェックします (明示的な場合は上で既に実施)
-            # Add the object to the grid
-            # 位置をタプルに変換してからグリッドに追加する必要があります
-            self._grid.add_object(self._agent_ids[i], tuple(pos))
+            self._grid.add_object(self._agent_ids[i], pos)
 
 
         # 報酬計算のための内部状態変数をリセットします
@@ -156,8 +154,7 @@ class MultiAgentGridEnv:
 
         # Grid クラスの衝突解決メソッドを呼び出し、位置を更新してもらう
         # このメソッド内で Grid インスタンスの_object_positionsが更新されます
-        #final_agent_positions_dict = self._grid.resolve_agent_movements(agent_actions)
-        self._grid.resolve_agent_movements(agent_actions)
+        self.collision_resolver.resolve_agent_movements(agent_actions)
 
         # 4. 報酬を計算します
         # 報酬計算は Grid の更新後の位置に基づいて行います
@@ -221,17 +218,17 @@ class MultiAgentGridEnv:
             self._grid.add_object(self._goal_ids[i], pos)
 
 
-    def _generate_unique_positions(self, num_positions: int, existing_positions: list[tuple[int, int]], grid_size: int) -> list[tuple[int, int]]:
+    def _generate_unique_positions(self, num_positions: int, existing_positions: list[PositionType], grid_size: int) -> list[PositionType]:
         """
         既存の位置を避けながら、グリッド内に指定された数の一意なランダム位置のリストを生成します。
 
         Args:
             num_positions (int): 生成する一意な位置の数。
-            existing_positions (list[tuple[int, int]]): 避ける位置。
+            existing_positions (list[PositionType]): 避ける位置。
             grid_size (int): グリッドのサイズ。
 
         Returns:
-            list[tuple[int, int]]: 生成された一意な位置のリスト。
+            list[PositionType]: 生成された一意な位置のリスト。
 
         Raises:
             ValueError: 必要な数の一意な位置を生成できない場合。
@@ -248,12 +245,12 @@ class MultiAgentGridEnv:
         return positions
 
 
-    def _place_agents_near_goals_logic(self) -> list[tuple[int, int]]:
+    def _place_agents_near_goals_logic(self) -> list[PositionType]:
         """
         ゴール近傍にエージェントを配置する内部ロジック。
 
         Returns:
-            list[tuple[int, int]]: 生成されたエージェント位置のリスト。
+            list[PositionType]: 生成されたエージェント位置のリスト。
 
         Raises:
             RuntimeError: ゴール位置がグリッドに設定されていない場合。
@@ -300,7 +297,7 @@ class MultiAgentGridEnv:
         return tuple(goal_positions + agent_positions)
 
 
-    def get_goal_positions(self) -> dict[str, tuple[int, int]]:
+    def get_goal_positions(self) -> dict[str, PositionType]:
         """現在のゴール位置を取得するヘルパーメソッド。"""
         # グリッドから goal_ids の位置を取得します
         goal_pos_dict = {}
@@ -315,7 +312,7 @@ class MultiAgentGridEnv:
         return goal_pos_dict
 
 
-    def get_agent_positions(self) -> dict[str, tuple[int, int]]:
+    def get_agent_positions(self) -> dict[str, PositionType]:
         """現在のエージェント位置を取得するヘルパーメソッド。"""
         # グリッドから agent_ids の位置を取得します
         agent_pos_dict = {}

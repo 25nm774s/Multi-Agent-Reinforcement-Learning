@@ -73,7 +73,7 @@ class Agent:
         self.epsilon = getattr(args, 'epsilon', 1.0)
         self.min_epsilon = getattr(args, 'min_epsilon', 0.01)
         self.max_epsilon = getattr(args, 'max_epsilon', 1.0)
-        self.epsilon_decay_alpha = getattr(args, 'epsilon_decay_alpha', 0.70)
+        self.epsilon_decay_alpha = args.epsilon_decay_alpha #getattr(args, 'epsilon_decay_alpha', 0.70)
 
 
     def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:

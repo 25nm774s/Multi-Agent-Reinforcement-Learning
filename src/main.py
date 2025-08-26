@@ -78,6 +78,7 @@ if __name__ == '__main__':
         parser.add_argument('--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
+        parser.add_argument('--epsilon_decay_alpha', default=0.70, type=float)
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)

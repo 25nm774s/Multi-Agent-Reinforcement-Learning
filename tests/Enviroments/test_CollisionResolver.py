@@ -1,7 +1,8 @@
 import unittest
 
 # Assume the Grid and CollisionResolver class definitions
-from src.Enviroments.MultiAgentGridEnv import Grid, CollisionResolver, PositionType # If in a separate file
+from src.Enviroments.CollisionResolver import CollisionResolver
+from src.Enviroments.Grid import Grid
 
 class TestCollisionResolver(unittest.TestCase):
     """
@@ -195,7 +196,7 @@ class TestCollisionResolver(unittest.TestCase):
         agent_actions = {'non_existent_agent': 3}
 
         with self.assertRaisesRegex(KeyError, "Agent with ID 'non_existent_agent' not found in grid."):
-             resolver.resolve_agent_movements(agent_actions)
+            resolver.resolve_agent_movements(agent_actions)
 
         # Ensure the existing agent's position didn't change
         self.assertEqual(grid.get_object_position('agent_0'), (1, 1))

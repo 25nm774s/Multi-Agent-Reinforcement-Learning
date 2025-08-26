@@ -111,7 +111,7 @@ class MultiAgentGridEnv:
                 except (RuntimeError, ValueError) as e: # ロジックからの特定のエラーを捕捉
                     print(f"ゴール近傍にエージェントを配置できませんでした: {e}")
                     print("このエピソードではランダム配置にフォールバックします。")
-                    agent_positions = self._generate_unique_positions(
+                    agent_positions:list[tuple[int, int]] = self._generate_unique_positions(
                         self.agents_number, existing_positions, self.grid_size
                     )
             else:

@@ -1,3 +1,7 @@
+from typing import Tuple, List
+
+PositonType = Tuple[int,int]
+
 class Grid:
     """
     グリッド空間とグリッド上のオブジェクト位置を管理するクラス。
@@ -15,7 +19,7 @@ class Grid:
 
     def add_object(self, obj_id: str, position: tuple[int, int]):
         """
-        指定された位置にオブジェクトをグリッドに追加します。
+        オブジェクトを指定されたグリッド位置に追加します。
 
         Args:
             obj_id (str): オブジェクトの一意な識別子 (例: 'agent_0', 'goal_1')。

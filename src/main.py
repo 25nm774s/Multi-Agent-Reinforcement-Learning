@@ -145,8 +145,17 @@ if __name__ == '__main__':
         simulation.save_model_weights()
         simulation.load_model_weights()
     
+    def dimensions_estimater(grid_size:int, agent_number:int)->int:
+        res = 1
+        for i in range(agent_number):
+            res *= (grid_size * grid_size - i)
+
+        return res
 
     if config.learning_mode == "Q":
+        if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
+            raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
+        
         q_learning()
         #debug_q()
     elif config.learning_mode == "DQN":

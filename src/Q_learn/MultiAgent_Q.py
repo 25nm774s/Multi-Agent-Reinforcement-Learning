@@ -9,7 +9,7 @@ RESET = '\033[0m'
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
-from utils.ConfigManager import ConfigManager
+from utils.ConfigManager import ConfigManager, ConfigLoader
 
 from .Agent_Q import Agent
 from .QTable import QTableType
@@ -37,9 +37,12 @@ class MultiAgent_Q:
         )
 
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
+        file_path = os.path.join(cp_dir, "CONST_Config.json")
+        os.makedirs(cp_dir)
         json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
-        conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
-        print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
+        #conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
+        #print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
+        conf = ConfigLoader(file_path)
 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
@@ -170,7 +173,7 @@ class MultiAgent_Q:
             episode_step:int = step_count
 
             # ログにスコアを記録
-            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss)
+            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss, done)
 
             episode_losses.append(episode_loss) # 100エピソードまで貯め続ける
             episode_rewards.append(episode_reward)
@@ -429,7 +432,7 @@ class MultiAgent_Q:
             episode_loss:float = (sum(step_losses)/len(step_losses))
             episode_losses.append(episode_loss)
             # ログにスコアを記録
-            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss)
+            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss, done)
 
 
         # デバッグ後のQテーブルサイズ確認 (任意)

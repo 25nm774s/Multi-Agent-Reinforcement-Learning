@@ -78,8 +78,8 @@ if __name__ == '__main__':
         parser.add_argument('--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--epsilon_decay_alpha', default=0.70, type=float)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--epsilon_decay_alpha', default=0.40, type=float)
+        parser.add_argument('--learning_rate', default=0.2, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)
@@ -123,6 +123,14 @@ if __name__ == '__main__':
         simulation.save_model()
         simulation.load_model()
     
+    def debug_q():
+        from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
+        agents:list = [Agent(config,id) for id in range(config.agents_number)]
+        simulation = MultiAgent_Q(config,agents)
+
+        simulation.debug_train()
+    
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
         from DQN.Agent_DQN import Agent_DQN
@@ -140,6 +148,7 @@ if __name__ == '__main__':
 
     if config.learning_mode == "Q":
         q_learning()
+        #debug_q()
     elif config.learning_mode == "DQN":
         dqn_process()
     else:

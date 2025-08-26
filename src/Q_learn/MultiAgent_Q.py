@@ -65,7 +65,10 @@ class MultiAgent_Q:
         print(f"ゴール位置: {self.env.get_goal_positions().values()}")
 
         total_step = 0
-        avg_reward_temp, avg_step_temp = 0, 0
+        #avg_reward_temp, avg_step_temp = 0, 0
+        episode_rewards: list[float] = []   # エピソードごとの報酬を格納
+        episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
+        episode_losses : list[float] = []   # エピソードごとの損失を格納
 
         # ----------------------------------
         # メインループ（各エピソード）
@@ -74,15 +77,16 @@ class MultiAgent_Q:
             if episode_num % 10 == 0:
                 print(f"Episode {episode_num} / {self.episode_number}", end='\r', flush=True)
 
-
             # 100エピソードごとに平均を出力
             if episode_num % 100 == 0:
                 print() # 改行して進捗表示をクリア
-                avg_reward = avg_reward_temp / 100
-                avg_step = avg_step_temp / 100
+                #avg_reward = avg_reward_temp / 100
+                #avg_step = avg_step_temp / 100
                 
-                # エピソードごとの平均損失も計算し、表示に追加
-                avg_loss = sum(losses) / len(losses) if losses else 0 # ここで losses は過去100エピソードの平均損失リスト
+                # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
+                avg_loss   = sum(episode_losses) / len(episode_losses)#    if episode_losses else 0 # ここで losses は過去100エピソードの平均損失リスト
+                avg_reward = sum(episode_rewards) / len(episode_rewards)
+                avg_step   = sum(episode_steps) / len(episode_steps)
 
                 q_table_size = [agent.get_q_table_size() for agent in self.agents]
 
@@ -91,8 +95,10 @@ class MultiAgent_Q:
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
                 print(f"==== エピソード {episode_num - 99} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
                 
-                avg_reward_temp, avg_step_temp = 0, 0
-                losses = [] # 100エピソードごとに損失リストもリセット
+                #avg_reward_temp, avg_step_temp = 0, 0
+                episode_losses = [] # 100エピソードごとに損失リストもリセット
+                episode_rewards = []
+                episode_steps  = []
                 
             # --------------------------------------------
             # 各エピソード開始時に環境をリセット
@@ -103,8 +109,10 @@ class MultiAgent_Q:
 
             done = False
             step_count = 0
-            ep_reward = 0
-            losses = [] # エピソードごとの損失を格納
+            #episode_steps  = []
+            #episode_losses = [] # エピソードごとの損失を格納
+            episode_reward:float = 0.0
+            step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
 
             # ---------------------------
             # 1エピソードのステップループ
@@ -138,7 +146,16 @@ class MultiAgent_Q:
                 next_observation, reward, done, info = self.env.step(actions)
 
                 # Q学習は経験ごとに逐次更新
-                step_losses = [] # 各ステップでのエージェントごとの損失
+                #step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
+
+                # 各エージェントに対して学習を実行
+                for i, agent in enumerate(self.agents):
+                    #agent_action = debug_actions[i]
+                    loss = agent.learn(current_states, actions[i], reward, next_observation, done)
+                    step_losses.append(loss)
+
+
+                """
                 #if 0 == 0: # 学習モードの場合のみ
                 for i, agent in enumerate(self.agents):
                     # if self.mask == 0: # Remove this inner if condition if it exists (checked in instruction 4)
@@ -148,28 +165,34 @@ class MultiAgent_Q:
                     # This might need adjustment based on the specific MARL algorithm (e.g., IQL).
                     loss = agent.learn(current_states, actions[i], reward, next_observation, done)
                     step_losses.append(loss)
+                """
 
                 # ステップの平均損失をエピソード損失リストに追加
-                avg_step_loss = sum(step_losses) / len(step_losses) if step_losses else 0
-                losses.append(avg_step_loss)
+                # avg_step_loss = sum(step_losses) / len(step_losses) if step_losses else 0
+                # episode_losses.append(avg_step_loss)
 
 
                 current_states = next_observation # 状態を更新
-                ep_reward += reward
-
+                #step_reward += reward
+                episode_reward += reward
                 step_count += 1
                 total_step += 1
 
             # エピソード終了
             # エピソードの平均損失を計算
-            avg_episode_loss = sum(losses) / len(losses) if losses else 0
-
+            episode_loss:float = sum(step_losses)/len(step_losses)
+            #episode_reward:float = step_reward
+            episode_step:int = step_count
 
             # ログにスコアを記録
-            self.saver.log_episode_data(episode_num, step_count, ep_reward, avg_episode_loss)
+            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss)
 
-            avg_reward_temp += ep_reward
-            avg_step_temp += step_count
+            episode_losses.append(episode_loss) # 100エピソードまで貯め続ける
+            episode_rewards.append(episode_reward)
+            episode_steps.append(episode_step)
+
+            #avg_reward_temp += episode_reward
+            #avg_step_temp += step_count
 
         self.saver.save_remaining_episode_data()
         self.saver.save_visited_coordinates()
@@ -216,3 +239,215 @@ class MultiAgent_Q:
         print("Saving results...")
         self.plot_results.draw()
         self.plot_results.draw_heatmap()
+
+
+    def debug_train(self):
+        class DebugGridWorldConfig:
+            def __init__(self):
+                self.grid_size = 5  # 小さなグリッド
+                # デバッグしたい特定のエピソード番号のリスト
+                self.debug_episodes = [110, 7000]
+                # 最大エピソード数はデバッグしたい最大のエピソード番号までとします
+                self.episode_number = max(self.debug_episodes)
+                self.max_timestep = 25 # ステップ数は適宜調整
+                self.mask = 0 # 自己中心モード (状態空間が小さい方がデバッグしやすい)
+                # エージェント数を2に戻して複数のエージェントのTD誤差を確認できるようにします
+                self.agents_number = 2
+                self.goals_number = 2 # ゴール2つ
+                self.reward_mode = 0 # シンプルな報酬モード
+                self.render_mode = 0
+                self.load_model = 0
+                self.pause_duration = 0.1
+                self.learning_rate = 0.1
+                self.discount_factor = 0.99
+                self.epsilon = 0.1 # 探索率を低めに設定（再現性を高めるため）
+                self.epsilon_decay_alpha = 0.70
+                self.min_epsilon = 0.01
+                self.max_epsilon = 1.0 # εを高くして探索を促す
+                self.action_size = 5
+
+        debug_config = DebugGridWorldConfig()
+
+        # ダミーのエージェントをインスタンス化
+        # debug_config.agents_number の数だけ Agent インスタンスを作成します
+        debug_agents = [Agent(debug_config, i) for i in range(debug_config.agents_number)]
+
+        # QTableを初期化 (ロードはしない)
+        # 各エージェントの Agent.__init__ で QTable は初期化されています
+        # ここでは特に明示的な初期化コードは不要です
+
+        # ダミーの環境をインスタンス化
+        debug_env = MultiAgentGridEnv(debug_config)
+
+        episode_losses:list[float] = []#100エピソード分のTDを格納
+        episode_reward = 0
+
+        print("--- TD誤差 デバッグ開始 ---")
+
+        # 各エピソードのループ
+        for episode_num in range(1, debug_config.episode_number + 1):
+
+            # デバッグ対象のエピソードかどうかを判定
+            is_debug_episode = episode_num in debug_config.debug_episodes
+
+            if is_debug_episode:
+                print(f"\n--- エピソード {episode_num} (デバッグ対象) ---")
+            elif episode_num % 100 == 0:
+                average_episode100_loss = sum(episode_losses)/len(episode_losses)
+                print(f" エピソード {episode_num} / {debug_config.episode_number}", end='\r', flush=True)
+                print(f" エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{(average_episode100_loss):.4f}{RESET}")
+                print(f" エピソード {episode_num - 99} ~ {episode_num} のloss/25step: {(episode_losses[::25])}")
+
+                episode_losses = []
+
+
+            # 環境をリセットし、初期状態を取得
+            try:
+                # エージェントをゴールと重複しないように、ランダムに配置
+                debug_current_states:tuple[tuple[int, int], ...] = debug_env.reset() # ランダム配置を使用
+                if is_debug_episode:
+                    print(f"初期状態 (グローバル): {debug_current_states}")
+            except ValueError as e:
+                print(f"環境リセットエラー (エピソード {episode_num}): {e}. ゴールとエージェントの数がグリッドサイズに対して多すぎる可能性があります。設定を確認してください。")
+                continue # 次のエピソードへ
+
+
+            done = False
+            step_count = 0
+
+            # 1エピソードのステップループ
+            while not done and step_count < debug_config.max_timestep:
+                # 各エージェントのアクションを選択し、リストに収集
+                debug_actions = []
+                for i, agent in enumerate(debug_agents):
+                    # エージェントのε減衰 (全体のステップ数を使用)
+                    # あるいは、デバッグでは固定εを使用しても良い
+                    # total_step の計算はメインループに依存するので、ここではエピソード内ステップを使用するか固定します
+                    # agent.decay_epsilon_pow(episode_num * debug_config.max_timestep + step_count) # シンプルなステップ数を使う場合
+                    agent.epsilon = 0 if is_debug_episode else 0.1
+
+                    # 現在のQテーブル用の状態表現を取得 (Agent._get_q_stateはAgentインスタンスのメソッド)
+                    # global_state を渡して各エージェントが自身のQStateを生成
+                    agent_q_state = agent._get_q_state(debug_current_states)
+
+                    # 行動を選択 (epsilon-greedy)
+                    # Agent.get_action は global_state を受け取り、内部でQStateに変換して行動を選択
+                    debug_actions.append(agent.get_action(debug_current_states))
+
+
+                # 環境を1ステップ進める (全エージェントのアクションをリストで渡す)
+                debug_next_states, debug_reward, debug_done, debug_info = debug_env.step(debug_actions)
+
+                step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
+                # --- TD誤差の計算とログ出力 (デバッグ対象エピソードのみ) ---
+                if is_debug_episode:
+                    print(f"\n-- ステップ {step_count + 1} --")
+                    print(f"現在のグローバル状態: {debug_current_states}")
+                    print(f"選択された行動 (全エージェント): {debug_actions}")
+                    print(f"得られた報酬: {debug_reward}")
+                    print(f"次のグローバル状態: {debug_next_states}")
+                    print(f"エピソード完了フラグ (done): {debug_done}")
+
+                    # 各エージェントについてTD誤差を計算し、ログ出力
+                    for i, agent in enumerate(debug_agents):
+                        agent_q_state = agent._get_q_state(debug_current_states)
+                        agent_next_q_state = agent._get_q_state(debug_next_states)
+                        agent_action = debug_actions[i] # このエージェントが取った行動
+
+                        print(f"\n  -- エージェント {i} のTD誤差計算 --")
+                        print(f"  現在のQテーブル用状態: {agent_q_state}")
+
+                        # Qテーブル内部の状態を確認
+                        print(f"  現在の状態 ({agent_q_state}) はQテーブルに存在するか: {agent_q_state in agent.q_table.q_table}")
+                        if agent_q_state in agent.q_table.q_table:
+                            print(f"  Qテーブル内部の現在の状態のQ値: {agent.q_table.q_table[agent_q_state]}")
+                        print(f"  Agent.q_table.get_q_values({agent_q_state}) が返すQ値: {agent.q_table.get_q_values(agent_q_state)}")
+
+
+                        print(f"  選択された行動: {agent_action}")
+                        # 各エージェントが受け取る報酬はグローバル報酬と仮定（MultiAgent_Q参照）
+                        print(f"  受け取った報酬: {debug_reward}")
+                        print(f"  次のQテーブル用状態: {agent_next_q_state}")
+
+                        # Qテーブル内部の次の状態を確認
+                        print(f"  次の状態 ({agent_next_q_state}) はQテーブルに存在するか: {agent_next_q_state in agent.q_table.q_table}")
+                        if agent_next_q_state in agent.q_table.q_table:
+                            print(f"  Qテーブル内部の次の状態のQ値: {agent.q_table.q_table[agent_next_q_state]}")
+
+
+                        # 現在の状態・行動に対するQ値 (更新前の値)
+                        # get_q_values を使用して、Qテーブルにまだ存在しない状態がアクセスされてもエラーにならないようにします
+                        debug_current_q_value = agent.q_table.get_q_values(agent_q_state)[agent_action]
+                        print(f"  現在のQ(s, a) (更新前): {debug_current_q_value}")
+
+                        # 次の状態での最大Q値 (Q学習)
+                        # エピソードが完了した場合は次の状態の価値は0
+                        debug_max_next_q_value = 0.0
+                        if not debug_done:
+                            debug_max_next_q_value = agent.q_table.get_max_q_value(agent_next_q_state) # QTable.get_max_q_valueを使用
+                        print(f"  次の状態での最大Q(s', a'): {debug_max_next_q_value}")
+
+
+                        # TDターゲットの計算
+                        debug_td_target = debug_reward + debug_config.discount_factor * debug_max_next_q_value
+                        print(f"  TDターゲット (r + γ * max Q(s', a')): {debug_td_target:.3}")
+
+                        # TDデルタ (誤差) の計算
+                        debug_td_delta = debug_td_target - debug_current_q_value
+                        print(f"  TDデルタ (TDターゲット - Q(s, a)): {debug_td_delta:.3}")
+
+                        # TD誤差絶対値 (Lossとして使用される値)
+                        debug_loss = abs(debug_td_delta)
+                        print(f"  TD誤差絶対値 (Loss): {debug_loss:.3}")
+
+                        # Q値の更新 (Agent.learnで行われる処理) の直前と直後の値を確認
+                        # 更新前の該当Q値を取得 (再度取得して厳密に)
+                        q_before_learn = agent.q_table.get_q_values(agent_q_state)[agent_action]
+                        print(f"  Q(s, a) 更新直前: {q_before_learn:.4}")
+
+                        # 学習実行
+                        # Agent.learn は QTable.learn をラップしているため、Agent.learn を呼び出します
+                        actual_td_delta_from_learn = agent.learn(debug_current_states, agent_action, debug_reward, debug_next_states, debug_done)
+
+                        # 更新後の該当Q値を取得
+                        q_after_learn = agent.q_table.get_q_values(agent_q_state)[agent_action]
+                        print(f"  Q(s, a) 更新直後: {q_after_learn:.4}")
+                        # 期待される更新後の値も計算して比較するとさらに良い
+                        #expected_q_after_learn = q_before_learn + debug_config.learning_rate * debug_td_delta
+                        #print(f"  期待される更新後のQ(s, a): {expected_q_after_learn}")
+                        #print(f"  期待値と実際の更新値の差: {abs(q_after_learn - expected_q_after_learn)}")
+                        print(f"  Agent.learn から返されたTD誤差絶対値: {abs(actual_td_delta_from_learn)}")
+                        step_losses.append(actual_td_delta_from_learn)
+
+                else: # デバッグ対象外エピソードでも学習は実行
+                    # 各エージェントに対して学習を実行
+                    for i, agent in enumerate(debug_agents):
+                        agent_action = debug_actions[i]
+                        loss = agent.learn(debug_current_states, agent_action, debug_reward, debug_next_states, debug_done)
+                        step_losses.append(loss)
+                
+                if episode_num%100==0:print(episode_num,"step_losses:",step_losses)
+
+                # 次のステップのために状態を更新
+                debug_current_states = debug_next_states
+
+                step_count += 1
+                episode_reward += debug_reward
+                # エピソードが完了したらループを抜ける
+                if debug_done:
+                    if is_debug_episode:
+                        print("\nエピソード完了.")
+                    break
+            
+            # エピソード終了
+            episode_loss:float = (sum(step_losses)/len(step_losses))
+            episode_losses.append(episode_loss)
+            # ログにスコアを記録
+            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss)
+
+
+        # デバッグ後のQテーブルサイズ確認 (任意)
+        print(f"\n--- TD誤差 デバッグ終了 ---")
+        # 各エージェントのQテーブルサイズを出力
+        for i, agent in enumerate(debug_agents):
+            print(f"エージェント {i} の最終エピソード後のQテーブルサイズ: {agent.get_q_table_size()}")

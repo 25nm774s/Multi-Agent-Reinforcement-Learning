@@ -173,9 +173,12 @@ if __name__ == '__main__':
         if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
             raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
         
-        #q_learning()
+        if config.episode_number == -1:
+            load_playing(config)
+        else:
+            q_learning()
         #debug_q()
-        load_playing(config)
+        #load_playing(config)
     elif config.learning_mode == "DQN":
         dqn_process()
     else:

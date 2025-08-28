@@ -131,6 +131,23 @@ if __name__ == '__main__':
 
         simulation.debug_train()
     
+    def load_playing(config):
+        from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
+        
+        agents:list = [Agent(config,id) for id in range(config.agents_number)]
+        simulation = MultiAgent_Q(config,agents)
+
+        traj = simulation.make_trajectry()
+
+        print("GET: trajectry")
+        for tr in traj: print(tr)
+
+        from utils.render import Render
+        render = Render(config.grid_size, config.goals_number, config.agents_number)
+        render.render_anime(traj, './out.gif')
+        
+
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
         from DQN.Agent_DQN import Agent_DQN
@@ -156,8 +173,9 @@ if __name__ == '__main__':
         if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
             raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
         
-        q_learning()
+        #q_learning()
         #debug_q()
+        load_playing(config)
     elif config.learning_mode == "DQN":
         dqn_process()
     else:

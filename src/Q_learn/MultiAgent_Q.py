@@ -38,7 +38,7 @@ class MultiAgent_Q:
 
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
         file_path = os.path.join(cp_dir, "CONST_Config.json")
-        os.makedirs(cp_dir)
+        os.makedirs(cp_dir, exist_ok=True)
         json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
         #conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
         #print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
@@ -440,3 +440,31 @@ class MultiAgent_Q:
         # 各エージェントのQテーブルサイズを出力
         for i, agent in enumerate(debug_agents):
             print(f"エージェント {i} の最終エピソード後のQテーブルサイズ: {agent.get_q_table_size()}")
+
+
+    def make_trajectry(self):
+        self.load_model()
+
+        states_log = []
+        done = False
+        time_step = 0
+
+        states = self.env.reset()
+
+        while not done and time_step < self.max_ts:
+            
+            actions = []
+            
+            for agent in self.agents:
+                a = agent.get_action(states)                #<-ここの仕様が統一感がない
+                actions.append(a)
+            
+            next_states, _, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
+
+            states_log.append(states)
+
+            states = next_states
+
+            time_step +=1             
+
+        return states_log

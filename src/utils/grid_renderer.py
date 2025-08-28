@@ -3,7 +3,7 @@ import matplotlib.patches as patches
 
 # Use the 'inline' backend for displaying plots in Colab notebooks
 # %matplotlib inline
-
+'''
 class GridRenderer:
     """
     GridWorld 環境を matplotlib を使用してレンダリングするクラス.
@@ -92,3 +92,4 @@ class GridRenderer:
         描画ウィンドウを閉じる.
         """
         plt.close(self.fig)
+'''

@@ -1,11 +1,11 @@
 # Implementation of Grid and MultiAgentGridEnv classes based on the design
 
 import random
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 from .Grid import Grid, PositionType
 from .CollisionResolver import CollisionResolver
-from utils.grid_renderer import GridRenderer
+#from utils.grid_renderer import GridRenderer
 
 # GridRenderer クラスは以前のセルで定義され、利用可能であることを想定しています。
 # もし利用できない場合は、MultiAgentGridEnv.__init__ 内の警告で通知されます。
@@ -48,15 +48,16 @@ class MultiAgentGridEnv:
         self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
 
         # レンダラーの設定
-        self.renderer = None
-        if self.render_mode == 1:
-            try:
+        #self.renderer = None
+        #if self.render_mode == 1:
+        #    try:
                 # GridRenderer クラスがどこか（以前のセルなど）で定義されていることを想定
                 # 必要なレンダリング引数を渡します
-                self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size, args.pause_duration)
-            except NameError:
-                print("Warning: GridRenderer クラスが見つかりませんでした。レンダリングは無効になります。")
-                self.renderer = None
+        #        pass
+                #self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size, args.pause_duration)
+        #    except NameError:
+        #        print("Warning: GridRenderer クラスが見つかりませんでした。レンダリングは無効になります。")
+        #        self.renderer = None
 
         # 環境初期化時に一度だけ固定ゴールを設定します
         self._setup_fixed_goals()
@@ -173,27 +174,27 @@ class MultiAgentGridEnv:
 
         return next_observation, reward, done, info
 
-    def render(self):
+    #def render(self):
         """
         環境の現在の状態を描画します。
         """
-        if self.renderer:
+    #    if self.renderer:
             # グリッドから現在のゴールとエージェントの位置を取得します
-            goal_positions_list = list(self.get_goal_positions().values())
-            agent_positions_list = list(self.get_agent_positions().values())
-            self.renderer.render(goal_positions_list, agent_positions_list)
+            #goal_positions_list = list(self.get_goal_positions().values())
+            #agent_positions_list = list(self.get_agent_positions().values())
+            #self.renderer.render(goal_positions_list, agent_positions_list)
             # 以前のコードのレンダリングメカニズムに基づいて、レンダラーが内部で表示を処理する場合、
             # ここで display/plt.show() を呼び出す必要はありません。
             # ただし、Colab環境での表示のために、明示的にdisplayを呼び出します。
             # display(self.renderer.fig)
 
 
-    def close(self):
+    #def close(self):
         """
         描画ウィンドウを閉じます。
         """
-        if self.renderer:
-            plt.close(self.renderer.fig)
+        #if self.renderer:
+        #    plt.close(self.renderer.fig)
 
 
     # --- ヘルパーメソッド (内部ロジック) ---

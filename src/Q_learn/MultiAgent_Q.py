@@ -15,6 +15,8 @@ from .Agent_Q import Agent
 from .QTable import QTableType
 from .IO_Handler import Model_IO
 
+from Enviroments.Grid import PositionType
+
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
         # Use the MultiAgentGridEnv class defined in previous cells
@@ -443,13 +445,19 @@ class MultiAgent_Q:
 
 
     def make_trajectry(self):
-        self.load_model()
+        #self.load_model()
 
         states_log = []
         done = False
         time_step = 0
+        reward = 0.0
 
         states = self.env.reset()
+
+        # 仕方なく強硬手段でゴールを設定
+        #for i in range(self.goals_number): 
+        #    del self.env._grid._object_positions[f'goal_{i}']
+        #    self.env._grid.add_object(f'goal_{i}',goal_pos[i])
 
         while not done and time_step < self.max_ts:
             
@@ -459,12 +467,12 @@ class MultiAgent_Q:
                 a = agent.get_action(states)                #<-ここの仕様が統一感がない
                 actions.append(a)
             
-            next_states, _, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
-
-            states_log.append(states)
+            next_states, r, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
 
             states = next_states
+            states_log.append(states)
 
-            time_step +=1             
+            time_step +=1
+            reward += r
 
-        return states_log
+        return states_log, reward, done

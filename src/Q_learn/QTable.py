@@ -56,7 +56,7 @@ class QTable:
         """
         # 不正なactionのチェックを追加
         if not isinstance(action, int) or not (0 <= action < self.action_size):
-             raise ValueError(f"Action must be an integer between 0 and {self.action_size - 1}, but got {action}.")
+            raise ValueError(f"Action must be an integer between 0 and {self.action_size - 1}, but got {action}.")
 
 
         # Qテーブルに状態が存在しない場合は初期化

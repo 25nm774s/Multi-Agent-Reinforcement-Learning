@@ -249,6 +249,8 @@ class HashManager:
             #print(f"エラー: ハッシュファイル '{hash_file_path}' の読み込み中にエラーが発生しました: {e}")
             raise OSError(f"エラー: ハッシュファイル '{hash_file_path}' の読み込み中にエラーが発生しました: {e}")
 
+'''
+
 class ConfigLoader:
     """
     設定ファイルを読み込み、JSONとしてパースするクラス。
@@ -324,3 +326,204 @@ class ConfigLoader:
     def __str__(self) -> str:
         return json.dumps(self.data, indent=4)
 
+'''
+
+
+class ConfigLoader:
+    """
+    設定ファイルを読み込み、保存するためのクラス。
+    JSON形式のファイルを扱い、キーを整数として管理します。
+    """
+    def __init__(self, file_path:str):
+        """
+        ConfigLoaderを初期化します。
+
+        Args:
+            file_path (str): 設定ファイルのパス。ファイルが存在しない場合は作成されます。
+        """
+        self.fpath  = file_path
+
+        self._dir   = os.path.dirname(self.fpath)
+        self._fname = os.path.basename(self.fpath)
+
+        self._data = {}
+
+        if os.path.exists(self.fpath):
+            self._load()
+        else:
+            os.makedirs(self._dir, exist_ok=True)
+            self._save(self.data)
+
+    @property
+    def data(self):
+        """
+        現在読み込まれている設定データを返します。
+
+        Returns:
+            dict: 設定データ。
+        """
+        return self._data
+
+    def __len__(self):
+        """
+        設定データのキーの数を返します。
+
+        Returns:
+            int: キーの数。
+        """
+        return len(self._data)
+
+    def __repr__(self):
+        """
+        設定データを整形されたJSON文字列として返します。
+
+        Returns:
+            str: 整形されたJSON文字列。
+        """
+        return json.dumps(self._data, indent=4)
+
+    def __str__(self):
+        """
+        設定データを文字列として返します。
+
+        Returns:
+            str: 設定データの文字列表現。
+        """
+        return str(self._data)
+
+    def __contains__(self, key):
+        """
+        指定されたキーが設定データに存在するかを確認します。
+
+        Args:
+            key: 確認するキー。
+
+        Returns:
+            bool: キーが存在する場合はTrue、それ以外はFalse。
+        """
+        return key in self._data
+
+    def _save(self, json_data):
+        """
+        現在の設定データをファイルに保存します。
+
+        Args:
+            json_data (dict): 保存するデータ。
+        """
+        # Convert integer keys back to strings for saving
+        string_keys_data = {str(k): v for k, v in json_data.items()}
+        with open(self.fpath, "w") as file:
+            json.dump(string_keys_data, file, indent=4)
+
+    def _load(self):
+        """
+        ファイルから設定データを読み込みます。
+        """
+        if not os.path.exists(self.fpath):
+            return
+
+        with open(self.fpath, "r") as file:
+            data = json.load(file)
+
+        # Convert keys to integers after loading
+        self._data = {str(k): v for k, v in data.items()}
+
+    def update(self, key:str, value):
+        """
+        指定されたキーの値または新しいキーと値のペアを更新または追加します。
+
+        Args:
+            key (int): 更新または追加するキー（整数）。
+            value (str): キーに対応する値（文字列）。
+
+        Raises:
+            ValueError: キーが整数でない、値が文字列でない、またはキーが負の値の場合。
+        """
+        #if not isinstance(key,int): raise ValueError('key type have to int')
+        #if not isinstance(value,str): raise ValueError('value type have to str')
+
+        #if key < 0: raise ValueError(f'Value Error: {key} not +0 -by update')
+
+        # Check if the key exists using integer key
+        if key in self.data:
+            self._data[key] = value
+        else:
+            print(f"Info: key({key}) not exist")
+
+            self._data[key] = value
+            self._save(self.data)
+
+    def add(self, key:str, value):
+        """
+        新しいキーと値のペアを追加します。キーが既に存在する場合はエラーとなります。
+
+        Args:
+            key (str): 追加するキー（変数名）。
+            value (floar|int): キーに対応する値。
+
+        Raises:
+            ValueError: キーが整数でない、値が文字列でない、キーが負の値、またはキーが既に存在する場合。
+        """
+        #if not isinstance(key,int): raise ValueError('key type have to int')
+        #if not isinstance(value,str): raise ValueError('value type have to str')
+
+        #if key < 0: raise ValueError(f'Value Error: {key} not +0 -by add')
+
+        if key in self.data:
+            raise ValueError(f'key({key}) already exist')
+        else:
+            self._data[key] = value
+            self._save(self.data)
+
+
+if __name__=='__main__':
+    import os
+
+    check_suite = [0,0,0]
+    dammy_path = os.path.join('./dammypath/data.json')
+
+    cl = ConfigLoader(dammy_path)
+
+    # 1回目...データは空
+    if cl.data == {}:
+        print(f"{cl.data} == (void)...期待通り")
+        check_suite[0]=1
+
+    # データを追加
+    cl.add("data1", 7)
+    cl.add("data2",42)
+
+    del cl
+    # 2回目...データに値が設定
+    try:print(cl)#type:ignore
+    except Exception: print("clインスタンスが存在しないことを確認.")
+    cl = ConfigLoader(dammy_path)
+
+    if cl.data == {"data1":7,"data2":42}:
+        print(f"{cl.data} =='data1':7,'data2':42...期待通り")# データが表示されることを期待
+        check_suite[1]=1
+
+    # データを追加
+    cl.update("data999", 999)
+
+    del cl
+    try:print(cl)#type:ignore
+    except Exception: print("clインスタンスが存在しないことを確認.")
+
+    cl = ConfigLoader(dammy_path)
+
+    # 3回目...同様+追加データを期待
+    if cl.data == {"data1":7,"data2":42,"data999":999}:
+        print(f"{cl.data} =='data1':7,'data2':42,'data999',999...期待通り")
+        check_suite[2]=1
+
+    # サマリー表示
+    if all(check_suite): print("全項目が期待通り終えました。")
+    else: print(f"意図しない挙動あり。{check_suite}")
+
+    try:
+        os.remove(dammy_path)
+        os.rmdir("./dammypath")
+        print("ダミーパスを削除しました。")
+    except Exception as e:
+        raise e

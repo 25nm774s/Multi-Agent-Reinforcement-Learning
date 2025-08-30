@@ -17,6 +17,7 @@ from .IO_Handler import Model_IO
 
 from Enviroments.Grid import PositionType
 
+
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
         # Use the MultiAgentGridEnv class defined in previous cells
@@ -40,12 +41,23 @@ class MultiAgent_Q:
 
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
         file_path = os.path.join(cp_dir, "CONST_Config.json")
-        os.makedirs(cp_dir, exist_ok=True)
-        json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
+        #os.makedirs(cp_dir, exist_ok=True)
+        #json_data = {"agents_number":self.agents_number,"goal_number": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
+        json_data = {
+            "agents_number":self.agents_number,
+            "goal_number": self.goals_number,
+            "goal_position":self.env.get_goal_positions()
+        }
         #conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
         #print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
         conf = ConfigLoader(file_path)
 
+        if not conf.data:   # data == {}...初期
+            #conf._data = json_data
+            conf._save(json_data)
+        else:
+            print("2回目以降")
+                             
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
         
@@ -127,7 +139,7 @@ class MultiAgent_Q:
             # 1エピソードのステップループ
             # ---------------------------
             while not done and step_count < self.max_ts:
-                actions = []
+                actions:list[int] = []
                 for i, agent in enumerate(self.agents):
                     # Agentクラスのdecay_epsilon_powを呼び出し
                     agent.decay_epsilon_pow(total_step)
@@ -160,7 +172,7 @@ class MultiAgent_Q:
                 # 各エージェントに対して学習を実行
                 for i, agent in enumerate(self.agents):
                     #agent_action = debug_actions[i]
-                    loss = agent.learn(current_states, actions[i], reward, next_observation, done)
+                    loss = agent.learn(current_states, int(actions[i]), float(reward), next_observation, bool(done))
                     step_losses.append(loss)
 
                 current_states = next_observation # 状態を更新

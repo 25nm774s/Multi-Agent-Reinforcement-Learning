@@ -138,7 +138,9 @@ class Agent:
         current_q_state = self._get_q_state(global_state)
         next_q_state = self._get_q_state(next_global_state)
 
-
+        if not isinstance(action, int): 
+            raise TypeError(f'actionはint型を期待しますが、実際は{type(action)}でした。')
+        
         # 学習ロジックをストラテジーオブジェクトに委譲
         td_delta = self._learning_strategy.update_q_value(
             self.q_table,

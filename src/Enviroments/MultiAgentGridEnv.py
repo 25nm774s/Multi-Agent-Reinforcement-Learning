@@ -14,7 +14,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args):
+    def __init__(self, args, fixrd_goals:tuple[PositionType, ...]):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -47,20 +47,9 @@ class MultiAgentGridEnv:
         self._goals_reached_status: list[bool] = [False] * self.goals_number # 密な報酬モード3用
         self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
 
-        # レンダラーの設定
-        #self.renderer = None
-        #if self.render_mode == 1:
-        #    try:
-                # GridRenderer クラスがどこか（以前のセルなど）で定義されていることを想定
-                # 必要なレンダリング引数を渡します
-        #        pass
-                #self.renderer = GridRenderer(args.window_width, args.window_height, self.grid_size, args.pause_duration)
-        #    except NameError:
-        #        print("Warning: GridRenderer クラスが見つかりませんでした。レンダリングは無効になります。")
-        #        self.renderer = None
-
         # 環境初期化時に一度だけ固定ゴールを設定します
-        self._setup_fixed_goals()
+        for i,goal in enumerate(fixrd_goals):
+            self._grid.add_object(self._goal_ids[i], goal)
 
 
     def reset(self, initial_agent_positions: list[PositionType] = None, placement_mode: str = 'random'):#type:ignore
@@ -173,28 +162,6 @@ class MultiAgentGridEnv:
         info = {}
 
         return next_observation, reward, done, info
-
-    #def render(self):
-        """
-        環境の現在の状態を描画します。
-        """
-    #    if self.renderer:
-            # グリッドから現在のゴールとエージェントの位置を取得します
-            #goal_positions_list = list(self.get_goal_positions().values())
-            #agent_positions_list = list(self.get_agent_positions().values())
-            #self.renderer.render(goal_positions_list, agent_positions_list)
-            # 以前のコードのレンダリングメカニズムに基づいて、レンダラーが内部で表示を処理する場合、
-            # ここで display/plt.show() を呼び出す必要はありません。
-            # ただし、Colab環境での表示のために、明示的にdisplayを呼び出します。
-            # display(self.renderer.fig)
-
-
-    #def close(self):
-        """
-        描画ウィンドウを閉じます。
-        """
-        #if self.renderer:
-        #    plt.close(self.renderer.fig)
 
 
     # --- ヘルパーメソッド (内部ロジック) ---
@@ -458,3 +425,44 @@ class MultiAgentGridEnv:
         else:
             print(f"Warning: 未知の完了条件モード: {done_mode}。常に False を返します。")
             return False
+        
+
+##import random
+class GoalSetter:
+    def __init__(self, grid:Grid, fixed_goal=None, seed=None) -> None:
+        self._grid:Grid = grid
+        # 得られた結果が(1,2),(3,4)だとする。
+        if not fixed_goal and seed:
+            goals:tuple[PositionType, ...] = self._goal_setter_from_seed(seed)
+        elif not seed and fixed_goal:
+            goals:tuple[PositionType, ...] = fixed_goal
+
+        self._goal_setter(goals)
+        self._goals = goals
+
+    #def _goal_setter(self, *goals:tuple[tuple[int,int]]):
+    def _goal_setter(self, goals:tuple[PositionType, ...]):
+        for id, goal in enumerate(goals):
+            self._grid.add_object(f'goal_{id}',goal)
+
+    def _goal_setter_from_seed(self,seed:int)-> tuple[PositionType, ...]:
+        # ランダムに得られた結果が(1,2),(3,4)だと仮定する。
+        return ((1,2),(3,4))
+    
+    def get_goal_pos(self):
+        return self._goals
+
+
+if __name__=='__main__':
+    class arg_object:
+        def __init__(self) -> None:
+            self.grid_size=10# (int) 
+            self.agents_number=2# (int) 
+            self.goals_number=2# (int) 
+            self.reward_mode=9# (int) 
+            self.render_mode=False# (int) 
+            self.window_width=400# (int) 
+            self.window_height=600# (int) 
+            self.pause_duration=1.0# (float)
+
+    arg = arg_object()

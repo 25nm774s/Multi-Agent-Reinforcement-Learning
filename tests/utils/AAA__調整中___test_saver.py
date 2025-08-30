@@ -2,9 +2,9 @@ import unittest
 import os
 import pandas as pd
 import numpy as np
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from src.utils.Model_Saver import Saver
+from src.utils.Saver import Saver
 
 class TestSaver(unittest.TestCase):
     """Saverクラスの単体テスト."""
@@ -56,13 +56,13 @@ class TestSaver(unittest.TestCase):
         with patch('__main__.Saver._log_scores') as mock_log_scores:
             # 99エピソードをログ記録
             for i in range(1, 100):
-                self.saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01)
+                self.saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01, False)
 
             self.assertEqual(len(self.saver.episode_data_buffer), 99)
             mock_log_scores.assert_not_called()
 
             # 100番目のエピソードをログ記録。これによりlog_scoresがトリガーされるはず
-            self.saver.log_episode_data(100, 1000, 10.0, 1.0)
+            self.saver.log_episode_data(100, 1000, 10.0, 1.0, True)
 
             self.assertEqual(len(self.saver.episode_data_buffer), 0)
             mock_log_scores.assert_called_once()
@@ -89,7 +89,7 @@ class TestSaver(unittest.TestCase):
         # 100エピソード未満をログ記録
         num_episodes_to_log = 42
         for i in range(1, num_episodes_to_log + 1):
-            saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01)
+            saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01, True)
 
         self.assertEqual(len(saver.episode_data_buffer), num_episodes_to_log)
 
@@ -191,7 +191,7 @@ class TestSaver(unittest.TestCase):
 
         # エピソードデータをログ記録
         for i in range(1, num_episodes_to_log + 1):
-            saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01)
+            saver.log_episode_data(i, i * 10, i * 0.1, i * 0.01, True)
 
         # _log_scoresが呼び出された回数を確認 (2つの完全な100エピソードグループで2回呼び出されるはず)
         # ファイル内容を直接確認する

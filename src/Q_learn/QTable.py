@@ -1,14 +1,11 @@
-# Constants (already defined in a previous cell)
-# RED = '\033[91m'
-# GREEN = '\033[92m'
-# RESET = '\033[0m'
-
-from typing import Tuple, Dict, List, Any
+import unittest
+from typing import Tuple, Dict, List
 
 # Define the type aliases again for clarity within this cell
 QState = Tuple[int, ...]
 QValues = List[float]
 QTableType = Dict[QState, QValues]
+
 
 class QTable:
     """
@@ -23,9 +20,15 @@ class QTable:
             action_size (int): 環境の行動空間サイズ.
             learning_rate (float): 学習率 α.
             discount_factor (float): 割引率 γ.
-            load_model (bool): 既存のQテーブルをロードするかどうか.
-            model_path (str): Qテーブルファイルのパス.
         """
+        if not isinstance(action_size, int) or action_size <= 0:
+            raise ValueError("action_size must be a positive integer.")
+        if not isinstance(learning_rate, (int, float)) or not (0.0 <= learning_rate <= 1.0):
+            raise ValueError("learning_rate must be a float between 0.0 and 1.0.")
+        if not isinstance(discount_factor, (int, float)) or not (0.0 <= discount_factor <= 1.0):
+            raise ValueError("discount_factor must be a float between 0.0 and 1.0.")
+
+
         self.action_size = action_size
         self.lr = learning_rate       # 学習率 α
         self.gamma = discount_factor  # 割引率 γ
@@ -51,6 +54,11 @@ class QTable:
         Returns:
             float: 更新に使用されたTD誤差の絶対値.
         """
+        # 不正なactionのチェックを追加
+        if not isinstance(action, int) or not (0 <= action < self.action_size):
+             raise ValueError(f"Action must be an integer between 0 and {self.action_size - 1}, but got {action}.")
+
+
         # Qテーブルに状態が存在しない場合は初期化
         if state not in self.q_table:
             self.q_table[state] = [self._initial_q_value] * self.action_size
@@ -121,10 +129,9 @@ class QTable:
         状態がQテーブルに存在しない場合は、初期化されたQ値リストから最大値(通常0.0)を返す.
 
         Args:
-            state (QState): 状態のQテーブル用表現 (フラット化タプル).
+            state (QState): 状態のQTable用表現 (フラット化タプル).
 
         Returns:
             float: その状態における最大Q値.
         """
         return max(self.get_q_values(state))
-    

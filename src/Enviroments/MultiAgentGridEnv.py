@@ -14,7 +14,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, fixrd_goals:tuple[PositionType, ...]):
+    def __init__(self, args, fixrd_goals:list[PositionType]):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -24,17 +24,13 @@ class MultiAgentGridEnv:
                 agents_number (int)
                 goals_num (int)
                 reward_mode (int)
-                render_mode (int)
-                window_width (int)
-                window_height (int)
-                pause_duration (float)
         """
         self.grid_size: int = args.grid_size
         self.agents_number: int = args.agents_number
         self.goals_number: int = args.goals_number
         self.reward_mode: int = args.reward_mode
-        self.render_mode: int = args.render_mode
-        self.pause_duration: float = args.pause_duration
+        #self.render_mode: int = args.render_mode
+        #self.pause_duration: float = args.pause_duration
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)

@@ -1,3 +1,4 @@
+import random
 from typing import Tuple
 
 PositionType = Tuple[int,int]
@@ -122,3 +123,29 @@ class Grid:
         if obj_id not in self._object_positions:
             raise KeyError(f"ID '{obj_id}' を持つオブジェクトは見つかりませんでした。")
         del self._object_positions[obj_id]
+
+    def sample(self, num_positions) -> list[PositionType]:
+        """
+        既存の位置を避けながら、グリッド内に指定された数の一意なランダム位置のリストを生成します。
+
+        Args:
+            num_positions (int): 生成する一意な位置の数。
+            existing_positions (list[PositionType]): 避ける位置。
+            grid_size (int): グリッドのサイズ。
+
+        Returns:
+            list[PositionType]: 生成された一意な位置のリスト。
+
+        Raises:
+            ValueError: 必要な数の一意な位置を生成できない場合。
+        """
+        #positions = []
+        existing_positions_set = self.get_all_object_positions()
+        all_possible_positions = [(x, y) for x in range(self.grid_size) for y in range(self.grid_size)]
+        available_positions:list[PositionType] = [pos for pos in all_possible_positions if pos not in existing_positions_set]
+
+        if num_positions > len(available_positions):
+            raise ValueError(f"{num_positions} 個の一意な位置を生成できません。利用可能なのは {len(available_positions)} 個のみです。")
+
+        positions:list[PositionType] = random.sample(available_positions, num_positions)
+        return positions

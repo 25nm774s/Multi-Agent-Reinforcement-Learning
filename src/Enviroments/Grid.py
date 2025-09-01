@@ -29,6 +29,8 @@ class Grid:
         Raises:
             ValueError: 位置がグリッド範囲外の場合、または obj_id が既に存在する場合。
         """
+        if not isinstance(position, tuple): raise TypeError(f'positionはタプルを期待しますが、実際は{type(position)}でした。')
+
         if not self.is_valid_position(position):
             raise ValueError(f"位置 {position} はグリッド範囲 ({self.grid_size}x{self.grid_size}) 外です。")
         if obj_id in self._object_positions:
@@ -60,6 +62,7 @@ class Grid:
         Returns:
             dict[str, PositionType]: オブジェクトIDをその位置にマッピングする辞書。
         """
+        #print("get_all_ob...: ",self._object_positions)
         return self._object_positions.copy() # 外部からの変更を防ぐためにコピーを返します。
 
     def is_position_occupied(self, position: PositionType, exclude_obj_id: str = None) -> bool:# type:ignore
@@ -148,4 +151,5 @@ class Grid:
             raise ValueError(f"{num_positions} 個の一意な位置を生成できません。利用可能なのは {len(available_positions)} 個のみです。")
 
         positions:list[PositionType] = random.sample(available_positions, num_positions)
+        #print(positions)list[int] = [7,8,9,5,9], list[type]=[(9,7),(9,9),(3,8)]
         return positions

@@ -14,7 +14,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, fixrd_goals:list[PositionType]):
+    def __init__(self, args, fixrd_goals:tuple[PositionType,...]):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -44,11 +44,12 @@ class MultiAgentGridEnv:
         self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
 
         # 環境初期化時に一度だけ固定ゴールを設定します
-        for i,goal in enumerate(fixrd_goals):
+        for i, goal in enumerate(fixrd_goals):
+            #print("Goal.type: ", type(goal))
             self._grid.add_object(self._goal_ids[i], goal)
 
 
-    def reset(self, initial_agent_positions: list[PositionType] = None, placement_mode: str = 'random'):#type:ignore
+    def reset(self, initial_agent_positions: list[PositionType] = None, placement_mode: str = 'random') -> tuple[PositionType, ...]:#type:ignore
         """
         新しいエピソードのために環境をリセットします。
 
@@ -84,9 +85,11 @@ class MultiAgentGridEnv:
         else:
             if placement_mode == 'random':
                 # ゴールに占有されていない一意なランダム位置を生成します
-                agent_positions = self._generate_unique_positions(
-                    self.agents_number, existing_positions, self.grid_size
-                )
+                #agent_positions = self._generate_unique_positions(
+                #    self.agents_number, existing_positions, self.grid_size
+                #) <<-Gridにランダム座標の生成を移行したため
+                agent_positions = self._grid.sample(self.agents_number)
+                #print(agent_positions,"\tMAGE.reset():agent_positions")
             elif placement_mode == 'near_goals':
                 # ゴール近傍にエージェントを配置するロジックを実装します
                 try:
@@ -246,7 +249,7 @@ class MultiAgentGridEnv:
         return random.sample(near_positions_list, self.agents_number)
 
 
-    def _get_observation(self):
+    def _get_observation(self) -> tuple[PositionType, ...]:
         """
         エージェントの観測を生成します。
         ここではグローバル状態 (全位置のタプル: ゴール、次にエージェント) を返します。
@@ -258,7 +261,7 @@ class MultiAgentGridEnv:
         # 全てのオブジェクト位置のタプルを、オブジェクトIDタイプ (ゴール、次にエージェント) でソートして返します
         goal_positions = [self._grid.get_object_position(goal_id) for goal_id in self._goal_ids]
         agent_positions = [self._grid.get_object_position(agent_id) for agent_id in self._agent_ids]
-        return tuple(goal_positions + agent_positions)
+        return tuple(tuple(goal_positions) + tuple(agent_positions))
 
 
     def get_goal_positions(self) -> dict[str, PositionType]:

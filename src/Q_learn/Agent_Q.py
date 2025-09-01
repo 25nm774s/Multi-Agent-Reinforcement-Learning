@@ -8,6 +8,8 @@ from Q_learn.strategys.action_selection import SelfishActionSelection, ActionSel
 from Q_learn.strategys.learning import SelfishQLearning, LearningStrategy
 from Q_learn.strategys.masked_strategies import CooperativeActionSelection, CooperativeQLearning
 
+from Enviroments.Grid import PositionType
+
 class Agent:
     """
     エージェント個別のロジックを管理するクラス.
@@ -76,7 +78,8 @@ class Agent:
         self.epsilon_decay_alpha = args.epsilon_decay_alpha #getattr(args, 'epsilon_decay_alpha', 0.70)
 
 
-    def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+    #def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+    def _get_q_state(self, global_state: Tuple[PositionType, ...]) -> QState:
         """
         環境の全体状態から、このエージェントにとってのQテーブル用の状態表現を抽出・生成する.
         行動選択ストラテジーオブジェクトに状態表現の生成を委譲する.
@@ -86,7 +89,8 @@ class Agent:
         return self._action_selection_strategy.get_q_state_representation(global_state)
 
 
-    def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:
+    #def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:
+    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
         """
         現在の全体状態に基づいて、エージェントの行動を決定する.
         行動選択ロジックは ActionSelectionStrategy オブジェクトに委譲される.
@@ -119,7 +123,8 @@ class Agent:
         self.epsilon = max(self.epsilon, self.min_epsilon)
 
 
-    def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:
+    #def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:
+    def learn(self, global_state: Tuple[PositionType, ...], action: int, reward: float, next_global_state: Tuple[PositionType, ...], done: bool) -> float:
         """
         単一の経験に基づいてQテーブルを更新するプロセスをAgentが管理する.
         学習ロジックは LearningStrategy オブジェクトに委譲される.

@@ -117,7 +117,7 @@ if __name__ == '__main__':
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
-        simulation.run()
+        simulation.run_method(config.episode_number)
 
         simulation.result_save()
         simulation.save_model()
@@ -125,13 +125,13 @@ if __name__ == '__main__':
 
         traj, r, done = simulation.make_trajectry()
 
-        print("reward:",r, "done:",done)
-        print("GET: trajectry")
-        for tr in traj: print(tr)
+        #print("reward:",r, "done:",done)
+        #print("GET: trajectry")
+        #for tr in traj: print(tr)
 
         from utils.render import Render
-        render = Render(config.grid_size, config.goals_number, config.agents_number)
-        render.render_anime(traj, 'output/out.gif')
+        #render = Render(config.grid_size, config.goals_number, config.agents_number)
+        #render.render_anime(traj, 'output/out.gif')
 
     def debug_q():
         from Q_learn.MultiAgent_Q import MultiAgent_Q

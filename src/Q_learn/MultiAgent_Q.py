@@ -6,7 +6,7 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 
-from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
+from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv, Grid
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
 from utils.ConfigManager import ConfigManager, ConfigLoader
@@ -21,7 +21,7 @@ from Enviroments.Grid import PositionType
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
         # Use the MultiAgentGridEnv class defined in previous cells
-        self.env = MultiAgentGridEnv(args)
+        #self.env = MultiAgentGridEnv(args)
         self.agents = agents # Store the list of Agent instances
 
         self.reward_mode = args.reward_mode
@@ -41,23 +41,28 @@ class MultiAgent_Q:
 
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
         file_path = os.path.join(cp_dir, "CONST_Config.json")
-        #os.makedirs(cp_dir, exist_ok=True)
-        #json_data = {"agents_number":self.agents_number,"goal_number": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
-        json_data = {
-            "agents_number":self.agents_number,
-            "goal_number": self.goals_number,
-            "goal_position":self.env.get_goal_positions()
-        }
-        #conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
-        #print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
+
         conf = ConfigLoader(file_path)
 
         if not conf.data:   # data == {}...初期
-            #conf._data = json_data
+            # ↓データ構造フローがおかしい
+            goal_pos_list:list[PositionType] = Grid(self.grid_size).sample(self.goals_number)
+            
+            json_data = {
+                "agents_number":self.agents_number,
+                "goal_number": self.goals_number,
+                "goal_position":goal_pos_list,
+            }
+
             conf._save(json_data)
         else:
-            print("2回目以降")
-                             
+            #print("2回目以降")
+            goal_pos_list:list[PositionType] = conf.data['goal_position']
+        
+        goal_pos:tuple[PositionType,...] = tuple(tuple(item) for item in goal_pos_list)
+        print(goal_pos,"pos")
+        self.env = MultiAgentGridEnv(args, goal_pos)# データ構造フローがおかしい
+                 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
         
@@ -242,7 +247,7 @@ class MultiAgent_Q:
         print("Saving results...")
         self.plot_results.draw()
         self.plot_results.draw_heatmap()
-
+       
 
     def debug_train(self):
         class DebugGridWorldConfig:
@@ -488,3 +493,137 @@ class MultiAgent_Q:
             reward += r
 
         return states_log, reward, done
+
+
+    def train(self,start, end):
+        # 事前条件チェック
+        if self.agents_number > self.goals_number:
+            print('goals_num >= agents_num に設定してください.\n')
+            sys.exit()
+
+        # 学習開始メッセージ
+        # IQL/CQLの表示はAgentクラスの実装に依存するが、ここではMultiAgent_QがQ学習を orchestrate していることを示す
+        # if self.mask: # Remove this if condition
+        #     # Note: The mask logic might need to be handled within the Agent's learn method
+        #     print(f"{GREEN}IQL/CQL (Q学習ベース) で学習中{RESET}\n")
+        # else:
+        print(f"{GREEN}Q学習で学習中{RESET}\n")
+        print(f"ゴール位置: {self.env.get_goal_positions().values()}")
+
+        total_step = 0
+        #avg_reward_temp, avg_step_temp = 0, 0
+        episode_rewards: list[float] = []   # エピソードごとの報酬を格納
+        episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
+        episode_losses : list[float] = []   # エピソードごとの損失を格納
+        done_counts    : list[int]   = []   # エピソードごとで成功/失敗を記録
+
+        # ----------------------------------
+        # メインループ（各エピソード）
+        # ----------------------------------
+        for episode_num in range(start, end + 1):
+            if episode_num % 50 == 0:
+                print(f"Episode {episode_num} / {self.episode_number}", end='\r', flush=True)
+
+            # 100エピソードごとに平均を出力
+            if episode_num % 500 == 0 and (episode_num != start):
+                print() # 改行して進捗表示をクリア
+                
+                # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
+                avg_loss   = sum(episode_losses) / len(episode_losses)#    if episode_losses else 0 # ここで losses は過去100エピソードの平均損失リスト
+                avg_reward = sum(episode_rewards) / len(episode_rewards)
+                avg_step   = sum(episode_steps) / len(episode_steps)
+                done_rate  = sum(done_counts) / len(done_counts)
+
+                q_table_size = [agent.get_q_table_size() for agent in self.agents]
+
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の成功率     : {GREEN}{done_rate:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 99} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
+                
+                #avg_reward_temp, avg_step_temp = 0, 0
+                episode_losses = [] # 100エピソードごとに損失リストもリセット
+                episode_rewards = []
+                episode_steps  = []
+                done_counts = []
+            
+            if episode_num % 1000 == 0:
+                self.save_model()
+                
+                
+            # --------------------------------------------
+            # 各エピソード開始時に環境をリセット
+            # これによりエージェントが再配置される
+            # --------------------------------------------
+            # The reset method in the updated MultiAgentGridEnv now returns observation, info
+            current_states:tuple[tuple[int, int], ...] = self.env.reset()
+            #print("current_states:",current_states)
+
+            done = False
+            step_count = 0
+            episode_reward:float = 0.0
+            step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
+
+            # ---------------------------
+            # 1エピソードのステップループ
+            # ---------------------------
+            while not done and step_count < self.max_ts:
+                actions:list[int] = []
+                for i, agent in enumerate(self.agents):
+                    # Agentクラスのdecay_epsilon_powを呼び出し
+                    agent.decay_epsilon_pow(total_step)
+
+                    # Agentクラスのget_actionを呼び出し (global_stateのみ渡す)
+                    actions.append(agent.get_action(current_states))
+
+                # エージェントの状態を保存（オプション）
+                agent_positions_dict = self.env.get_agent_positions() # GridWorldのメソッドを使用
+                agent_positions_list = [agent_positions_dict[agent_id] for agent_id in self.env._agent_ids]
+
+                for i, pos in enumerate(agent_positions_list):
+                    # Saver expects agent_idx, position, step
+                    self.saver.log_agent_states(i, pos[0], pos[1]) # Use step_count here
+
+
+                # 環境にステップを与えて状態を更新
+                # The step method in the updated MultiAgentGridEnv now returns observation, reward, done, info
+                next_observation, reward, done, info = self.env.step(actions)
+
+                # Q学習は経験ごとに逐次更新
+                #step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
+
+                # 各エージェントに対して学習を実行
+                for i, agent in enumerate(self.agents):
+                    #agent_action = debug_actions[i]
+                    loss = agent.learn(current_states, int(actions[i]), float(reward), next_observation, bool(done))
+                    step_losses.append(loss)
+
+                current_states = next_observation # 状態を更新
+                #step_reward += reward
+                episode_reward += reward
+                step_count += 1
+                total_step += 1
+
+            # エピソード終了
+            # エピソードの平均損失を計算
+            episode_loss:float = sum(step_losses)/len(step_losses)
+            episode_step:int = step_count
+
+            # ログにスコアを記録
+            self.saver.log_episode_data(episode_num, step_count, episode_reward, episode_loss, done)
+
+            episode_losses.append(episode_loss) # 100エピソードまで貯め続ける
+            episode_rewards.append(episode_reward)
+            episode_steps.append(episode_step)
+            done_counts.append(done)
+
+        self.saver.save_remaining_episode_data()
+        self.saver.save_visited_coordinates()
+        print()  # 終了時に改行
+
+    def run_method(self, start):
+        if start == -1: return
+        self.load_model()
+        self.train(start,start+1000)
+        self.save_model()

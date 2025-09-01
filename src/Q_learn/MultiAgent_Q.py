@@ -43,7 +43,7 @@ class MultiAgent_Q:
         #file_path = os.path.join(cp_dir, "CONST_Config.json")
 
         #conf = ConfigLoader(file_path)
-        self._start_episode = 1
+        self._start_episode = 0
         if not os.path.exists(cp_dir):   # 初期
             os.makedirs(cp_dir)
 
@@ -71,6 +71,7 @@ class MultiAgent_Q:
 
             #self.save_checkpoint(self._start_episode+200,goal_pos_list)
         
+        self._start_episode+=1 # 学習した次から再開するため
         goal_pos = tuple(goal_pos_list)
         print(goal_pos,"pos")
         self.env = MultiAgentGridEnv(args, goal_pos)# データ構造フローがおかしい
@@ -664,12 +665,12 @@ class MultiAgent_Q:
             episode_steps.append(episode_step)
             done_counts.append(done)
 
-        self.saver.save_remaining_episode_data()
-        self.saver.save_visited_coordinates()
+        #self.saver.save_remaining_episode_data()
+        #self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
     def run_method(self):
         self.load_model()#trainに埋め込む
-        self.train(self._start_episode,self._start_episode+1000)
+        self.train(self._start_episode,self._start_episode+2000)
         #self.save_model()#trainに埋め込む
         self.result_save()

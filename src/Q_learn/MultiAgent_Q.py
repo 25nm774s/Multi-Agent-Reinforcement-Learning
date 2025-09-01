@@ -10,10 +10,10 @@ from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv, Grid
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
 from utils.ConfigManager import ConfigManager, ConfigLoader
+from utils.IO_Handler import Model_IO, CheckPointHandler
 
 from .Agent_Q import Agent
 from .QTable import QTableType
-from .IO_Handler import Model_IO, CheckPointHandler
 
 from Enviroments.Grid import PositionType
 

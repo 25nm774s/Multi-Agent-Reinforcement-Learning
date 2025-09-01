@@ -665,12 +665,12 @@ class MultiAgent_Q:
             episode_steps.append(episode_step)
             done_counts.append(done)
 
-        #self.saver.save_remaining_episode_data()
-        #self.saver.save_visited_coordinates()
+        #self.saver.save_remaining_episode_data() <- 2000-2000が生成される原因になる。この半端なエピドートは捨てることで解決を図る。
+        self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
     def run_method(self):
         self.load_model()#trainに埋め込む
-        self.train(self._start_episode,self._start_episode+2000)
+        self.train(self._start_episode,self._start_episode+1000)
         #self.save_model()#trainに埋め込む
         self.result_save()

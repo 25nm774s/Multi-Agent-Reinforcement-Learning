@@ -13,7 +13,7 @@ from utils.ConfigManager import ConfigManager, ConfigLoader
 
 from .Agent_Q import Agent
 from .QTable import QTableType
-from .IO_Handler import Model_IO
+from .IO_Handler import Model_IO, CheckPointHandler
 
 from Enviroments.Grid import PositionType
 
@@ -36,33 +36,45 @@ class MultiAgent_Q:
         Q_Strategy = "IQL" if args.mask else "CQL"
         self.save_dir = os.path.join(
             "output",
-            f"{Q_Strategy}_Reward[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
+            f"{Q_Strategy}_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
-        file_path = os.path.join(cp_dir, "CONST_Config.json")
+        #file_path = os.path.join(cp_dir, "CONST_Config.json")
 
-        conf = ConfigLoader(file_path)
+        #conf = ConfigLoader(file_path)
+        self._start_episode = 1
+        if not os.path.exists(cp_dir):   # 初期
+            os.makedirs(cp_dir)
 
-        if not conf.data:   # data == {}...初期
             # ↓データ構造フローがおかしい
             goal_pos_list:list[PositionType] = Grid(self.grid_size).sample(self.goals_number)
             
-            json_data = {
-                "agents_number":self.agents_number,
-                "goal_number": self.goals_number,
-                "goal_position":goal_pos_list,
-            }
-
-            conf._save(json_data)
+            print("初期として学習スタート。")
+            print("ゴール位置...: ", goal_pos_list)
+            ### 学習した体で #
+            #for agent in self.agents:
+            #    agent.set_Qtable({(2,3,5,0):[1.2,3.4,5.6]})
+            #################
+            self.save_checkpoint(0,goal_pos_list)
+            
         else:
             #print("2回目以降")
-            goal_pos_list:list[PositionType] = conf.data['goal_position']
+            #goal_pos_list:list[PositionType] = conf.data['goal_position']
+            print("既存のチェックポイントからスタート。")
+            goal_pos_list = self.load_checkpoint()
+            print("goal_pos_list:",goal_pos_list)
+            #print("qtate: ", self.agents[0].get_Qtable())
+            print("episode: ", self._start_episode)
+            #for agent in self.agents:
+            #    agent.q_table.q_table[(22,33,55,0)]=[1.2,3.4,5.6]
+
+            #self.save_checkpoint(self._start_episode+200,goal_pos_list)
         
-        goal_pos:tuple[PositionType,...] = tuple(tuple(item) for item in goal_pos_list)
+        goal_pos = tuple(goal_pos_list)
         print(goal_pos,"pos")
         self.env = MultiAgentGridEnv(args, goal_pos)# データ構造フローがおかしい
-                 
+
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
         
@@ -206,10 +218,24 @@ class MultiAgent_Q:
         self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
-    def save_model_weights(self):
-        # モデル保存やプロット - Q学習ではQテーブルを保存するのでこのメソッドは使わない
-        print("Mock save_model_weights called - Not applicable for Q-Learning.")
-        pass # DQNではないため何もしない
+
+    def save_checkpoint(self, episode:int, goal_position:tuple[PositionType]|list[PositionType]):
+        """
+        保持している各AgentのQテーブルをファイルに保存する.
+        Model_IOクラスを使用して保存処理を行う.
+        """
+        print("Qテーブル保存中...")
+        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
+        checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+
+        for agent in self.agents:
+            # AgentからQテーブルデータを取得し、Model_IOに渡して保存
+            q_table_data = agent.get_Qtable()
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_Qtable.pth')
+            save_param = {"state_dict":q_table_data, "episode": episode, "goal_position": goal_position}
+            CheckPointHandler().save(save_param, file_path)
 
     def save_model(self):
         """
@@ -218,7 +244,7 @@ class MultiAgent_Q:
         """
         print("Qテーブル保存中...")
         # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
-        model_io = Model_IO()
+        
         model_dir = file_path = os.path.join(self.save_dir, "models")
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
@@ -226,8 +252,27 @@ class MultiAgent_Q:
         for agent in self.agents:
             # AgentからQテーブルデータを取得し、Model_IOに渡して保存
             q_table_data = agent.get_Qtable()
-            file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_Qtable.pkl')
-            model_io.save(file_path, q_table_data)
+            file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_Qtable.pth')
+            Model_IO().save(q_table_data, file_path)
+
+    def load_checkpoint(self):
+        """
+        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する.
+        Model_IOクラスを使用して読み込み処理を行う.
+        """
+        print("Qテーブル読み込み中...")
+        checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
+
+        for agent in self.agents:
+            # Model_IOからQテーブルデータを読み込み
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_Qtable.pth')
+            load_data:dict = CheckPointHandler().load(file_path)
+            qtable: QTableType = load_data['state_dict']
+            agent.set_Qtable(qtable)
+
+            goal_pos = load_data['goal_position']
+            self._start_episode = load_data['episode']
+        return goal_pos
 
     def load_model(self):
         """
@@ -235,13 +280,13 @@ class MultiAgent_Q:
         Model_IOクラスを使用して読み込み処理を行う.
         """
         print("Qテーブル読み込み中...")
-        model_io = Model_IO()
 
         for agent in self.agents:
             # Model_IOからQテーブルデータを読み込み
-            file_path = os.path.join(self.save_dir, "models", f'agent_{agent.agent_id}_Qtable.pkl')
-            load_data:QTableType = model_io.load(file_path)
-            agent.set_Qtable(load_data)
+            file_path = os.path.join(self.save_dir, "models", f'agent_{agent.agent_id}_Qtable.pth')
+
+            qtable: QTableType = Model_IO().load(file_path)
+            agent.set_Qtable(qtable)
 
     def result_save(self):
         print("Saving results...")
@@ -285,7 +330,7 @@ class MultiAgent_Q:
         # ここでは特に明示的な初期化コードは不要です
 
         # ダミーの環境をインスタンス化
-        debug_env = MultiAgentGridEnv(debug_config)
+        debug_env = MultiAgentGridEnv(debug_config, tuple(self.env.get_goal_positions().values()))
 
         episode_losses:list[float] = []#100エピソード分のTDを格納
         episode_reward = 0
@@ -495,7 +540,7 @@ class MultiAgent_Q:
         return states_log, reward, done
 
 
-    def train(self,start, end):
+    def train(self,start:int, end:int):
         # 事前条件チェック
         if self.agents_number > self.goals_number:
             print('goals_num >= agents_num に設定してください.\n')
@@ -522,7 +567,7 @@ class MultiAgent_Q:
         # ----------------------------------
         for episode_num in range(start, end + 1):
             if episode_num % 50 == 0:
-                print(f"Episode {episode_num} / {self.episode_number}", end='\r', flush=True)
+                print(f"Episode {episode_num} / {end}", end='\r', flush=True)
 
             # 100エピソードごとに平均を出力
             if episode_num % 500 == 0 and (episode_num != start):
@@ -549,6 +594,7 @@ class MultiAgent_Q:
                 done_counts = []
             
             if episode_num % 1000 == 0:
+                self.save_checkpoint(episode_num,list(self.env.get_goal_positions().values()))
                 self.save_model()
                 
                 
@@ -622,8 +668,8 @@ class MultiAgent_Q:
         self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
-    def run_method(self, start):
-        if start == -1: return
-        self.load_model()
-        self.train(start,start+1000)
-        self.save_model()
+    def run_method(self):
+        self.load_model()#trainに埋め込む
+        self.train(self._start_episode,self._start_episode+1000)
+        #self.save_model()#trainに埋め込む
+        self.result_save()

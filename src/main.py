@@ -117,13 +117,11 @@ if __name__ == '__main__':
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
-        simulation.run_method(config.episode_number)
+        simulation.run_method()
 
-        simulation.result_save()
-        simulation.save_model()
-        simulation.load_model()
+        #simulation.result_save()
 
-        traj, r, done = simulation.make_trajectry()
+        #traj, r, done = simulation.make_trajectry()
 
         #print("reward:",r, "done:",done)
         #print("GET: trajectry")

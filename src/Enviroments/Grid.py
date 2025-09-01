@@ -127,14 +127,12 @@ class Grid:
             raise KeyError(f"ID '{obj_id}' を持つオブジェクトは見つかりませんでした。")
         del self._object_positions[obj_id]
 
-    def sample(self, num_positions) -> list[PositionType]:
+    def sample(self, num_positions:int) -> list[PositionType]:
         """
         既存の位置を避けながら、グリッド内に指定された数の一意なランダム位置のリストを生成します。
 
         Args:
             num_positions (int): 生成する一意な位置の数。
-            existing_positions (list[PositionType]): 避ける位置。
-            grid_size (int): グリッドのサイズ。
 
         Returns:
             list[PositionType]: 生成された一意な位置のリスト。

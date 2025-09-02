@@ -10,7 +10,7 @@ from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv, Grid
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
 from utils.ConfigManager import ConfigManager, ConfigLoader
-from utils.IO_Handler import Model_IO, CheckPointHandler
+from utils.IO_Handler import IOHandler
 
 from .Agent_Q import Agent
 from .QTable import QTableType
@@ -39,42 +39,38 @@ class MultiAgent_Q:
             f"{Q_Strategy}_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
+        self.io_handler = IOHandler() # IOHandlerのインスタンスを作成
+
         cp_dir = os.path.join(self.save_dir, ".checkpoints")
-        #file_path = os.path.join(cp_dir, "CONST_Config.json")
 
-        #conf = ConfigLoader(file_path)
         self._start_episode = 0
-        if not os.path.exists(cp_dir):   # 初期
+        goal_pos_list:list[PositionType] = []
+
+        if not os.path.exists(cp_dir):   # 初回実行時
             os.makedirs(cp_dir)
+            print("チェックポイントディレクトリを作成しました。新規として学習スタート。")
+            # 初回実行時はゴール位置をサンプリング
+            goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
+            self._start_episode = 0
 
-            # ↓データ構造フローがおかしい
-            goal_pos_list:list[PositionType] = Grid(self.grid_size).sample(self.goals_number)
-            
-            print("初期として学習スタート。")
-            print("ゴール位置...: ", goal_pos_list)
-            ### 学習した体で #
-            #for agent in self.agents:
-            #    agent.set_Qtable({(2,3,5,0):[1.2,3.4,5.6]})
-            #################
-            self.save_checkpoint(0,goal_pos_list)
-            
-        else:
-            #print("2回目以降")
-            #goal_pos_list:list[PositionType] = conf.data['goal_position']
-            print("既存のチェックポイントからスタート。")
-            goal_pos_list = self.load_checkpoint()
-            print("goal_pos_list:",goal_pos_list)
-            #print("qtate: ", self.agents[0].get_Qtable())
-            print("episode: ", self._start_episode)
-            #for agent in self.agents:
-            #    agent.q_table.q_table[(22,33,55,0)]=[1.2,3.4,5.6]
+        else: # 2回目以降、またはチェックポイントが存在する場合
+            print("既存のチェックポイントからスタートを試みます。")
+            # チェックポイントの読み込みを試みる
+            loaded_goal_pos_list = self.load_checkpoint()
 
-            #self.save_checkpoint(self._start_episode+200,goal_pos_list)
-        
-        self._start_episode+=1 # 学習した次から再開するため
-        goal_pos = tuple(goal_pos_list)
-        print(goal_pos,"pos")
-        self.env = MultiAgentGridEnv(args, goal_pos)# データ構造フローがおかしい
+            if loaded_goal_pos_list: # チェックポイントからゴール位置が読み込めた場合
+                goal_pos_list = loaded_goal_pos_list
+                print("チェックポイントからゴール位置を読み込みました:", goal_pos_list)
+                print("チェックポイントからエピソード数を読み込みました:", self._start_episode)
+            else: # チェックポイントが見つからない、または読み込みに失敗した場合
+                print("チェックポイントが見つからないか、読み込みに失敗しました。新規学習としてスタートします。")
+                # 新規学習としてゴール位置をサンプリング
+                goal_pos_list = Grid(self.grid_size).sample(3)
+                self._start_episode = 0 # エピソード数をリセット
+
+        self.goal_pos = tuple(goal_pos_list)
+        print(self.goal_pos,"pos")
+        self.env = MultiAgentGridEnv("arg_object", self.goal_pos)# 環境クラス
 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
@@ -220,74 +216,94 @@ class MultiAgent_Q:
         print()  # 終了時に改行
 
 
-    def save_checkpoint(self, episode:int, goal_position:tuple[PositionType]|list[PositionType]):
+    def save_checkpoint(self, episode:int, goal_position:tuple[PositionType,...]|list[PositionType]):
         """
-        保持している各AgentのQテーブルをファイルに保存する.
-        Model_IOクラスを使用して保存処理を行う.
+        保持している各AgentのQテーブルと学習状態をチェックポイントファイルに保存する.
+        IOHandlerクラスを使用して保存処理を行う.
         """
-        print("Qテーブル保存中...")
-        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
+        print("チェックポイント保存中...")
         checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
         for agent in self.agents:
-            # AgentからQテーブルデータを取得し、Model_IOに渡して保存
             q_table_data = agent.get_Qtable()
-            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_Qtable.pth')
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
             save_param = {"state_dict":q_table_data, "episode": episode, "goal_position": goal_position}
-            CheckPointHandler().save(save_param, file_path)
+            self.io_handler.save(save_param, file_path) # IOHandlerを使用
 
     def save_model(self):
         """
-        保持している各AgentのQテーブルをファイルに保存する.
-        Model_IOクラスを使用して保存処理を行う.
+        保持している各AgentのQテーブルをモデルファイルに保存する.
+        IOHandlerクラスを使用して保存処理を行う.
         """
-        print("Qテーブル保存中...")
-        # Model_IOを内部で生成し、モデルの保存・読み込み処理を委譲する
-        
-        model_dir = file_path = os.path.join(self.save_dir, "models")
+        print("モデル保存中...")
+        model_dir = os.path.join(self.save_dir, "models") # ファイルパス生成方法を修正
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
 
         for agent in self.agents:
-            # AgentからQテーブルデータを取得し、Model_IOに渡して保存
             q_table_data = agent.get_Qtable()
-            file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_Qtable.pth')
-            Model_IO().save(q_table_data, file_path)
+            file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_model.pth') # ファイル名を変更
+            self.io_handler.save(q_table_data, file_path) # IOHandlerを使用
 
-    def load_checkpoint(self):
+    def load_checkpoint(self)->list[PositionType]:
         """
-        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する.
-        Model_IOクラスを使用して読み込み処理を行う.
+        ファイルから各AgentのQテーブルと学習状態を読み込み、対応するAgentに設定する.
+        IOHandlerクラスを使用して読み込み処理を行う.
         """
-        print("Qテーブル読み込み中...")
+        print("チェックポイント読み込み中...")
         checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
+        goal_pos:list[PositionType] = [] # 読み込まれた、または新規のゴール位置を格納
+
+        all_checkpoints_found = True # 全てのエージェントのチェックポイントが見つかったかを示すフラグ
+        loaded_episode = 0 # 読み込まれたエピソード数
 
         for agent in self.agents:
-            # Model_IOからQテーブルデータを読み込み
-            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_Qtable.pth')
-            load_data:dict = CheckPointHandler().load(file_path)
-            qtable: QTableType = load_data['state_dict']
-            agent.set_Qtable(qtable)
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
+            load_data:dict = self.io_handler.load(file_path) # IOHandlerを使用
 
-            goal_pos = load_data['goal_position']
-            self._start_episode = load_data['episode']
-        return goal_pos
+            if load_data: # データが読み込まれた場合
+                qtable: QTableType = load_data.get('state_dict', {}) # 存在しないキーの場合に備えてgetを使用
+                agent.set_Qtable(qtable)
+
+                # 最初の有効なチェックポイントからエピソード数とゴール位置を取得
+                if not goal_pos: # goal_posがまだ設定されていない場合
+                    goal_pos = load_data.get('goal_position', [])
+                if loaded_episode == 0: # loaded_episodeがまだ設定されていない場合
+                    loaded_episode = load_data.get('episode', 0)
+
+            else: # チェックポイントファイルが存在しない、または読み込みエラーの場合
+                print(f"エージェント {agent.agent_id} のチェックポイントが見つからないか、読み込みに失敗しました。Qテーブルを初期化します。")
+                #agent.reset_Qtable() # AgentクラスのQテーブル初期化メソッドを呼び出す
+                agent.set_Qtable({}) # AgentクラスのQテーブル初期化メソッドを呼び出す
+                all_checkpoints_found = False # 1つでも見つからなければFalse
+
+        if all_checkpoints_found:
+            self._start_episode = loaded_episode
+            return goal_pos # 読み込まれたゴール位置を返す
+        else:
+            # 1つでもチェックポイントが見つからなかった場合、新規学習として扱う
+            self._start_episode = 0
+            # 新規の場合のゴール位置サンプリングは__init__で行われるため、ここでは特別な処理は不要
+            return [] # 空のリストを返すことで、__init__で新規サンプリングを促す
+
 
     def load_model(self):
         """
-        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する.
-        Model_IOクラスを使用して読み込み処理を行う.
+        ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する (推論用など).
+        IOHandlerクラスを使用して読み込み処理を行う.
         """
-        print("Qテーブル読み込み中...")
+        print("モデル読み込み中...")
 
         for agent in self.agents:
-            # Model_IOからQテーブルデータを読み込み
-            file_path = os.path.join(self.save_dir, "models", f'agent_{agent.agent_id}_Qtable.pth')
+            file_path = os.path.join(self.save_dir, "models", f'agent_{agent.agent_id}_model.pth') # ファイル名を変更
 
-            qtable: QTableType = Model_IO().load(file_path)
-            agent.set_Qtable(qtable)
+            qtable: QTableType = self.io_handler.load(file_path) # IOHandlerを使用
+            if qtable: # 読み込みに成功した場合のみ設定
+                agent.set_Qtable(qtable)
+            else:
+                print(f"エージェント {agent.agent_id} のモデルが見つからないか、読み込みに失敗しました。Qテーブルは更新されません。")
 
     def result_save(self):
         print("Saving results...")
@@ -669,8 +685,37 @@ class MultiAgent_Q:
         self.saver.save_visited_coordinates()
         print()  # 終了時に改行
 
-    def run_method(self):
-        self.load_model()#trainに埋め込む
-        self.train(self._start_episode,self._start_episode+1000)
-        #self.save_model()#trainに埋め込む
-        self.result_save()
+    def run_method(self, total_episodes):
+        print(f"---------学習開始 (全 {total_episodes} エピソード)----------")
+        for episode in range(self._start_episode, total_episodes):
+            # TODO: ここに各エピソードの開始処理を追加する (環境のリセットなど)
+
+            # TODO: ここに各ステップの処理を追加する
+            # - エージェントの行動選択
+            # - 環境との相互作用 (ステップ実行)
+            # - 報酬と次の状態の取得
+            # - Qテーブルの更新
+
+            # 例: 各ステップの処理（ダミー）
+            # current_state = env.reset()
+            # done = False
+            # while not done:
+            #     action = agent.choose_action(current_state, ...)
+            #     next_state, reward, done, _ = env.step(action)
+            #     agent.update_q_table(current_state, action, reward, next_state, ...)
+            #     current_state = next_state
+
+            # 定期的にチェックポイントを保存 (例: 100エピソードごと)
+            checkpoint_interval = 100
+            if (episode + 1) % checkpoint_interval == 0:
+                print(f"--- チェックポイント保存中 (エピソード {episode + 1}) ---")
+                self.save_checkpoint(episode + 1, self.goal_pos)
+
+            # TODO: 各エピソードの終了処理を追加する (ログ記録など)
+
+        # 学習終了時に最終モデルを保存
+        print(f"---------学習終了 (全 {total_episodes} エピソード完了)----------")
+        self.save_model()
+
+        print("最終エピソード: ", self._start_episode) # これは更新されないので注意
+        print("goal_pos: ", self.goal_pos)

@@ -117,7 +117,7 @@ if __name__ == '__main__':
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
-        simulation.run_method()
+        simulation.run_method(config.episode_number)
 
         #simulation.result_save()
 

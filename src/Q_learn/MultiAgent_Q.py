@@ -65,12 +65,12 @@ class MultiAgent_Q:
             else: # チェックポイントが見つからない、または読み込みに失敗した場合
                 print("チェックポイントが見つからないか、読み込みに失敗しました。新規学習としてスタートします。")
                 # 新規学習としてゴール位置をサンプリング
-                goal_pos_list = Grid(self.grid_size).sample(3)
+                goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
                 self._start_episode = 0 # エピソード数をリセット
 
         self.goal_pos = tuple(goal_pos_list)
         print(self.goal_pos,"pos")
-        self.env = MultiAgentGridEnv("arg_object", self.goal_pos)# 環境クラス
+        self.env = MultiAgentGridEnv(args, self.goal_pos)# 環境クラス
 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
@@ -706,7 +706,7 @@ class MultiAgent_Q:
             #     current_state = next_state
 
             # 定期的にチェックポイントを保存 (例: 100エピソードごと)
-            checkpoint_interval = 100
+            checkpoint_interval = 500
             if (episode + 1) % checkpoint_interval == 0:
                 print(f"--- チェックポイント保存中 (エピソード {episode + 1}) ---")
                 self.save_checkpoint(episode + 1, self.goal_pos)

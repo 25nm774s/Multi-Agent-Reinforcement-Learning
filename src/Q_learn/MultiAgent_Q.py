@@ -11,6 +11,7 @@ from utils.Saver import Saver
 from utils.plot_results import PlotResults
 from utils.ConfigManager import ConfigManager, ConfigLoader
 from utils.IO_Handler import IOHandler
+from utils.render import Render
 
 from .Agent_Q import Agent
 from .QTable import QTableType
@@ -46,11 +47,12 @@ class MultiAgent_Q:
         self._start_episode = 0
         goal_pos_list:list[PositionType] = []
 
+        """
         if not os.path.exists(cp_dir):   # 初回実行時
             os.makedirs(cp_dir)
             print("チェックポイントディレクトリを作成しました。新規として学習スタート。")
             # 初回実行時はゴール位置をサンプリング
-            goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
+            #goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
             self._start_episode = 0
 
         else: # 2回目以降、またはチェックポイントが存在する場合
@@ -65,12 +67,13 @@ class MultiAgent_Q:
             else: # チェックポイントが見つからない、または読み込みに失敗した場合
                 print("チェックポイントが見つからないか、読み込みに失敗しました。新規学習としてスタートします。")
                 # 新規学習としてゴール位置をサンプリング
-                goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
+                #goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
                 self._start_episode = 0 # エピソード数をリセット
-
-        self.goal_pos = tuple(goal_pos_list)
-        print(self.goal_pos,"pos")
-        self.env = MultiAgentGridEnv(args, self.goal_pos)# 環境クラス
+        """
+        goal_pos_list = self.load_checkpoint()
+        self.env = MultiAgentGridEnv(args, goal_pos_list)# 環境クラス
+        print("pos", tuple(self.env.get_goal_positions().values()))
+        print("Qtable-len: ", self.agents[0].get_q_table_size())
 
         # 学習で発生したデータを保存するクラス
         self.saver = Saver(self.save_dir,self.grid_size)
@@ -226,11 +229,18 @@ class MultiAgent_Q:
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
+        temp_path_list = []
         for agent in self.agents:
             q_table_data = agent.get_Qtable()
-            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
+            temp_path = os.path.join(checkpoint_dir, f'temp_agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
+            temp_path_list.append(temp_path)
             save_param = {"state_dict":q_table_data, "episode": episode, "goal_position": goal_position}
-            self.io_handler.save(save_param, file_path) # IOHandlerを使用
+            self.io_handler.save(save_param, temp_path) # IOHandlerを使用
+
+        for i,agent in enumerate(self.agents):
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth')
+            os.remove(file_path)
+            os.rename(temp_path_list[i],file_path)
 
     def save_model(self):
         """
@@ -533,20 +543,81 @@ class MultiAgent_Q:
 
         states = self.env.reset()
 
-        # 仕方なく強硬手段でゴールを設定
-        #for i in range(self.goals_number): 
-        #    del self.env._grid._object_positions[f'goal_{i}']
-        #    self.env._grid.add_object(f'goal_{i}',goal_pos[i])
-
         while not done and time_step < self.max_ts:
             
             actions = []
             
             for agent in self.agents:
+                agent.epsilon = 0.0 # 無理くり探索を許可しない
                 a = agent.get_action(states)                #<-ここの仕様が統一感がない
                 actions.append(a)
             
             next_states, r, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
+
+            if time_step + 1 in []:
+                print(f"\n-- ステップ {time_step + 1} --")
+                print(f"現在のグローバル状態: {states}")
+                print(f"選択された行動 (全エージェント): {actions}")
+                print(f"得られた報酬: {reward}")
+                print(f"次のグローバル状態: {next_states}")
+                print(f"エピソード完了フラグ (done): {done}")
+
+                # 各エージェントについてTD誤差を計算し、ログ出力
+                for i, agent in enumerate(self.agents):
+                    agent_q_state = agent._get_q_state(states)
+                    agent_next_q_state = agent._get_q_state(next_states)
+                    agent_action = actions[i] # このエージェントが取った行動
+
+                    print(f"\n  -- エージェント {i} のTD誤差計算 --")
+                    print(f"  現在のQテーブル用状態: {agent_q_state}")
+
+                    # Qテーブル内部の状態を確認
+                    print(f"  現在の状態 ({agent_q_state}) はQテーブルに存在するか: {agent_q_state in agent.q_table.q_table}")
+                    if agent_q_state in agent.q_table.q_table:
+                        print(f"  Qテーブル内部の現在の状態のQ値: {agent.q_table.q_table[agent_q_state]}")
+                    print(f"  Agent.q_table.get_q_values({agent_q_state}) が返すQ値: {agent.q_table.get_q_values(agent_q_state)}")
+
+
+                    print(f"  選択された行動: {agent_action}")
+                    # 各エージェントが受け取る報酬はグローバル報酬と仮定（MultiAgent_Q参照）
+                    print(f"  受け取った報酬: {reward}")
+                    print(f"  次のQテーブル用状態: {agent_next_q_state}")
+
+                    # Qテーブル内部の次の状態を確認
+                    print(f"  次の状態 ({agent_next_q_state}) はQテーブルに存在するか: {agent_next_q_state in agent.q_table.q_table}")
+                    if agent_next_q_state in agent.q_table.q_table:
+                        print(f"  Qテーブル内部の次の状態のQ値: {agent.q_table.q_table[agent_next_q_state]}")
+
+
+                    # 現在の状態・行動に対するQ値 (更新前の値)
+                    # get_q_values を使用して、Qテーブルにまだ存在しない状態がアクセスされてもエラーにならないようにします
+                    debug_current_q_value = agent.q_table.get_q_values(agent_q_state)[agent_action]
+                    print(f"  現在のQ(s, a) (更新前): {debug_current_q_value}")
+
+                    # 次の状態での最大Q値 (Q学習)
+                    # エピソードが完了した場合は次の状態の価値は0
+                    debug_max_next_q_value = 0.0
+                    if not done:
+                        debug_max_next_q_value = agent.q_table.get_max_q_value(agent_next_q_state) # QTable.get_max_q_valueを使用
+                    print(f"  次の状態での最大Q(s', a'): {debug_max_next_q_value}")
+
+
+                    # TDターゲットの計算
+                    debug_td_target = reward + 0.99 * debug_max_next_q_value
+                    print(f"  TDターゲット (r + γ * max Q(s', a')): {debug_td_target:.3}")
+
+                    # TDデルタ (誤差) の計算
+                    debug_td_delta = debug_td_target - debug_current_q_value
+                    print(f"  TDデルタ (TDターゲット - Q(s, a)): {debug_td_delta:.3}")
+
+                    # TD誤差絶対値 (Lossとして使用される値)
+                    debug_loss = abs(debug_td_delta)
+                    print(f"  TD誤差絶対値 (Loss): {debug_loss:.3}")
+
+                    # Q値の更新 (Agent.learnで行われる処理) の直前と直後の値を確認
+                    # 更新前の該当Q値を取得 (再度取得して厳密に)
+                    q_before_learn = agent.q_table.get_q_values(agent_q_state)[agent_action]
+                    print(f"  Q(s, a) 更新直前: {q_before_learn:.4}")
 
             states = next_states
             states_log.append(states)
@@ -556,12 +627,22 @@ class MultiAgent_Q:
 
         return states_log, reward, done
 
+    def render_anime(self, total_episode):
+        traj, r, done = self.make_trajectry()
+        print(r,done)
+        render = Render(self.grid_size, self.goals_number, self.agents_number)
+        render.render_anime(traj, os.path.join(self.save_dir, f"{total_episode}.gif"))
 
-    def train(self,start:int, end:int):
+
+    def train(self,total_episodes:int):
         # 事前条件チェック
         if self.agents_number > self.goals_number:
             print('goals_num >= agents_num に設定してください.\n')
             sys.exit()
+        
+        if total_episodes <= self._start_episode:
+            print(f"学習されない: {total_episodes} <= {self._start_episode}")
+            return
 
         # 学習開始メッセージ
         # IQL/CQLの表示はAgentクラスの実装に依存するが、ここではMultiAgent_QがQ学習を orchestrate していることを示す
@@ -572,7 +653,7 @@ class MultiAgent_Q:
         print(f"{GREEN}Q学習で学習中{RESET}\n")
         print(f"ゴール位置: {self.env.get_goal_positions().values()}")
 
-        total_step = 0
+        #total_step = 0
         #avg_reward_temp, avg_step_temp = 0, 0
         episode_rewards: list[float] = []   # エピソードごとの報酬を格納
         episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
@@ -582,12 +663,12 @@ class MultiAgent_Q:
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
-        for episode_num in range(start, end + 1):
-            if episode_num % 50 == 0:
-                print(f"Episode {episode_num} / {end}", end='\r', flush=True)
+        for episode_num in range(self._start_episode, total_episodes + 1):
+            if episode_num % 100 == 0:
+                print(f"Episode {episode_num} / {total_episodes}", end='\r', flush=True)
 
             # 100エピソードごとに平均を出力
-            if episode_num % 500 == 0 and (episode_num != start):
+            if episode_num % 1000 == 0 and (episode_num != self._start_episode):
                 print() # 改行して進捗表示をクリア
                 
                 # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
@@ -612,7 +693,7 @@ class MultiAgent_Q:
             
             if episode_num % 1000 == 0:
                 self.save_checkpoint(episode_num,list(self.env.get_goal_positions().values()))
-                self.save_model()
+                #self.save_model()
                 
                 
             # --------------------------------------------
@@ -635,7 +716,7 @@ class MultiAgent_Q:
                 actions:list[int] = []
                 for i, agent in enumerate(self.agents):
                     # Agentクラスのdecay_epsilon_powを呼び出し
-                    agent.decay_epsilon_pow(total_step)
+                    agent.decay_epsilon_pow(episode_num)
 
                     # Agentクラスのget_actionを呼び出し (global_stateのみ渡す)
                     actions.append(agent.get_action(current_states))
@@ -666,7 +747,7 @@ class MultiAgent_Q:
                 #step_reward += reward
                 episode_reward += reward
                 step_count += 1
-                total_step += 1
+                #total_step += 1
 
             # エピソード終了
             # エピソードの平均損失を計算
@@ -709,13 +790,10 @@ class MultiAgent_Q:
             checkpoint_interval = 500
             if (episode + 1) % checkpoint_interval == 0:
                 print(f"--- チェックポイント保存中 (エピソード {episode + 1}) ---")
-                self.save_checkpoint(episode + 1, self.goal_pos)
+                self.save_checkpoint(episode + 1, tuple(self.env.get_goal_positions().values()))
 
             # TODO: 各エピソードの終了処理を追加する (ログ記録など)
 
         # 学習終了時に最終モデルを保存
         print(f"---------学習終了 (全 {total_episodes} エピソード完了)----------")
         self.save_model()
-
-        print("最終エピソード: ", self._start_episode) # これは更新されないので注意
-        print("goal_pos: ", self.goal_pos)

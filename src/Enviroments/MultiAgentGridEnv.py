@@ -14,7 +14,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, fixrd_goals:tuple[PositionType,...]):
+    def __init__(self, args, fixrd_goals:tuple[PositionType,...]|list[PositionType]=[]):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -43,8 +43,14 @@ class MultiAgentGridEnv:
         self._goals_reached_status: list[bool] = [False] * self.goals_number # 密な報酬モード3用
         self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
 
+        fixrd_goals_list=list(fixrd_goals)
+        if len(fixrd_goals) < self.goals_number:
+            sub = self.goals_number - len(fixrd_goals)# 不足するゴール数
+            zahyo = self._grid.sample(sub)
+            for goal in zahyo: 
+                fixrd_goals_list.append(goal)
         # 環境初期化時に一度だけ固定ゴールを設定します
-        for i, goal in enumerate(fixrd_goals):
+        for i, goal in enumerate(fixrd_goals_list):
             #print("Goal.type: ", type(goal))
             self._grid.add_object(self._goal_ids[i], goal)
 

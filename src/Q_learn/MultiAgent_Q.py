@@ -42,37 +42,14 @@ class MultiAgent_Q:
 
         self.io_handler = IOHandler() # IOHandlerのインスタンスを作成
 
-        cp_dir = os.path.join(self.save_dir, ".checkpoints")
-
         self._start_episode = 0
-        goal_pos_list:list[PositionType] = []
 
-        """
-        if not os.path.exists(cp_dir):   # 初回実行時
-            os.makedirs(cp_dir)
-            print("チェックポイントディレクトリを作成しました。新規として学習スタート。")
-            # 初回実行時はゴール位置をサンプリング
-            #goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
-            self._start_episode = 0
-
-        else: # 2回目以降、またはチェックポイントが存在する場合
-            print("既存のチェックポイントからスタートを試みます。")
-            # チェックポイントの読み込みを試みる
-            loaded_goal_pos_list = self.load_checkpoint()
-
-            if loaded_goal_pos_list: # チェックポイントからゴール位置が読み込めた場合
-                goal_pos_list = loaded_goal_pos_list
-                print("チェックポイントからゴール位置を読み込みました:", goal_pos_list)
-                print("チェックポイントからエピソード数を読み込みました:", self._start_episode)
-            else: # チェックポイントが見つからない、または読み込みに失敗した場合
-                print("チェックポイントが見つからないか、読み込みに失敗しました。新規学習としてスタートします。")
-                # 新規学習としてゴール位置をサンプリング
-                #goal_pos_list = Grid(self.grid_size).sample(self.goals_number)
-                self._start_episode = 0 # エピソード数をリセット
-        """
-        goal_pos_list = self.load_checkpoint()
+        goal_pos_list:list[PositionType] = self.load_checkpoint()
         self.env = MultiAgentGridEnv(args, goal_pos_list)# 環境クラス
-        print("pos", tuple(self.env.get_goal_positions().values()))
+        
+        self.goal_pos = tuple(self.env.get_goal_positions().values())
+        
+        print("pos", self.goal_pos)
         print("Qtable-len: ", self.agents[0].get_q_table_size())
 
         # 学習で発生したデータを保存するクラス
@@ -534,8 +511,6 @@ class MultiAgent_Q:
 
 
     def make_trajectry(self):
-        #self.load_model()
-
         states_log = []
         done = False
         time_step = 0
@@ -553,71 +528,6 @@ class MultiAgent_Q:
                 actions.append(a)
             
             next_states, r, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
-
-            if time_step + 1 in []:
-                print(f"\n-- ステップ {time_step + 1} --")
-                print(f"現在のグローバル状態: {states}")
-                print(f"選択された行動 (全エージェント): {actions}")
-                print(f"得られた報酬: {reward}")
-                print(f"次のグローバル状態: {next_states}")
-                print(f"エピソード完了フラグ (done): {done}")
-
-                # 各エージェントについてTD誤差を計算し、ログ出力
-                for i, agent in enumerate(self.agents):
-                    agent_q_state = agent._get_q_state(states)
-                    agent_next_q_state = agent._get_q_state(next_states)
-                    agent_action = actions[i] # このエージェントが取った行動
-
-                    print(f"\n  -- エージェント {i} のTD誤差計算 --")
-                    print(f"  現在のQテーブル用状態: {agent_q_state}")
-
-                    # Qテーブル内部の状態を確認
-                    print(f"  現在の状態 ({agent_q_state}) はQテーブルに存在するか: {agent_q_state in agent.q_table.q_table}")
-                    if agent_q_state in agent.q_table.q_table:
-                        print(f"  Qテーブル内部の現在の状態のQ値: {agent.q_table.q_table[agent_q_state]}")
-                    print(f"  Agent.q_table.get_q_values({agent_q_state}) が返すQ値: {agent.q_table.get_q_values(agent_q_state)}")
-
-
-                    print(f"  選択された行動: {agent_action}")
-                    # 各エージェントが受け取る報酬はグローバル報酬と仮定（MultiAgent_Q参照）
-                    print(f"  受け取った報酬: {reward}")
-                    print(f"  次のQテーブル用状態: {agent_next_q_state}")
-
-                    # Qテーブル内部の次の状態を確認
-                    print(f"  次の状態 ({agent_next_q_state}) はQテーブルに存在するか: {agent_next_q_state in agent.q_table.q_table}")
-                    if agent_next_q_state in agent.q_table.q_table:
-                        print(f"  Qテーブル内部の次の状態のQ値: {agent.q_table.q_table[agent_next_q_state]}")
-
-
-                    # 現在の状態・行動に対するQ値 (更新前の値)
-                    # get_q_values を使用して、Qテーブルにまだ存在しない状態がアクセスされてもエラーにならないようにします
-                    debug_current_q_value = agent.q_table.get_q_values(agent_q_state)[agent_action]
-                    print(f"  現在のQ(s, a) (更新前): {debug_current_q_value}")
-
-                    # 次の状態での最大Q値 (Q学習)
-                    # エピソードが完了した場合は次の状態の価値は0
-                    debug_max_next_q_value = 0.0
-                    if not done:
-                        debug_max_next_q_value = agent.q_table.get_max_q_value(agent_next_q_state) # QTable.get_max_q_valueを使用
-                    print(f"  次の状態での最大Q(s', a'): {debug_max_next_q_value}")
-
-
-                    # TDターゲットの計算
-                    debug_td_target = reward + 0.99 * debug_max_next_q_value
-                    print(f"  TDターゲット (r + γ * max Q(s', a')): {debug_td_target:.3}")
-
-                    # TDデルタ (誤差) の計算
-                    debug_td_delta = debug_td_target - debug_current_q_value
-                    print(f"  TDデルタ (TDターゲット - Q(s, a)): {debug_td_delta:.3}")
-
-                    # TD誤差絶対値 (Lossとして使用される値)
-                    debug_loss = abs(debug_td_delta)
-                    print(f"  TD誤差絶対値 (Loss): {debug_loss:.3}")
-
-                    # Q値の更新 (Agent.learnで行われる処理) の直前と直後の値を確認
-                    # 更新前の該当Q値を取得 (再度取得して厳密に)
-                    q_before_learn = agent.q_table.get_q_values(agent_q_state)[agent_action]
-                    print(f"  Q(s, a) 更新直前: {q_before_learn:.4}")
 
             states = next_states
             states_log.append(states)
@@ -692,10 +602,8 @@ class MultiAgent_Q:
                 done_counts = []
             
             if episode_num % 1000 == 0:
-                self.save_checkpoint(episode_num,list(self.env.get_goal_positions().values()))
-                #self.save_model()
-                
-                
+                self.save_checkpoint(episode_num, self.goal_pos)
+                                
             # --------------------------------------------
             # 各エピソード開始時に環境をリセット
             # これによりエージェントが再配置される
@@ -735,16 +643,12 @@ class MultiAgent_Q:
                 next_observation, reward, done, info = self.env.step(actions)
 
                 # Q学習は経験ごとに逐次更新
-                #step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
-
                 # 各エージェントに対して学習を実行
                 for i, agent in enumerate(self.agents):
-                    #agent_action = debug_actions[i]
                     loss = agent.learn(current_states, int(actions[i]), float(reward), next_observation, bool(done))
                     step_losses.append(loss)
 
                 current_states = next_observation # 状態を更新
-                #step_reward += reward
                 episode_reward += reward
                 step_count += 1
                 #total_step += 1

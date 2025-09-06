@@ -2,6 +2,7 @@ import random
 from typing import Tuple
 
 PositionType = Tuple[int,int]
+"""座標の形式を定義"""
 
 class Grid:
     """

@@ -1,11 +1,14 @@
-import unittest
 from typing import Tuple, Dict, List
 
 # Define the type aliases again for clarity within this cell
 QState = Tuple[int, ...]
-QValues = List[float]
-QTableType = Dict[QState, QValues]
+"""Qテーブルの状態"""
 
+QValues = List[float]
+"""Q値"""
+
+QTableType = Dict[QState, QValues]
+"""Qテーブルの構造"""
 
 class QTable:
     """

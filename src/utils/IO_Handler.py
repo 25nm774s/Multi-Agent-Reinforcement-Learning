@@ -7,7 +7,7 @@ class IOHandler:
     モデルデータやチェックポイントデータなどの保存と読み込みを担当する汎用クラス。
     torch.save/load を使用してデータをファイルに保存・読み込みする。
     """
-    def save(self, save_container: dict, file_path:str) -> None:
+    def save(self, save_container: dict, file_path:str, assert_debug:bool=False) -> None:
         """
         指定されたデータをファイルに保存する (torch形式)。
 
@@ -18,12 +18,12 @@ class IOHandler:
         try:
             with open(file_path, 'wb') as f:
                 torch.save(save_container, f)
-            print(f"データを {file_path} に保存しました。")
+            if assert_debug: print(f"データを {file_path} に保存しました。")
         except Exception as e:
             print(f"データの保存中にエラーが発生しました: {e}")
 
 
-    def load(self, file_path:str) -> dict:
+    def load(self, file_path:str, assert_debug:bool=False) -> dict:
         """
         指定されたファイルからデータを読み込む (torch形式)。
 
@@ -38,7 +38,7 @@ class IOHandler:
             if os.path.exists(file_path):
                 with open(file_path, 'rb') as f:
                     obj:dict = torch.load(f)
-                print(f"データを {file_path} から読み込みました.")
+                if assert_debug: print(f"データを {file_path} から読み込みました.")
             else:
                 print(f"指定されたファイル {file_path} が存在しません。新しいデータとして初期化します。")
                 obj = {} # ファイルが存在しない場合は新しいデータとして初期化

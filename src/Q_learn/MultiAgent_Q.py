@@ -6,10 +6,10 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 
-from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv, Grid
+from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
-from utils.ConfigManager import ConfigManager, ConfigLoader
+#from utils.ConfigManager import ConfigManager, ConfigLoader
 from utils.IO_Handler import IOHandler
 from utils.render import Render
 
@@ -44,7 +44,8 @@ class MultiAgent_Q:
 
         self._start_episode = 0
 
-        goal_pos_list:list[PositionType] = self.load_checkpoint()
+        #goal_pos_list:list[PositionType] = self.load_checkpoint()
+        self._start_episode, goal_pos_list = self.load_checkpoint_mentetyuu()
         self.env = MultiAgentGridEnv(args, goal_pos_list)# 環境クラス
         
         self.goal_pos = tuple(self.env.get_goal_positions().values())
@@ -216,7 +217,7 @@ class MultiAgent_Q:
 
         for i,agent in enumerate(self.agents):
             file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth')
-            os.remove(file_path)
+            if os.path.exists(file_path): os.remove(file_path)# ファイルがすでにあればリネームと競合しないように消す
             os.rename(temp_path_list[i],file_path)
 
     def save_model(self):
@@ -275,6 +276,32 @@ class MultiAgent_Q:
             # 新規の場合のゴール位置サンプリングは__init__で行われるため、ここでは特別な処理は不要
             return [] # 空のリストを返すことで、__init__で新規サンプリングを促す
 
+    def load_checkpoint_mentetyuu(self)->tuple[int, list[PositionType]]:
+        print("チェックポイント読み込み中...")
+        checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
+        load_data:list[dict] = []
+        goal_pos:list[PositionType] = [] # 読み込まれた、または新規のゴール位置を格納
+        loaded_episode:int = int(0) # 読み込まれたエピソード数
+
+        for agent in self.agents:
+            file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
+            data = self.io_handler.load(file_path)
+            if not data:
+                loaded_episode:int = int(0)
+                goal_pos:list[PositionType] = []
+                return loaded_episode, goal_pos # ないとき初期値をリターン
+
+            load_data.append(data) # IOHandlerを使用
+
+        for agent,data in zip(self.agents,load_data):
+            qtable: QTableType = data.get('state_dict', {}) # 存在しないキーの場合に備えてgetを使用
+            agent.set_Qtable(qtable)
+        
+        # エージェント0についてエピソードを取得
+        loaded_episode:int = int(load_data[0]['episode'])
+        goal_pos:list[PositionType] = list(load_data[0]['goal_position'])
+
+        return loaded_episode, goal_pos
 
     def load_model(self):
         """
@@ -518,12 +545,13 @@ class MultiAgent_Q:
 
         states = self.env.reset()
 
+        for agent in self.agents: agent.epsilon = 0.0 # 無理くり探索させない
+
         while not done and time_step < self.max_ts:
             
             actions = []
             
             for agent in self.agents:
-                agent.epsilon = 0.0 # 無理くり探索を許可しない
                 a = agent.get_action(states)                #<-ここの仕様が統一感がない
                 actions.append(a)
             
@@ -573,11 +601,13 @@ class MultiAgent_Q:
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
+        print(f"---------学習開始 (全 {total_episodes} エピソード)----------")
+
         for episode_num in range(self._start_episode, total_episodes + 1):
             if episode_num % 100 == 0:
                 print(f"Episode {episode_num} / {total_episodes}", end='\r', flush=True)
 
-            # 100エピソードごとに平均を出力
+            # 1000エピソードごとに平均を出力
             if episode_num % 1000 == 0 and (episode_num != self._start_episode):
                 print() # 改行して進捗表示をクリア
                 
@@ -668,7 +698,8 @@ class MultiAgent_Q:
 
         #self.saver.save_remaining_episode_data() <- 2000-2000が生成される原因になる。この半端なエピドートは捨てることで解決を図る。
         self.saver.save_visited_coordinates()
-        print()  # 終了時に改行
+        self.save_model()
+        print(f"---------学習終了 (全 {total_episodes} エピソード完了)----------")
 
     def run_method(self, total_episodes):
         print(f"---------学習開始 (全 {total_episodes} エピソード)----------")

@@ -2,10 +2,14 @@ import sys
 import os
 
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
-from DQN.Agent_DQN import Agent_DQN
+
 from utils.plot_results import PlotResults
 from utils.Saver import Saver
-from utils.Model_IO import Model_IO
+from utils.ConfigManager import ConfigManager
+
+from .Agent_DQN import Agent_DQN
+from .IO_Handler import Model_IO
+from .dqn import QNet
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -35,8 +39,8 @@ class MultiAgent_DQN:
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
         self.max_ts = args.max_timestep
-        self.agents_num = args.agents_number
-        self.goals_num = args.goals_number
+        self.agents_number = args.agents_number
+        self.goals_number = args.goals_number
         self.grid_size = args.grid_size
         self.load_model = args.load_model
         self.mask = args.mask
@@ -44,16 +48,20 @@ class MultiAgent_DQN:
         self.save_agent_states = args.save_agent_states
 
         # 結果保存ディレクトリの設定と作成
-        save_dir = os.path.join(
+        self.save_dir = os.path.join(
             "output",
             f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
         )
-        if not os.path.exists(save_dir): os.makedirs(save_dir)
+        
+        cp_dir = os.path.join(self.save_dir, ".checkpoints")
+        json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
+        conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
+        print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
+
 
         # 結果保存およびプロット関連クラスの初期化
-        self.saver = Saver(save_dir,self.grid_size)
-        self.model_io = Model_IO(save_dir)
-        self.plot_results = PlotResults(save_dir)
+        self.saver = Saver(self.save_dir,self.grid_size)
+        self.plot_results = PlotResults(self.save_dir)
 
 
     def run(self):
@@ -62,12 +70,13 @@ class MultiAgent_DQN:
         指定されたエピソード数だけ環境とのインタラクションと学習を行います。
         """
         # 事前条件チェック: エージェント数はゴール数以下である必要がある
-        if self.agents_num > self.goals_num:
+        if self.agents_number > self.goals_number:
             print('goals_num >= agents_num に設定してください.\n')
             sys.exit()
 
         # 学習開始メッセージ
         print(f"{GREEN}DQN{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})" if self.agents[0].use_per else "") + "\n")
+        print(f"goals: {self.env.get_goal_positions().values()}")
 
         total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
@@ -139,7 +148,7 @@ class MultiAgent_DQN:
                 # エージェントの状態を保存（オプション）
                 # 全体状態からエージェント部分を抽出 し、Saverでログ記録
                 if self.save_agent_states:
-                    agent_positions_in_global_state = current_global_state[self.goals_num:]
+                    agent_positions_in_global_state = current_global_state[self.goals_number:]
                     for i, agent_pos in enumerate(agent_positions_in_global_state):
                         self.saver.log_agent_states(i, agent_pos[0], agent_pos[1])
 
@@ -199,14 +208,23 @@ class MultiAgent_DQN:
 
     def save_model_weights(self):
         """学習済みモデルの重みを保存する."""
+        model_io = Model_IO()
+        model_dir = file_path = os.path.join(self.save_dir, "models")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+
         for id, agent in enumerate(self.agents):
             model_weight, _, _ = agent.get_weights()
-            self.model_io.save_model_weights(id, model_weight) 
+            file_path = os.path.join(model_dir, f"model_{id}.pth")
+            model_io.save(file_path, model_weight) 
 
     def load_model_weights(self):
+        model_io = Model_IO()
+
         for id, agent in enumerate(self.agents):
-            qnet, _, _ = agent.get_weights()
-            self.model_io.load_model_weights(id)
+            file_path = os.path.join(self.save_dir, "models", f"model_{id}.pth")
+            load_data: QNet = model_io.load(file_path)
+            agent.set_weights(load_data)
 
     def save_Qtable(self):
         """

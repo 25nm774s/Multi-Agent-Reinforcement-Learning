@@ -1,11 +1,11 @@
 import unittest
-import pandas as pd
 import os
 import matplotlib.pyplot as plt
 # No need to import Saver or PlotResults again, they are already defined in the notebook
 # No need to import japanize_matplotlib again
+from src.utils.Saver import Saver
 
-class TestPlotResults(unittest.TestCase):
+class __TYOUSEITYUU___TestPlotResults(unittest.TestCase):
     """PlotResultsクラスとSaverクラスの単体テスト."""
 
     def setUp(self):

@@ -2,7 +2,8 @@ import numpy as np
 import os
 import csv
 import pandas as pd
-import torch
+
+from Enviroments.Grid import Grid
 
 class Saver:
     """
@@ -12,6 +13,10 @@ class Saver:
     指定されたディレクトリに保存します。
     エピソードスコアは100エピソードごとに集計して保存する機能も持ちます。
     """
+
+    # 集計期間
+    CALCULATION_PERIOD:int = 100
+
     def __init__(self, save_dir, grid_size):
         """
         Saverクラスの新しいインスタンスを初期化します。
@@ -42,7 +47,7 @@ class Saver:
         if not os.path.exists(self.scores_summary_100_path):
             with open(self.scores_summary_100_path, "w", newline='') as f:
                 # 100エピソードサマリーファイル用の更新されたヘッダー
-                csv.writer(f).writerow(["episode_group_start", "episode_group_end", "avg_time_step_100", "avg_reward_100", "avg_loss_100"])
+                csv.writer(f).writerow(["episode_group_start", "episode_group_end", "avg_time_step_100", "avg_reward_100", "avg_loss_100", "done_rate"])
 
 
         # 訪問回数を記録するためのNxN numpy配列としてインメモリストレージを初期化
@@ -91,18 +96,19 @@ class Saver:
             x (int): エージェントの現在のX座標。
             y (int): エージェントの現在のY座標。
         """
+        if not Grid(self.grid_size).is_valid_position((x,y)):
+            raise ValueError(f'エージェント状態座標が無効です: x={x}, y={y} (エージェントID: {agent_id})')
+        
         # xとyがグリッドの境界内にあると仮定
-        if 0 <= x < self.grid_size and 0 <= y < self.grid_size:
-            # 訪問したセルのカウントをインクリメント
-            self.visited_count_grid[y, x] += 1
-            # 訪問更新カウンターをインクリメント
-            self.visited_updates_counter += 1
-        else:
-            print(f"警告: エージェント状態座標が無効です: x={x}, y={y} (エージェントID: {agent_id})")
+        #if 0 <= x < self.grid_size and 0 <= y < self.grid_size:
+        # 訪問したセルのカウントをインクリメント
+        self.visited_count_grid[y, x] += 1
+        # 訪問更新カウンターをインクリメント
+        self.visited_updates_counter += 1
 
 
     # 個々のエピソードデータを記録し、平均のログ記録をトリガーする新しいメソッド
-    def log_episode_data(self, episode: int, time_step: int, reward: float, loss: float):
+    def log_episode_data(self, episode: int, time_step: int, reward: float, loss: float, done: bool):
         """
         個々のエピソードデータをバッファに記録し、100エピソードごとに集計してファイルに保存します。
 
@@ -111,9 +117,10 @@ class Saver:
             time_step (int): そのエピソードでのステップ数。
             reward (float): そのエピソードで得られた報酬の合計。
             loss (float): そのエピソードでの学習損失 (該当する場合)。
+            done (bool): そのエピソードを終了したか。
         """
         # 個々のエピソードデータをバッファに追加
-        self.episode_data_buffer.append({'episode': episode, 'time_step': time_step, 'reward': reward, 'loss': loss})
+        self.episode_data_buffer.append({'episode': episode, 'time_step': time_step, 'reward': reward, 'loss': loss, 'done':int(done)})
         # カウンターをインクリメント
         self.episode_data_counter += 1
 
@@ -126,13 +133,14 @@ class Saver:
             avg_time_step = buffer_df['time_step'].mean()
             avg_reward = buffer_df['reward'].mean()
             avg_loss = buffer_df['loss'].mean()
+            done_rate = buffer_df['done'].mean()
 
             # エピソード範囲を決定
             episode_group_start = self.episode_data_buffer[0]['episode']
             episode_group_end = self.episode_data_buffer[-1]['episode']
 
             # 平均をスコアサマリーファイル (scores_summary100.csv) にログ記録
-            self._log_scores(episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss)
+            self._log_scores(episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate)
 
             # バッファをクリアし、カウンターをリセット
             self.episode_data_buffer = []
@@ -140,7 +148,7 @@ class Saver:
 
 
     # 集計されたスコアをscores_summary100.csvにログ記録するように修正
-    def _log_scores(self, episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss):
+    def _log_scores(self, episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate):
         """
         集計された100エピソード分のスコアデータをscores_summary100.csvファイルに追記します。
 
@@ -152,11 +160,12 @@ class Saver:
             avg_time_step (float): 集計期間の平均ステップ数。
             avg_reward (float): 集計期間の平均報酬。
             avg_loss (float): 集計期間の平均損失。
+            done_rate (float): 集計期間の成功率。
         """
         # 集計されたスコアデータをscores_summary100.csvファイルに直接追記
         with open(self.scores_summary_100_path, 'a', newline='') as f:
             csv_writer = csv.writer(f)
-            csv_writer.writerow([episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss])
+            csv_writer.writerow([episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate])
 
 
     # バッファに残っているスコアを保存するメソッドを追加 - 残りのエピソードデータを処理
@@ -174,13 +183,14 @@ class Saver:
             avg_time_step = buffer_df['time_step'].mean()
             avg_reward = buffer_df['reward'].mean()
             avg_loss = buffer_df['loss'].mean()
+            done_rate = buffer_df['done'].mean()
 
             # 残りのデータのエピソード範囲を決定
             episode_group_start = self.episode_data_buffer[0]['episode']
             episode_group_end = self.episode_data_buffer[-1]['episode']
 
             # 残りのデータ用の平均をスコアサマリー100ファイルにログ記録
-            self._log_scores(episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss)
+            self._log_scores(episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate)
 
             print(f"Saved {len(self.episode_data_buffer)} remaining episode data entries as an aggregated group to {self.scores_summary_100_path}")
             # バッファをクリアし、カウンターをリセット

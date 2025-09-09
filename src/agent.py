@@ -1,5 +1,5 @@
 # Update the Agent class __init__ method to select strategies based on 'mask'
-
+'''
 from typing import Tuple, List
 
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
@@ -162,7 +162,7 @@ class Agent:
         """
         return self.q_table.get_Qtable()
     
-    def set_Qtable(self, q_table):
+    def set_Qtable(self, q_table:QTableType):
         self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
@@ -172,3 +172,4 @@ class Agent:
         """
         return self.q_table.get_q_table_size()
 
+'''

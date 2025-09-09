@@ -57,8 +57,6 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 import argparse
 import torch
 
-from agent import Agent
-
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
@@ -67,20 +65,21 @@ RESET = '\033[0m'
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
-        parser.add_argument('--dir_path', default='./')
-        parser.add_argument('--grid_size', default=4, type=int)
-        parser.add_argument('--agents_number', default=2, type=int)
-        parser.add_argument('--goals_number', default=2, type=int)
-        parser.add_argument('--learning_mode', choices=['Q', 'DQN'], default='DQN')
+        #parser.add_argument('--dir_path', default='./')
+        parser.add_argument('-g','--grid_size', default=4, type=int)
+        parser.add_argument('-A','--agents_number', default=2, type=int)
+        parser.add_argument('-G','--goals_number', default=2, type=int)
+        parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
         parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=0, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
-        parser.add_argument('--episode_number', default=1000, type=int)
+        parser.add_argument('-e','--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
         parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--epsilon_decay_alpha', default=0.40, type=float)
+        parser.add_argument('--learning_rate', default=0.2, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=2, type=int)
@@ -114,15 +113,36 @@ if __name__ == '__main__':
 
     def q_learning():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
+        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        simulation = MultiAgent_Q(config,agents)
+
+        simulation.train(config.episode_number)
+
+        simulation.result_save()
+
+        simulation.render_anime(config.episode_number)
+        #print("reward:",r, "done:",done)
+        #print("GET: trajectry")
+        #for tr in traj: print(tr)
+    
+    def q_play():
+        from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
+        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        simulation = MultiAgent_Q(config,agents)
+
+        simulation.render_anime(config.episode_number)
+
+    def debug_q():
+        from Q_learn.MultiAgent_Q import MultiAgent_Q
+        from Q_learn.Agent_Q import Agent
         agents:list = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
-        simulation.run()
+        simulation.debug_train()
+            
 
-        simulation.result_save()
-        simulation.save_model()
-        simulation.load_model()
-    
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
         from DQN.Agent_DQN import Agent_DQN
@@ -137,9 +157,19 @@ if __name__ == '__main__':
         simulation.save_model_weights()
         simulation.load_model_weights()
     
+    def dimensions_estimater(grid_size:int, agent_number:int)->int:
+        res = 1
+        for i in range(agent_number):
+            res *= (grid_size * grid_size - i)
+
+        return res
 
     if config.learning_mode == "Q":
+        if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
+            raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
+        
         q_learning()
+
     elif config.learning_mode == "DQN":
         dqn_process()
     else:

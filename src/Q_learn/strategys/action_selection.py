@@ -1,14 +1,14 @@
-import abc
+from abc import ABC, abstractmethod
 import numpy as np
 
-from ..QTable import QTable,QState
+from ..QTable import QTable, QState
 
 from typing import Tuple, List
 
-class ActionSelectionStrategy(abc.ABC):
+class ActionSelectionStrategy(ABC):
     """Abstract Base Class for Action Selection Strategies."""
 
-    @abc.abstractmethod
+    @abstractmethod
     def select_action(self, q_table: QTable, q_state: QState, action_size: int, epsilon: float) -> int:
         """
         戦略に基づいて、現在の状態とQ値に基づいて行動を選択します。
@@ -24,14 +24,15 @@ class ActionSelectionStrategy(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
-    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+    @abstractmethod
+    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...], neighbor_distance:int) -> QState:
         """
         この戦略のQテーブル状態表現を、グローバル環境状態から生成します。
 
         Args:
             global_state (Tuple[Tuple[int, int], ...]): The global state tuple
                                                         ((goal1_x, goal1_y), ..., (agent1_x, agent1_y), ...).
+            neighbor_distance (int): 観測空間の有効距離
 
         Returns:
             QState: The state representation suitable for the QTable lookup for this strategy.
@@ -64,7 +65,7 @@ class SelfishActionSelection(ActionSelectionStrategy):
             best_actions = [a for a, q in enumerate(q_values) if q == max_q]
             return np.random.choice(best_actions)
 
-    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...], _) -> QState:
         """
         利己的戦略の状態で表す（自身のエージェントの位置 + すべての目標の位置）。
         """

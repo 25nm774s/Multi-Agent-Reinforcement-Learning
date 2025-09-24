@@ -37,7 +37,7 @@ class MultiAgent_Q:
         Q_Strategy = "IQL" if args.mask else "CQL"
         self.save_dir = os.path.join(
             "output",
-            f"{Q_Strategy}_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
+            f"{Q_Strategy}_部分観測[{args.neighbor_distance}]_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
         )
 
         self.io_handler = IOHandler() # IOHandlerのインスタンスを作成

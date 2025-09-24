@@ -619,11 +619,11 @@ class MultiAgent_Q:
 
                 q_table_size = [agent.get_q_table_size() for agent in self.agents]
 
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} の成功率     : {GREEN}{done_rate:.2f}{RESET}")
-                print(f"==== エピソード {episode_num - 99} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
+                print(f"==== エピソード {episode_num - 999} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 999} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 999} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
+                print(f"==== エピソード {episode_num - 999} ~ {episode_num} の成功率     : {GREEN}{done_rate:.2f}{RESET}")
+                print(f"==== エピソード {episode_num - 999} ~ {episode_num} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
                 
                 #avg_reward_temp, avg_step_temp = 0, 0
                 episode_losses = [] # 100エピソードごとに損失リストもリセット

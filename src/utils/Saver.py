@@ -221,3 +221,236 @@ class Saver:
         """
         # リストではなく訪問回数グリッドを出力
         print(self.visited_count_grid)
+
+
+import sqlite3
+
+from typing import List, Tuple
+
+CoordType = Tuple[int, int]
+
+
+EpisodeTableType = tuple[int, bool, float, float]
+"""
+Episodeテーブルのフォーマット
+(id, done, reward, loss)
+"""
+
+StepTableType = tuple[int, int]
+"""
+Stepテーブルのフォーマット
+(episode_id, step_id)
+"""
+
+EnvTableType = tuple[int, int, int, str, int, int, int, int]
+"""
+Envテーブルのフォーマット (データベースから読み込む際に使用)
+(id, episode_id, step_id, object_name, x_coord, y_coord, next_x_coord, next_y_coord)
+"""
+
+EnvInputType = tuple[int, int, str, int, int, int, int]
+"""
+Envテーブルへの挿入に使用するデータのフォーマット (id を除く)
+(episode_id, step_id, object_name, x_coord, y_coord, next_x_coord, next_y_coord)
+"""
+
+AgentTableType = tuple[int, int, int, int, float]
+"""
+Agentテーブルのフォーマット
+(id, episode_id, step_id, agent_id, action, reward)
+"""
+
+AgentInputType = tuple[int, int, str, int, float]
+"""
+Agentテーブルへの挿入に使用するデータのフォーマット (id を除く)
+(episode_id, step_id, agent_id, action, reward)
+"""
+
+InputDataType = tuple[int, int, str, list[CoordType], list[CoordType], int, float]
+"""
+Env, Agentテーブルへの挿入に使用するデータのフォーマット
+(episode_id, step_id, object_name, current_states, next_states, action, reward)
+"""
+
+
+class LoggerDB:
+
+    BUFFER_FRECENCY = 10000
+
+    def __init__(self, db_name="multi_agent_log.db"):
+        self.db_name = db_name
+        self._create_tables()
+
+        self._insert_step_data:list[StepTableType] = []
+        self._insert_buffer_env:list[EnvInputType] = []
+        self._insert_buffer_agent:list[AgentInputType] = []
+        self._insert_count = 0
+
+    def _create_tables(self):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS Episodes (
+            episode_id INT PRIMARY KEY,
+            done BOOLEAN,       -- エピソードが終了したかどうか
+            reward FLOAT,       -- エピソード報酬
+            loss FLOAT          -- 損失(TD誤差であったり、nnの場合はモデルが返す値であったり)
+        );
+        """)
+
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS Steps (
+            episode_id INT,
+            step_id INT,
+            PRIMARY KEY (episode_id, step_id),
+            FOREIGN KEY (episode_id, step_id) REFERENCES Episodes(episode_id, step_id)
+        );
+        """)
+
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS Env (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INT,     -- エピソードのID(episodesテーブルのidを参照)
+            step_id INT,        -- ステップ番号(episodesテーブルのstep_idを参照)
+            object_name VARCHAR(255), -- 'agent' or 'goal' or other
+            x_coord INT,        -- オブジェクトのX座標
+            y_coord INT,        -- オブジェクトのY座標
+            next_x_coord INT,   -- オブジェクトの次状態のX座標
+            next_y_coord INT,   -- オブジェクトの次状態のY座標
+            FOREIGN KEY (episode_id,step_id) REFERENCES Episodes(episode_id,step_id)
+        );
+        """)
+
+        c.execute("""CREATE TABLE IF NOT EXISTS Agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            episode_id INT,     -- エピソードのID(episodesテーブルのidを参照)
+            step_id INT,        -- ステップ番号(episodesテーブルのstep_idを参照)
+            agent_id INT,       -- エージェントのID
+            action INT,         -- 行動
+            reward FLOAT,       -- 報酬
+            FOREIGN KEY (episode_id,step_id) REFERENCES Episodes(episode_id,step_id)
+        );
+        """)
+
+        conn.commit()
+        conn.close()
+
+    def insert_episode(self, episode_id: int, done: bool, reward: float, loss: float):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        try:
+            c.execute("INSERT INTO Episodes (episode_id, done, reward, loss) VALUES (?, ?, ?, ?)", (episode_id, done, reward, loss))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            print(f"Episode with id {episode_id} already exists.")
+        finally:
+            conn.close()
+
+
+    def insert_steps(self, buffer_step:list[StepTableType], buffer_env: list[EnvInputType], buffer_agent: list[AgentInputType]):
+        if not buffer_env and not buffer_agent:
+            return
+
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+
+        # c.execute("""SQL""")
+        c.executemany("INSERT INTO Steps (episode_id, step_id) VALUES (?, ?)", buffer_step)
+        c.executemany("INSERT INTO Env (episode_id, step_id, object_name, x_coord, y_coord, next_x_coord, next_y_coord) VALUES (?, ?, ?, ?, ?, ?, ?)", buffer_env)
+        c.executemany("INSERT INTO Agents (episode_id, step_id, agent_id, action, reward) VALUES (?, ?, ?, ?, ?)", buffer_agent)
+
+        conn.commit()
+        conn.close()
+
+    def insert_step(self, episode_id: int, step_id: int, object_data:dict, agents_data:dict):
+
+        state_x, state_y = self._convert_state_to_db_format(object_data["cs"])
+        next_state_x, next_state_y = self._convert_state_to_db_format(object_data["ns"])
+
+        env_datas: list[EnvInputType] = [(episode_id, step_id, obname, cx, cy, nx, ny) for obname,cx,cy,nx,ny in zip(object_data["name"],state_x, state_y, next_state_x, next_state_y)]
+        #print("env_datas: ",env_datas)
+        agent_datas:list[AgentInputType] = [(episode_id, step_id, agent_id, action, reward) for agent_id,action,reward in zip(agents_data['id'],agents_data['action'],agents_data['reward'])]
+
+        for env_data in env_datas:
+            self._insert_buffer_env.append(env_data)
+
+        for agent_data in agent_datas:
+            self._insert_buffer_agent.append(agent_data)
+
+        self._insert_step_data.append((episode_id, step_id))
+        self._insert_count += 1
+
+        #print("_insert_buffer_env: ",self._insert_buffer_env)
+
+        if self._insert_count >= self.BUFFER_FRECENCY:
+            self.insert_steps(self._insert_step_data, self._insert_buffer_env, self._insert_buffer_agent)
+            self._insert_buffer_env.clear()
+            self._insert_buffer_agent.clear()
+            self._insert_step_data.clear()
+            self._insert_count = 0
+
+    def _convert_state_to_db_format(self, state: list[CoordType]):
+        # Assuming the format is [goal1, goal2, agent1, agent2, ...]
+
+        state_x = [coord[0] for coord in state]
+        state_y = [coord[1] for coord in state]
+
+        return state_x, state_y
+
+    def _decode_step_state(self, x:list,y:list):
+        state = [(x[i],y[i]) for i in range(len(x))]
+        return state
+
+    def flush_buffer(self):
+        if not self._insert_buffer_env and not self._insert_buffer_agent:
+            return
+
+        self.insert_steps(self._insert_step_data, self._insert_buffer_env, self._insert_buffer_agent)
+        self._insert_buffer_env.clear()
+        self._insert_buffer_agent.clear()
+        self._insert_count = 0
+
+    def get_episode_data(self):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+
+        c.execute("SELECT * FROM Episodes")
+        episode_data:list[EpisodeTableType] = c.fetchall()
+
+        conn.close()
+
+        return episode_data
+
+    def get_step_data(self, episode_id: int):
+        if episode_id < 1:
+            raise ValueError(f"episodeの値は正にしてほしい。現在: {episode_id}")
+
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+
+        episode_data_env:list[EnvTableType] = []
+        c.execute("SELECT * FROM Env WHERE episode_id = ?", (episode_id,))
+        episode_data_env = c.fetchall()
+
+        c.execute("SELECT * FROM Agents WHERE episode_id = ?", (episode_id,))
+        episode_data_agent:list[AgentTableType] = c.fetchall()
+        conn.close()
+
+        return episode_data_env, episode_data_agent
+
+
+    def end_episode(self, episode_id: int, done: bool, reward: float, loss: float):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("UPDATE Episodes SET done = ?, reward = ?, loss = ? WHERE episode_id = ?", (done, reward, loss, episode_id))
+        conn.commit()
+        conn.close()
+
+    def __len__(self):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM Steps")
+        count = c.fetchone()[0]
+        conn.close()
+        return count

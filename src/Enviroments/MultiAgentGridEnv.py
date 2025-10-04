@@ -430,6 +430,10 @@ class MultiAgentGridEnv:
         else:
             print(f"Warning: 未知の完了条件モード: {done_mode}。常に False を返します。")
             return False
+
+    def get_all_object(self):
+        r = self._grid.get_all_object_positions()
+        return r
         
 
 ##import random

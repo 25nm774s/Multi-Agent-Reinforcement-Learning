@@ -25,11 +25,14 @@ class Agent:
             args: 環境設定を含むオブジェクト (mask属性を含む).
             agent_id (int): このエージェントのID.
         """
-        self.agent_id = agent_id
-        self.grid_size = args.grid_size
-        self.goals_num = args.goals_number
-        self.action_size = 5 # UP, DOWN, LEFT, RIGHT, STAY
-        self.total_agents = args.agents_number
+        self.agent_id:int           = agent_id
+        self.grid_size:int          = args.grid_size
+        self.goals_num:int          = args.goals_number
+        self.action_size:int        = 5 # UP, DOWN, LEFT, RIGHT, STAY
+        self.total_agents:int       = args.agents_number
+        self.mask:bool              = args.mask
+        self.observation_mode:str   = args.observation_mode
+        self.neighbor_distance:int  = args.neighbor_distance
 
         # マスク値に基づいて戦略をインスタンス化
         # 戦略に必要な初期化引数を渡す
@@ -82,11 +85,13 @@ class Agent:
     def _get_q_state(self, global_state: Tuple[PositionType, ...]) -> QState:
         """
         環境の全体状態から、このエージェントにとってのQテーブル用の状態表現を抽出・生成する.
-        行動選択ストラテジーオブジェクトに状態表現の生成を委譲する.
+        現在の config (mask, observation_mode) に応じて、異なる状態表現を生成する.
         """
-        # Delegate state representation generation to the injected action selection strategy
-        # Removed the old isinstance checks and state generation logic.
-        return self._action_selection_strategy.get_q_state_representation(global_state)
+        # global_state の構造: ((g1_x, g1_y), ..., (a1_x, a1_y), ..., (aN_x, aN_y))
+        return self._action_selection_strategy.get_q_state_representation(
+            global_state,
+            self.neighbor_distance
+        )
 
 
     #def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:

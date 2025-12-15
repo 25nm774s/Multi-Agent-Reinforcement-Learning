@@ -13,6 +13,9 @@ class CooperativeActionSelection(ActionSelectionStrategy):
     """
     協調行動の選択に関する具体的な戦略（他のエージェントの位置を考慮）
     """
+
+    UNOBSERVED_POSITION = (-1, -1)
+
     def __init__(self, grid_size: int, goals_num: int, agent_id: int, total_agents: int):
         """
         Initializes the CooperativeActionSelection strategy.
@@ -36,30 +39,36 @@ class CooperativeActionSelection(ActionSelectionStrategy):
             best_actions = [a for a, q in enumerate(q_values) if q == max_q]
             return np.random.choice(best_actions)
 
-    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
+    def get_q_state_representation(self, global_state: Tuple[Tuple[int, int], ...], neighbor_distance:int) -> QState:
         """
         協調戦略の状態表現（すべての目標位置 + すべてのエージェント位置）を生成
         """
-        expected_len = self.goals_num + self.total_agents
-        if len(global_state) != expected_len:
-            raise ValueError(f"グローバル状態のサイズの不一致がCooperativeActionSelectionで発生しました。期待値は{expected_len}ですが、実際は{len(global_state)}でした。")
-
-        flat_state_list: List[int] = []
 
         goal_positions = global_state[:self.goals_num]
-        for pos in goal_positions:
-            if not isinstance(pos, tuple) or len(pos) != 2:
-                raise ValueError(f"予期しないゴール位置形式: {pos} in CooperativeActionSelection.get_q_state_representation")
-            flat_state_list.extend(pos)
-
         agent_positions = global_state[self.goals_num:]
-        if len(agent_positions) != self.total_agents:
-            raise ValueError(f"エージェントの位置の数が一致しません。CooperativeActionSelection において、期待値は {self.total_agents} ですが、実際は {len(agent_positions)} です。")
+        agent_position = agent_positions[self.agent_id]
 
-        for pos in agent_positions:
-            if not isinstance(pos, tuple) or len(pos) != 2:
-                raise ValueError(f"予期しないエージェントの位置形式: {pos} in CooperativeActionSelection.get_q_state_representation")
-            flat_state_list.extend(pos)
+        # CooperativeActionSelection では、__init__ で受け取った neighbor_distance を使う可能性があるため、
+        # Agent クラスからこの情報をストラテジーに渡す必要があります。
+        # もしくは、CooperativeActionSelection が Agent インスタンスへの参照を持つように設計します。
+        # 部分観測ロジックは、このメソッド内に移動させます。
+        flat_state_list: List[int] = []
+
+        # ゴールはそのまま
+        for p in goal_positions:
+            flat_state_list.extend(p)
+
+        for i,pos in enumerate(agent_positions):
+            if i==self.agent_id:
+                flat_state_list.extend(pos)
+                continue    #自身を除く
+
+            d = max(abs(pos[0] - agent_position[0]), abs(pos[1] - agent_position[1]))
+
+            if d <= neighbor_distance:
+                flat_state_list.extend(pos)
+            else:
+                flat_state_list.extend(self.UNOBSERVED_POSITION)
 
         return tuple(flat_state_list)
 

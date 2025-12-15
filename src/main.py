@@ -72,6 +72,8 @@ if __name__ == '__main__':
         parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
         parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
+        parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
+        parser.add_argument('--neighbor_distance', default=2, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=0, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
@@ -116,7 +118,7 @@ if __name__ == '__main__':
         from Q_learn.Agent_Q import Agent
         agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
-
+        
         simulation.train(config.episode_number)
 
         simulation.result_save()
@@ -132,15 +134,8 @@ if __name__ == '__main__':
         agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
-        simulation.render_anime(config.episode_number)
-
-    def debug_q():
-        from Q_learn.MultiAgent_Q import MultiAgent_Q
-        from Q_learn.Agent_Q import Agent
-        agents:list = [Agent(config,id) for id in range(config.agents_number)]
-        simulation = MultiAgent_Q(config,agents)
-
-        simulation.debug_train()
+        #simulation.render_anime(config.episode_number)
+        # simulation.log_disp()
             
 
     def dqn_process():
@@ -168,7 +163,10 @@ if __name__ == '__main__':
         if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
             raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
         
-        q_learning()
+        if config.episode_number == -1:
+            q_play()
+        else:
+            q_learning()
 
     elif config.learning_mode == "DQN":
         dqn_process()

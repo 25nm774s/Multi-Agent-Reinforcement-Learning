@@ -21,22 +21,22 @@ class Render:
         self.goals_number = goals_number
         self.agents_number = agents_number
 
-    def render(self, kifu):
+    def render(self, trajectory_data):
         """
-        Kifu (状態のリスト) からエージェントの軌跡を描画します。
+        trajectory_data (状態のリスト) からエージェントの軌跡を描画します。
 
         Args:
-            kifu (list): 環境状態のリスト。各状態はゴール位置とエージェント位置のタプル。
+            trajectory_data (list): 環境状態のリスト。各状態はゴール位置とエージェント位置のタプル。
         """
-        if not kifu:
+        if not trajectory_data:
             print("描画する軌跡データがありません。")
             return
 
         # Extract agent trajectories
         agent_trajectories = {f'agent_{i}': [] for i in range(self.agents_number)}
-        goal_positions = kifu[0][:self.goals_number] # Assuming goal positions are fixed throughout the kifu
+        goal_positions = trajectory_data[0][:self.goals_number] # Assuming goal positions are fixed throughout the trajectory_data
 
-        for state in kifu:
+        for state in trajectory_data:
             agent_current_positions = state[self.goals_number:]
             for i in range(self.agents_number):
                 agent_trajectories[f'agent_{i}'].append(agent_current_positions[i])
@@ -84,21 +84,21 @@ class Render:
         plt.gca().set_aspect('equal', adjustable='box') # Ensure square grid cells
         plt.show()
 
-    def render_anime(self, kifu, output_filename="agent_trajectory_animation.gif", interval=200):
+    def render_anime(self, trajectory_data, output_filename="agent_trajectory_animation.gif", interval=200):
         """
-        Kifu (状態のリスト) からエージェントの軌跡のアニメーションを生成し、GIFとして保存します。
+        trajectory_data (状態のリスト) からエージェントの軌跡のアニメーションを生成し、GIFとして保存します。
 
         Args:
-            kifu (list): 環境状態のリスト。各状態はゴール位置とエージェント位置のタプル。
+            trajectory_data (list): 環境状態のリスト。各状態はゴール位置とエージェント位置のタプル。
             output_filename (str): 保存するGIFファイルのファイル名。
             interval (int): フレーム間の遅延（ミリ秒）。
         """
-        if not kifu:
+        if not trajectory_data:
             print("描画する軌跡データがありません。")
             return
 
         # Extract initial goal positions (assuming they are fixed)
-        initial_state = kifu[0]
+        initial_state = trajectory_data[0]
         goal_positions = initial_state[:self.goals_number]
 
         fig, ax = plt.subplots(figsize=(6, 6))
@@ -138,10 +138,15 @@ class Render:
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels, loc='upper right')
 
+        # Add step counter text
+        step_text = ax.text(0.02, 0.95, '', transform=ax.transAxes, fontsize=12,
+                            verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5))
+
+
 
         def update(frame):
             """Update function for the animation."""
-            current_state = kifu[frame]
+            current_state = trajectory_data[frame]
             current_agent_positions = current_state[self.goals_number:]
 
             for i in range(self.agents_number):
@@ -158,11 +163,14 @@ class Render:
                 # Set updated trajectory data
                 agent_lines[i].set_data(x_data, y_data)
 
+            # Update the step counter text
+            step_text.set_text(f'Step: {frame}')
+
             return agent_markers + agent_lines # Return all artists that were modified
 
 
         # Create the animation
-        ani = FuncAnimation(fig, update, frames=len(kifu), blit=True, interval=interval, repeat=False)
+        ani = FuncAnimation(fig, update, frames=len(trajectory_data), blit=True, interval=interval, repeat=False)
 
         # Save the animation as a GIF
         print(f"Saving animation to {output_filename}...")

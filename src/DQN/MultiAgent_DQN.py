@@ -44,6 +44,7 @@ class MultiAgent_DQN:
         self.grid_size = args.grid_size
         self.load_model = args.load_model
         self.mask = args.mask
+        self.update_frequency = 4# 学習の頻度
 
         self.save_agent_states = args.save_agent_states
 
@@ -53,18 +54,17 @@ class MultiAgent_DQN:
             f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
         )
         
-        cp_dir = os.path.join(self.save_dir, ".checkpoints")
-        json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
-        conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
-        print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
-
+        # cp_dir = os.path.join(self.save_dir, ".checkpoints")
+        # json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
+        # conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
+        # print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
 
         # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(self.save_dir,self.grid_size)
         self.plot_results = PlotResults(self.save_dir)
 
 
-    def run(self):
+    def train(self):
         """
         強化学習のメイン実行ループ.
         指定されたエピソード数だけ環境とのインタラクションと学習を行います。
@@ -117,11 +117,12 @@ class MultiAgent_DQN:
                 print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
                 print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
                 print(f"     エピソード {episode_num - 99} ~ {episode_num} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
-                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}\n") # 平均損失も出力
+                print(f"     エピソード {episode_num - 99} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
+                print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.agents[0].epsilon:.3f}{RESET}, beta: {GREEN}{self.agents[0].beta:.3f}{RESET}") # 
 
 
             # 各エピソード開始時に環境をリセット
-            current_global_state = self.env.reset()
+            current_global_state = self.env.reset(initial_agent_positions=[(self.grid_size-1,self.grid_size-1)])
 
             done = False # エピソード完了フラグ
             step_count = 0 # 現在のエピソードのステップ数
@@ -146,7 +147,7 @@ class MultiAgent_DQN:
                     actions.append(agent.get_action(i, current_global_state))
 
                 # エージェントの状態を保存（オプション）
-                # 全体状態からエージェント部分を抽出 し、Saverでログ記録
+                # 全体状態からエージェント部分を抽出し、Saverでログ記録
                 if self.save_agent_states:
                     agent_positions_in_global_state = current_global_state[self.goals_number:]
                     for i, agent_pos in enumerate(agent_positions_in_global_state):
@@ -165,17 +166,19 @@ class MultiAgent_DQN:
                     # 状態sと次状態s'は環境全体の全体状態を渡す
                     agent.observe_and_store_experience(current_global_state, actions[i], reward, next_global_state, done)
 
-                    # エージェントに学習を試行させる (総エピソード数を渡す) (Step 4)
-                    # learn_from_experience はバッファサイズが満たされているなど、学習可能な場合に損失を返す
-                    current_loss = agent.learn_from_experience(i, episode_num, self.episode_num) # 総エピソード数を渡す
-                    if current_loss is not None:
-                        # 学習が発生した場合、その損失を累積 (for episode logging)
-                        ep_total_loss += current_loss
-                        ep_learning_steps += 1 # Count steps where at least one agent learned in this episode
-                        # Also accumulate for the 100-episode period average
-                        avg_loss_temp += current_loss
-                        learning_steps_in_period += 1 # Count learning steps in the period
-
+                # 4ステップに1回学習
+                if step_count % self.update_frequency==0:
+                    for i, agent in enumerate(self.agents):
+                        # エージェントに学習を試行させる (総エピソード数を渡す) (Step 4)
+                        # learn_from_experience はバッファサイズが満たされているなど、学習可能な場合に損失を返す
+                        current_loss = agent.learn_from_experience(i, total_step) # 総エピソード数を渡す
+                        if current_loss is not None:
+                            # 学習が発生した場合、その損失を累積 (for episode logging)
+                            ep_total_loss += current_loss
+                            ep_learning_steps += 1 # Count steps where at least one agent learned in this episode
+                            # Also accumulate for the 100-episode period average
+                            avg_loss_temp += current_loss
+                            learning_steps_in_period += 1 # Count learning steps in the period
 
                 # 全体状態を次の状態に更新
                 current_global_state = next_global_state
@@ -187,7 +190,7 @@ class MultiAgent_DQN:
             # エピソード終了後の処理
             # ---------------------------
 
-            # エピソードが完了 (done == True) した場 合、達成エピソード数カウンタをインクリメント
+            # エピソードが完了 (done == True) した場合、達成エピソード数カウンタをインクリメント
             if done:
                 achieved_episodes_temp += 1
                 avg_step_temp += step_count # 達成した場合のステップ数のみ加算

@@ -48,18 +48,18 @@ if __name__ == '__main__':
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('-e','--episode_number', default=1000, type=int)
         parser.add_argument('--max_timestep', default=25, type=int)
-        parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--epsilon_decay_alpha', default=0.40, type=float)
-        parser.add_argument('--learning_rate', default=0.2, type=float)
+        # parser.add_argument('--decay_epsilon', default=500000, type=int)
+        parser.add_argument('--epsilon_decay', default=0.90, type=float)
+        parser.add_argument('--learning_rate', default=0.1, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
-        parser.add_argument('--batch_size', default=2, type=int)
+        parser.add_argument('--batch_size', default=32, type=int)
         parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
         parser.add_argument('--window_width', default=500, type=int)
         parser.add_argument('--window_height', default=500, type=int)
         parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
         parser.add_argument('--pause_duration', default=0.1, type=float)
-        parser.add_argument('--target_update_frequency', default=100, type=int)
+        parser.add_argument('--target_update_frequency', default=5000, type=int)
         # Add PER parameters
         parser.add_argument('--alpha', default=0.6, type=float, help='PER alpha parameter (prioritization exponent)')
         parser.add_argument('--beta', default=0.4, type=float, help='PER beta parameter (importance sampling exponent, starts at this value)')
@@ -110,11 +110,11 @@ if __name__ == '__main__':
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
         from DQN.Agent_DQN import Agent
-        agents:list = [Agent(config,config.use_per) for i in range(config.agents_number)]
+        agents:list = [Agent(id, config,config.use_per) for id in range(config.agents_number)]
 
         simulation = MultiAgent_DQN(config,agents)
 
-        simulation.run()
+        simulation.train()
 
         simulation.result_save()
 

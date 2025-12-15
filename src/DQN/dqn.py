@@ -264,7 +264,7 @@ class DQNModel:
 
 
     # Modify _perform_standard_dqn_update to accept IS weights and return TD errors conditionally (Step 3)
-    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, episode_num: int, is_weights_batch: Optional[torch.Tensor] = None) -> Tuple[float, torch.Tensor | None]:
+    def _perform_standard_dqn_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor, reward_batch: torch.Tensor, next_agent_states_batch: torch.Tensor, done_batch: torch.Tensor, total_step: int, is_weights_batch: Optional[torch.Tensor] = None) -> Tuple[float, torch.Tensor | None]:
         """
         通常のDQN学習ロジックを実行する。
         (入力は特定エージェントの状態バッチ) PER対応済み。
@@ -275,7 +275,7 @@ class DQNModel:
             reward_batch (torch.Tensor): 報酬のバッチ (形状: (batch_size,)).
             next_agent_states_batch (torch.Tensor): 次のエージェントの状態バッチ (形状: (batch_size, agent_state_dim)).
             done_batch (torch.Tensor): 完了フラグのバッチ (形状: (batch_size,)).
-            episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
+            total_step (int): 総ステップ数 (ターゲットネットワーク更新タイミングに使用).
             is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)).
 
         Returns:
@@ -300,9 +300,12 @@ class DQNModel:
 
         # ターゲットネットワークの同期
         # episode_num が target_update_frequency の倍数の場合に同期
-        if episode_num > 0 and episode_num % self.target_update_frequency == 0:
-             self.sync_qnet()
-             # print(f"Episode {episode_num}: Target network synced.") # デバッグ用
+        # if episode_num > 0 and episode_num % self.target_update_frequency == 0:
+        #     self.sync_qnet()
+        #     print(f"Episode {episode_num}: Target network synced.") # デバッグ用
+        if total_step > 0 and total_step % self.target_update_frequency == 0:
+            self.sync_qnet()
+            # print(f"Step {total_step}: Target network synced.") # デバッグ用
 
         # Return TD errors only if use_per is True (Step 3)
         return scalar_loss, abs_td_errors if self.use_per else None
@@ -347,7 +350,7 @@ class DQNModel:
 
 
     # Modify update to accept IS weights and sampled indices, and return TD errors conditionally (Step 4)
-    def update(self, i: int, global_states_batch: torch.Tensor, actions_batch: torch.Tensor, rewards_batch: torch.Tensor, next_global_states_batch: torch.Tensor, dones_batch: torch.Tensor, episode_num: int, is_weights_batch: Optional[torch.Tensor] = None, sampled_indices: Optional[List[int]] = None) -> Tuple[float | None, torch.Tensor | None]:
+    def update(self, i: int, global_states_batch: torch.Tensor, actions_batch: torch.Tensor, rewards_batch: torch.Tensor, next_global_states_batch: torch.Tensor, dones_batch: torch.Tensor, total_step: int, is_weights_batch: Optional[torch.Tensor] = None, sampled_indices: Optional[List[int]] = None) -> Tuple[float | None, torch.Tensor | None]:
         """
         Qネットワークのメインの更新ロジック。学習モードによって処理を分岐する。
         リプレイバッファから取得したバッチデータ (全体の状態のバッチ) を使用する。PER対応済み。
@@ -359,7 +362,7 @@ class DQNModel:
             rewards_batch (torch.Tensor): リプレイバッファからサンプリングされた報酬のバッチ.
             next_global_states_batch (torch.Tensor): リプレイバッバからサンプリングされた次の全体状態のバッチ.
             dones_batch (torch.Tensor): リプレイバッファからサンプリングされた完了フラグのバッチ.
-            episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
+            total_step (int): 全ステップ数 (ターゲットネットワーク更新タイミングに使用).
             is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重みバッチ (形状: (batch_size,)).
             sampled_indices (Optional[List[int]]): PERでサンプリングされた経験の元のバッファ内インデックスリスト.
 
@@ -379,7 +382,7 @@ class DQNModel:
         if self.load_model == 0:
             # 通常のDQN学習モード (PER対応)
             # Pass IS weights conditionally, _perform_standard_dqn_update returns TD errors conditionally (Step 4)
-            loss, td_errors = self._perform_standard_dqn_update(agent_states_batch, actions_batch, rewards_batch, next_agent_states_batch, dones_batch, episode_num, is_weights_batch if self.use_per else None)
+            loss, td_errors = self._perform_standard_dqn_update(agent_states_batch, actions_batch, rewards_batch, next_agent_states_batch, dones_batch, total_step, is_weights_batch if self.use_per else None)
             # Return TD errors conditionally (Step 4)
             return loss, td_errors if self.use_per else None
         elif self.load_model == 2:

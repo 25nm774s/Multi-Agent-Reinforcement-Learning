@@ -9,7 +9,7 @@ from utils.replay_buffer import ReplayBuffer
 from DQN.dqn import DQNModel, QNet
 
 MAX_EPSILON = 1.0
-MIN_EPSILON = 0.01
+MIN_EPSILON = 0.05
 
 class Agent:
     """
@@ -25,15 +25,16 @@ class Agent:
 
         Args:
             args: エージェントの設定を含む属性を持つオブジェクト (例: argparse.Namespace).
-                  必要な属性: agents_number, batch_size, decay_epsilon,
+                  必要な属性: agents_number, batch_size, epsilon_decay,
                   load_model, goals_num, mask, device, buffer_size,
                   optimizer, gamma, learning_rate, target_update_frequency,
                   alpha, beta, beta_anneal_steps.
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
         # self.agents_num = args.agents_number
+        self.agent_id = agent_id
         self.batch_size = args.batch_size
-        self.decay_epsilon_step = args.decay_epsilon
+        self.epsilon_decay = args.epsilon_decay
         self.action_size = 5
         self.epsilon = MAX_EPSILON
         self.load_model = args.load_model
@@ -61,13 +62,13 @@ class Agent:
             args.optimizer,
             args.gamma,
             args.batch_size,
-            agent_id,
+            args.agents_number,
             self.goals_num,
             args.load_model,
             args.learning_rate,
             args.mask,
             args.device,
-            args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100,
+            args.target_update_frequency,
             use_per=self.use_per # Pass use_per to DQNModel (Step 3)
         )
 
@@ -133,26 +134,24 @@ class Agent:
             return qs.argmax().item()
 
     # epsilonの線形アニーリング (現在のコードでは power アニーリングが使われているが、参考として残す)
-    def decay_epsilon(self, step):
-        if step < self.decay_epsilon_step:
-            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
+    def decay_epsilon_linear(self, step):
+        if step < self.epsilon_decay:
+            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.epsilon_decay - step) / self.epsilon_decay
         else:
             self.epsilon = MIN_EPSILON
 
-    def decay_epsilon_power(self,step:int,alpha=0.5):
+    def decay_epsilon_power(self, step: int):
         """
-        εをステップ数に基づいてべき乗で減衰させる。
-        探索率εは step^(-alpha) に比例して減少する。
-
+        ステップ数に基づき、探索率εを指数的に減衰させる関数。
         Args:
-            step (int): 現在のステップ数.
-            alpha (float, optional): 減衰率を調整するパラメータ. Defaults to 0.9.
+            step (int): 現在のステップ数（またはエピソード数）。
         """
-        # ゼロ除算対策
-        effective_step = max(1, step)
-        self.epsilon = MAX_EPSILON * (1.0 / (effective_step ** alpha))
-        # 必要に応じて MIN_EPSILON で下限を設ける
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
+        lambda_ = 0.0005
+        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
+        self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
+        
+        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
+        self.epsilon = max(MIN_EPSILON, self.epsilon) 
 
     def observe_and_store_experience(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
         """
@@ -167,7 +166,7 @@ class Agent:
         """
         self.replay_buffer.add(global_state, action, reward, next_global_state, done)
 
-    def learn_from_experience(self, i: int, episode_num: int, total_episode_num: int) -> float | None:
+    def learn_from_experience(self, i: int, total_step: int) -> float | None:
         """
         リプレイバッファからバッチを取得し、モデルを学習させる。
         バッチサイズに満たない場合は学習を行わない。PERを使用する場合は、
@@ -175,8 +174,7 @@ class Agent:
 
         Args:
             i (int): 学習を行うエージェントのインデックス.
-            episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
-            total_episode_num (int): 全体のエピソード数 (betaアニーリング用).
+            total_step (int): 全ステップ数 (ターゲットネットワーク更新タイミングに使用).
 
         Returns:
             float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
@@ -196,7 +194,7 @@ class Agent:
         batch_data = self.replay_buffer.sample(self.beta if self.use_per else 0.0) # Pass beta conditionally
 
         if batch_data is None:
-             return None
+            return None
 
         # sample メソッドは Tuple[..., is_weights_tensor, sampled_indices] を返すことを期待する
         global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices = batch_data
@@ -210,7 +208,7 @@ class Agent:
             rewards_batch,
             next_global_states_batch,
             dones_batch,
-            episode_num,
+            total_step,
             is_weights_batch if self.use_per else None, # Pass IS weights conditionally
             sampled_indices if self.use_per else None # Pass sampled indices conditionally
         )
@@ -218,7 +216,7 @@ class Agent:
         # 3. PER: 優先度の更新 (Step 6)
         # モデルの update メソッドから計算されたTD誤差の絶対値を取得し、リプレイバッファの優先度を更新
         if self.use_per and td_errors is not None and sampled_indices is not None:
-             self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
+            self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
 
         # 4. PER: Betaの線形アニーリング (Step 7)
         # エピソードの進行に応じて beta を線形的に 1.0 まで増加させる

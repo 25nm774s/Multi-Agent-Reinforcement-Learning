@@ -7,7 +7,7 @@ from utils.plot_results import PlotResults
 from utils.Saver import Saver
 from utils.ConfigManager import ConfigManager
 
-from .Agent_DQN import Agent_DQN
+from .Agent_DQN import Agent
 from .IO_Handler import Model_IO
 from .dqn import QNet
 
@@ -21,7 +21,7 @@ class MultiAgent_DQN:
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
     """
-    def __init__(self, args, agents:list[Agent_DQN]):
+    def __init__(self, args, agents:list[Agent]):
         """
         MultiAgent_DQN クラスのコンストラクタ.
 

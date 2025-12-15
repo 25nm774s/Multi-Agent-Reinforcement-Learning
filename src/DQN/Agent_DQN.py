@@ -11,7 +11,7 @@ from DQN.dqn import DQNModel, QNet
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.01
 
-class Agent_DQN:
+class Agent:
     """
     DQN エージェントクラス.
 
@@ -19,7 +19,7 @@ class Agent_DQN:
     および DQN モデルの学習ロジックを管理します。
     """
     # Add use_per parameter to __init__ (Step 1)
-    def __init__(self, args, use_per: bool = False):
+    def __init__(self, agent_id, args, use_per: bool = False):
         """
         Agent_DQN クラスのコンストラクタ.
 
@@ -31,7 +31,7 @@ class Agent_DQN:
                   alpha, beta, beta_anneal_steps.
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
-        self.agents_num = args.agents_number
+        # self.agents_num = args.agents_number
         self.batch_size = args.batch_size
         self.decay_epsilon_step = args.decay_epsilon
         self.action_size = 5
@@ -61,7 +61,7 @@ class Agent_DQN:
             args.optimizer,
             args.gamma,
             args.batch_size,
-            self.agents_num,
+            agent_id,
             self.goals_num,
             args.load_model,
             args.learning_rate,

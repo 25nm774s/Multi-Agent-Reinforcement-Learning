@@ -23,37 +23,6 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 
 """
 
-# --- プログレスバー（進捗表示）に関する注意点と解決策 ---
-# Colab環境ではリアルタイムに表示されるプログレスバー（例: '■'）が、
-# ローカルPython環境で実行すると、処理が完了した後に一気に表示されてしまう場合があります。
-# これは、Pythonの標準出力がパフォーマンス向上のために「バッファリング」されるためです。
-
-# この問題を解決し、ローカル環境でもリアルタイムにプログレスバーを表示するための方法は以下の通りです。
-
-# 1. print()関数の 'flush=True' 引数を使用する (最もシンプル)
-#    - print()関数に 'flush=True' を追加すると、出力が即座に画面に書き出されます。
-#    - 例: print('■', end='', flush=True)
-
-# 2. sys.stdout.flush() を使用する (より柔軟な制御が必要な場合)
-#    - print()以外の方法で出力している場合や、特定のタイミングでまとめてフラッシュしたい場合に有効です。
-#    - import sys をファイルの先頭に追加し、出力後に sys.stdout.flush() を呼び出します。
-#    - 例:
-#      import sys
-#      sys.stdout.write('■')
-#      sys.stdout.flush()
-
-# 3. tqdm ライブラリを使用する (推奨: より高機能で美しいプログレスバー)
-#    - プログレスバーの表示に特化した外部ライブラリです。
-#    - 内部で適切なフラッシュ処理が行われるため、Colabでもローカルでも期待通りに動作します。
-#    - 残り時間推定などの追加機能も提供されます。
-#    - インストール: pip install tqdm
-#    - 使用例:
-#      from tqdm import tqdm
-#      for item in tqdm(iterable_object):
-#          # 処理内容
-#          pass
-# --------------------------------------------------------
-
 import argparse
 import torch
 
@@ -140,8 +109,8 @@ if __name__ == '__main__':
 
     def dqn_process():
         from DQN.MultiAgent_DQN import MultiAgent_DQN
-        from DQN.Agent_DQN import Agent_DQN
-        agents:list = [Agent_DQN(config,config.use_per) for i in range(config.agents_number)]
+        from DQN.Agent_DQN import Agent
+        agents:list = [Agent(config,config.use_per) for i in range(config.agents_number)]
 
         simulation = MultiAgent_DQN(config,agents)
 

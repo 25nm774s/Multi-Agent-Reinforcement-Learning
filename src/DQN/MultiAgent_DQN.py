@@ -197,7 +197,7 @@ class MultiAgent_DQN:
 
             # Saverでエピソードごとのスコアをログに記録
             # エピソード番号、最終ステップ数、累積報酬、エピソード中の平均損失を記録
-            self.saver.log_episode_data(episode_num, step_count, ep_reward, ep_avg_loss)
+            self.saver.log_episode_data(episode_num, step_count, ep_reward, ep_avg_loss, done)
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             avg_reward_temp += ep_reward

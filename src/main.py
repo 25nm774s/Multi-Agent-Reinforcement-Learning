@@ -44,13 +44,13 @@ if __name__ == '__main__':
         parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
         parser.add_argument('--neighbor_distance', default=2, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=0, type=int)
+        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=3, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
-        parser.add_argument('-e','--episode_number', default=1000, type=int)
-        parser.add_argument('--max_timestep', default=25, type=int)
+        parser.add_argument('-e','--episode_number', default=1200, type=int)
+        parser.add_argument('--max_timestep', default=150, type=int)
         # parser.add_argument('--decay_epsilon', default=500000, type=int)
-        parser.add_argument('--epsilon_decay', default=0.90, type=float)
-        parser.add_argument('--learning_rate', default=0.1, type=float)
+        parser.add_argument('--epsilon_decay', default=0.50, type=float)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)
         parser.add_argument('--buffer_size', default=10000, type=int)
         parser.add_argument('--batch_size', default=32, type=int)
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         parser.add_argument('--window_height', default=500, type=int)
         parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
         parser.add_argument('--pause_duration', default=0.1, type=float)
-        parser.add_argument('--target_update_frequency', default=5000, type=int)
+        parser.add_argument('--target_update_frequency', default=500, type=int)
         # Add PER parameters
         parser.add_argument('--alpha', default=0.6, type=float, help='PER alpha parameter (prioritization exponent)')
         parser.add_argument('--beta', default=0.4, type=float, help='PER beta parameter (importance sampling exponent, starts at this value)')
@@ -120,6 +120,8 @@ if __name__ == '__main__':
 
         simulation.save_model_weights()
         simulation.load_model_weights()
+
+        simulation.simulate_agent_behavior(max_simulation_timestep=150)
     
     def dimensions_estimater(grid_size:int, agent_number:int)->int:
         res = 1

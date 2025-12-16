@@ -1,7 +1,3 @@
-"""
-エージェントの行動を出力.
-学習器の更新など.
-"""
 import torch
 import numpy as np
 
@@ -44,7 +40,7 @@ class Agent:
 
         self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
         self.beta = args.beta if hasattr(args, 'beta') else 0.4 # Betaの初期値
-        self.beta_anneal_steps = args.beta_anneal_steps if hasattr(args, 'beta_anneal_steps') else args.episode_number # ベータを1.0まで増加させるエピソード数
+        self.beta_anneal_steps = int(args.episode_number * args.max_timestep/4) # ベータを1.0まで増加させるエピソード数
         self.use_per = use_per
 
         # ReplayBuffer の初期化 (PER パラメータ alpha と use_per を渡す) (Step 2)
@@ -92,6 +88,44 @@ class Agent:
         # ε-greedyに基づいて行動を選択
         return self.nn_greedy_actor(i, global_state_tensor)
 
+    def get_all_q_values(self, i: int, global_state: tuple) -> torch.Tensor:
+        """
+        現在の全体状態における、指定されたエージェントの各行動に対するQ値を取得する。
+        `nn_greedy_actor` と同様に状態の前処理を行い、QNetからQ値を取得する。
+
+        Args:
+            i (int): Q値を計算するエージェントのインデックス.
+            global_state (tuple): 環境の現在の全体状態 (ゴール位置と全エージェント位置のタプル).
+
+        Returns:
+            torch.Tensor: 各行動に対するQ値のテンソル (形状: (output_size,)).
+        """
+        # 全体状態をNNの入力形式に変換
+        flat_global_state = np.array(global_state).flatten()
+        global_state_tensor = torch.tensor(flat_global_state, dtype=torch.float32) # 1次元のテンソルに変換
+
+        # QNetへの入力となる状態を準備 (masking)
+        if self.mask:
+            # マスクがTrueの場合、全体状態テンソルからエージェントi自身の位置情報のみを抽出
+            # 全体状態テンソルの構造: [goal1_x, g1_y, ..., agent1_x, a1_y, ..., agent_i_x, a_i_y, ...]
+            # goals_num * 2 がゴール部分の次元数
+            # i * 2 がエージェントiの開始インデックス (0-indexed)
+            agent_state_tensor = global_state_tensor[self.goals_num * 2 + i * 2 : self.goals_num * 2 + i * 2 + 2] # (x, y)の2次元を抽出
+        else:
+            # マスクがFalseの場合、全体状態テンソルをそのまま使用
+            agent_state_tensor = global_state_tensor # 形状: ((goals+agents)*2,)
+
+        # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
+        # unsqueeze(0) で形状を (1, state_dim) にする
+        agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
+        agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
+
+        # QNetを使って各行動のQ値を計算
+        with torch.no_grad(): # 推論時は勾配計算を無効化
+            qs = self.model.qnet(agent_state_tensor) # 形状: (1, action_size)
+
+        return qs.squeeze(0) # バッチ次元を削除して (action_size,) のテンソルを返す
+
     # Q系列のNNモデル使用時のε-greedy
     def nn_greedy_actor(self, i: int, global_state_tensor: torch.Tensor) -> int:
         """
@@ -127,7 +161,7 @@ class Agent:
             # unsqueeze(0) で形状を (1, state_dim) にする
             agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
             # print(f"形状: {agent_state_tensor}, {agent_state_tensor.shape}")
-            agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(agent_state_tensor)
+            agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
 
             # QNetを使って各行動のQ値を計算
             with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -151,10 +185,11 @@ class Agent:
         """
         lambda_ = 0.0001
         # 指数減衰式: ε_t = ε_start * (decay_rate)^t
-        self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
-        
+        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
+        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+
         # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
-        self.epsilon = max(MIN_EPSILON, self.epsilon) 
+        self.epsilon = max(MIN_EPSILON, self.epsilon)
 
     def observe_and_store_experience(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
         """
@@ -225,11 +260,11 @@ class Agent:
         # エピソードの進行に応じて beta を線形的に 1.0 まで増加させる
         # Perform beta annealing only if use_per is True (Step 7)
         if self.use_per:
-            beta_increment_per_episode = (1.0 - (self.beta)) / (self.beta_anneal_steps)
-            self.beta = min(1.0, self.beta + beta_increment_per_episode)
+            beta_increment_per_learning_step = (1.0 - (self.beta)) / (self.beta_anneal_steps)
+            self.beta = min(1.0, self.beta + beta_increment_per_learning_step)
 
         return loss
-    
+
     def get_weights(self):
         return self.model.get_weights()
 

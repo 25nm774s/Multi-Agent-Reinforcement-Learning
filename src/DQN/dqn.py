@@ -18,11 +18,11 @@ class QNet(nn.Module):
             output_size (int): Qネットワークの出力サイズ (行動空間の次元).
         """
         super().__init__()
-        
+
         self.grid_size = grid_size
-        self.num_channels = 2
+        self.num_channels = 3
         input_size = self.num_channels * self.grid_size**2
-        
+
         self.fc1 = nn.Linear(input_size, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, output_size)
@@ -44,15 +44,6 @@ class QNet(nn.Module):
         x = self.fc3(x)
         return x
 
-
-# Modify DQNModel.__init__ to accept use_per flag
-# Modify DQNModel.update to accept IS weights and sampled indices and return TD errors
-# Modify DQNModel._perform_standard_dqn_update to apply IS weights and return TD errors
-
-from typing import Optional, Tuple, List
-# Modify DQNModel.__init__ to accept use_per flag
-# Modify DQNModel.update to accept IS weights and sampled indices and return TD errors
-# Modify DQNModel._perform_standard_dqn_update to apply IS weights and return TD errors
 class DQNModel:
     """
     DQN (Deep Q-Network) の学習ロジックを管理するクラス.
@@ -96,7 +87,7 @@ class DQNModel:
 
         # mask設定に応じた入力サイズ計算
         # マスクモード時は自身の位置(x,y)で2次元、非マスク時は全体状態の次元 ((goals+agents)*2)
-        chanel: int = 2 if self.mask else (self.agents_num + self.goals_num) * 2
+        # chanel: int = 2 if self.mask else (self.agents_num + self.goals_num) * 2
 
         self.qnet_target: QNet = QNet(grid_size,self.action_size).to(self.device)
         self.qnet: QNet = QNet(grid_size,self.action_size).to(self.device)
@@ -150,48 +141,6 @@ class DQNModel:
 
         # 計算された損失とTD誤差の絶対値を返す
         return final_loss, abs_td_errors.detach() # TD誤差は勾配計算から切り離して返す
-
-
-    def _extract_agent_state(self, i: int, global_states_batch: torch.Tensor, next_global_states_batch: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        複数エージェントの全体の状態バッチから、特定エージェントの状態バッチを抽出する。
-        mask が True の場合は、エージェント i の位置情報 (x, y) のみを抽出する。
-        mask が False の場合は、全体状態バッチをそのまま返す。
-
-        Args:
-            i (int): 状態を抽出するエージェントのインデックス.
-            global_states_batch (torch.Tensor): 現在の全体状態のバッチ.
-            next_global_states_batch (torch.Tensor): 次の全体状態のバッチ.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]: 抽出された (または全体の)
-                                               現在のエージェントの状態バッチと次のエージェントの状態バッチ.
-                                               形状は (batch_size, agent_state_dim).
-        """
-        if not self.mask:
-            # mask が False の場合は、全体の状態バッチをそのまま返す
-            return global_states_batch, next_global_states_batch
-
-        # 複数エージェントの全体の状態バッチから、現在のエージェントの状態バッチを抽出
-        # global_states_batch の形状は (batch_size, 全体の状態次元) を想定
-        # 例: (batch_size, (goals_num + agents_num) * 2)
-        # 抽出したいのは各バッチサンプルの、特定エージェントの状態に対応する部分
-        # idx_offset はゴール座標の合計次元数
-        idx_offset: int = self.goals_num * 2
-        # agent_idx_start は現在のエージェントのX座標の開始インデックス
-        agent_idx_start: int = i * 2 + idx_offset
-        # idx_lst は (X, Y)座標のインデックスリスト
-        idx_lst: list[int] = [agent_idx_start, agent_idx_start + 1]
-
-        # バッチ内のすべてのサンプルについて、指定された特徴量のみを抽出
-        # .clone() は、元のテンソルから独立したコピーを作成し、元のテンソルへの意図しない変更を防ぐ
-        # global_states_batch[:, idx_lst] は形状 (batch_size, len(idx_lst)) -> (batch_size, 2)
-        agent_states_batch: torch.Tensor = global_states_batch[:, idx_lst].clone()
-        next_agent_states_batch: torch.Tensor = next_global_states_batch[:, idx_lst].clone()
-
-        # 抽出したエージェントの状態バッチを返す (形状: (batch_size, 2))
-        return agent_states_batch, next_agent_states_batch
-
 
     def _calculate_q_values(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> torch.Tensor:
         """
@@ -306,10 +255,6 @@ class DQNModel:
         scalar_loss: float = loss.item() # 平均損失を返す
 
         # ターゲットネットワークの同期
-        # episode_num が target_update_frequency の倍数の場合に同期
-        # if episode_num > 0 and episode_num % self.target_update_frequency == 0:
-        #     self.sync_qnet()
-        #     print(f"Episode {episode_num}: Target network synced.") # デバッグ用
         if total_step > 0 and total_step % self.target_update_frequency == 0:
             self.sync_qnet()
             # print(f"Step {total_step}: Target network synced.") # デバッグ用
@@ -383,10 +328,8 @@ class DQNModel:
             return None, None # 損失とTD誤差の両方をNoneで返す
 
         # 1. データの準備とフィルタリング (全体の状態バッチから特定エージェントの状態バッチを抽出)
-        agent_states_batch, next_agent_states_batch = self._extract_agent_state(i, global_states_batch, next_global_states_batch)
-
-        agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(agent_states_batch)
-        next_agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(next_agent_states_batch)
+        agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(i, global_states_batch)
+        next_agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(i, next_global_states_batch)
 
         # 2. 学習モードの分岐と実行 (特定エージェントの状態バッチを使用)
         if self.load_model == 0:
@@ -396,14 +339,14 @@ class DQNModel:
             loss, td_errors = self._perform_standard_dqn_update(agent_states_batch_for_NN, actions_batch, rewards_batch, next_agent_states_batch_for_NN, dones_batch, total_step, is_weights_batch if self.use_per else None)
             # Return TD errors conditionally (Step 4)
             return loss, td_errors if self.use_per else None
-        elif self.load_model == 2:
-            # 特殊な学習モード (知識蒸留/模倣学習など) (PER非対応)
-            # _perform_knowledge_distillation_updateはTD誤差を返さない
-            loss, td_errors = self._perform_knowledge_distillation_update(agent_states_batch, actions_batch)
-            return loss, None # TD誤差は常にNone
+        # elif self.load_model == 2:
+        #     # 特殊な学習モード (知識蒸留/模倣学習など) (PER非対応)
+        #     # _perform_knowledge_distillation_updateはTD誤差を返さない
+        #     loss, td_errors = self._perform_knowledge_distillation_update(agent_states_batch, actions_batch)
+        #     return loss, None # TD誤差は常にNone
         else: # load_model が 0, 1, 2 以外の値の場合 (予期しない値)
             print(f"Warning: Unexpected load_model value: {self.load_model}. No learning performed.")
-            return None, None # 損失とTD誤差の両方をNoneで返す        
+            return None, None # 損失とTD誤差の両方をNoneで返す
 
 
     def get_weights(self) ->tuple[QNet,QNet,dict]:
@@ -411,76 +354,99 @@ class DQNModel:
 
     def set_model_weights(self, qnet: QNet):
         self.qnet = qnet
-        
+
     def set_target_weights(self, qnet_target: QNet):
         self.qnet_target = qnet_target
-    
-    def bat_data_transform_for_NN_model_for_batch(self, batch_raw_data: torch.Tensor) -> torch.Tensor:
-            """
-            一次元のテンソル入力 (B, feature_dim) を受け取り、
-            2チャネルのグリッド表現テンソル (B, 2, G, G) に変換する。
 
-            Args:
-                batch_raw_data (torch.Tensor): リプレイバッファから取り出したバッチテンソル (B, feature_dim)。
-                                            座標は整数値 (Int) として想定。
+    def bat_data_transform_for_NN_model_for_batch(self, i: int, batch_raw_data: torch.Tensor) -> torch.Tensor:
+        """
+        一次元の全体状態テンソル (B, feature_dim) を受け取り、
+        エージェント i の視点に基づいた3チャネルのグリッド表現テンソル (B, 3, G, G) に変換する。
 
-            Returns:
-                torch.Tensor: 形状 (batch_size, 2, grid_size, grid_size) のテンソル。
-            """
-            
-            batch_size = batch_raw_data.size(0)
-            G = self.grid_size
+        Args:
+            i (int): 観測を生成するエージェントのインデックス (0-indexed)。
+            batch_raw_data (torch.Tensor): リプレイバッファから取り出したバッチテンソル (B, feature_dim)。
+                                           全体状態 (ゴールと全エージェントの座標) を含む。
 
-            # 座標はインデックスとして使うため、整数型に変換し、念のためlong型にする
-            # テンソルは元のままであると仮定します (例: float32)
-            coords = batch_raw_data.long() 
-            
-            # --- 1. ゴール座標の抽出 ---
-            # ゴール座標の要素数: goals_num * 2
-            goal_coords_end = self.goals_num * 2
-            # 形状: (B, goals_num * 2)
-            goal_coords = coords[:, :goal_coords_end] 
-            
-            # ゴール座標を (B, goals_num, 2) にリシェイプ (例: (B, 2, 2))
-            # B軸と、座標 (x, y) 軸はそのまま、間に num_goals 軸が入る
-            goal_coords = goal_coords.reshape(batch_size, self.goals_num, 2)
-            
-            # --- 2. エージェント座標の抽出 ---
-            # エージェント座標の要素数: agents_num * 2
-            agent_coords = coords[:, goal_coords_end:]
-            # 形状: (B, agents_num, 2)
-            agent_coords = agent_coords.reshape(batch_size, self.agents_num, 2)
+        Returns:
+            torch.Tensor: 形状 (batch_size, 3, grid_size, grid_size) のテンソル。
+        """
 
-            # --- 3. グリッドマップの作成 ---
-            
-            # 最終的な出力テンソルを初期化 (B, 2, G, G)
-            # B個の(2, G, G) テンソルをゼロで初期化
-            state_map = torch.zeros((batch_size, 2, G, G), dtype=torch.float32)
+        batch_size = batch_raw_data.size(0)
+        G = self.grid_size
 
-            # PyTorchのテンソル操作を使って、各マップに座標を反映
-            
-            # a) ゴールマップ (チャネル0) の設定
-            # バッチとゴールのインデックスを準備
-            batch_indices = torch.arange(batch_size).repeat_interleave(self.goals_num)
-            
-            # x座標とy座標を平坦化
-            goal_x = goal_coords[:, :, 0].flatten()
-            goal_y = goal_coords[:, :, 1].flatten()
-            
-            # ゴールが存在する位置に 1.0 を代入
-            # state_map[バッチインデックス, チャネル0, x座標, y座標] = 1.0
-            state_map[batch_indices, 0, goal_x, goal_y] = 1.0
+        # 座標はインデックスとして使うため、整数型に変換 (Long型推奨)
+        coords = batch_raw_data.long().to(self.device)
 
-            # b) エージェントマップ (チャネル1) の設定
-            # バッチインデックスを再利用
-            batch_indices_agent = torch.arange(batch_size).repeat_interleave(self.agents_num)
-            
-            # x座標とy座標を平坦化
-            agent_x = agent_coords[:, :, 0].flatten()
-            agent_y = agent_coords[:, :, 1].flatten()
-            
-            # エージェントが存在する位置に 1.0 を代入
-            # state_map[バッチインデックス, チャネル1, x座標, y座標] = 1.0
-            state_map[batch_indices_agent, 1, agent_x, agent_y] = 1.0
+        # --- 座標の抽出とリシェイプ ---
+        goal_coords_end = self.goals_num * 2
 
-            return state_map
+        # 1. ゴール座標: (B, goals_num, 2)
+        goal_coords = coords[:, :goal_coords_end].reshape(batch_size, self.goals_num, 2)
+
+        # 2. 全エージェント座標: (B, agents_num, 2)
+        all_agent_coords = coords[:, goal_coords_end:].reshape(batch_size, self.agents_num, 2)
+
+        # --- グリッドマップの作成 (3チャネル: ゴール, 自身, 他者) ---
+
+        # 最終的な出力テンソルを初期化 (B, 3, G, G)
+        state_map = torch.zeros((batch_size, 3, G, G), dtype=torch.float32, device=self.device)
+
+        # 全バッチ、全エンティティに対応するインデックスを準備
+        # B * N の数のインデックスが必要
+        batch_indices_base = torch.arange(batch_size, device=self.device).repeat_interleave(self.goals_num)
+
+        # --- チャネル 0: ゴールマップの設定 (全バッチ共通) ---
+
+        # x座標とy座標を平坦化
+        goal_x = goal_coords[:, :, 0].flatten()
+        goal_y = goal_coords[:, :, 1].flatten()
+
+        # state_map[バッチインデックス, チャネル0, x座標, y座標] = 1.0
+        state_map[batch_indices_base, 0, goal_x, goal_y] = 1.0
+
+        # --- チャネル 1: 自身のエージェント i のマップの設定 ---
+
+        # 自身のエージェント i の座標 (B, 1, 2) を抽出
+        # agents_num が 1 の場合は all_agent_coords がそのまま自身になる
+        self_coords = all_agent_coords[:, i, :] # (B, 2)
+
+        # 自身のエージェント i の座標を平坦化 (B, 2 -> B)
+        self_x = self_coords[:, 0] # (B,)
+        self_y = self_coords[:, 1] # (B,)
+
+        # バッチインデックス (B,)
+        batch_indices_self = torch.arange(batch_size, device=self.device)
+
+        # state_map[バッチインデックス, チャネル1, iのx座標, iのy座標] = 1.0
+        state_map[batch_indices_self, 1, self_x, self_y] = 1.0
+
+        # --- チャネル 2: 他のエージェントのマップの設定 ---
+
+        if self.agents_num > 1:
+            # 他のエージェントの座標を一時的に保持
+            other_agents_coords_list = []
+
+            # i 以外のエージェントの座標をリストに追加
+            # (B, 2) のテンソルを agents_num - 1 個集める
+            for j in range(self.agents_num):
+                if j != i:
+                    other_agents_coords_list.append(all_agent_coords[:, j, :])
+
+            # (B * (agents_num - 1), 2) に結合
+            other_coords = torch.cat(other_agents_coords_list, dim=0)
+
+            # x座標とy座標を抽出
+            other_x = other_coords[:, 0] # (B * (agents_num - 1),)
+            other_y = other_coords[:, 1] # (B * (agents_num - 1),)
+
+            # 他のエージェントの数に対応したバッチインデックスを準備
+            batch_indices_other = batch_indices_self.repeat_interleave(self.agents_num - 1)
+
+            # state_map[バッチインデックス, チャネル2, 他のx座標, 他のy座標] = 1.0
+            state_map[batch_indices_other, 2, other_x, other_y] = 1.0
+
+        # グリッドの座標値チェック（デバッグ用: 座標がG-1を超えていないかなど）
+        # assert (state_map.sum(dim=(0,1,2,3)) > 0), "state_map is all zero!"
+
+        return state_map

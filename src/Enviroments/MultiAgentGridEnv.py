@@ -373,7 +373,7 @@ class MultiAgentGridEnv:
                 # goal_idx が _goals_reached_status の範囲内にあることを確認します
                 if goal_idx < len(self._goals_reached_status):
                     if goal in current_agents_pos_set and not self._goals_reached_status[goal_idx]:
-                        reward += 50.0 # 新しいゴール到達に対する報酬 (調整可能)
+                        reward += 30.0 # 新しいゴール到達に対する報酬 (調整可能)
                         self._goals_reached_status[goal_idx] = True
                 else:
                     print(f"Warning: ゴールインデックス {goal_idx} が _goals_reached_status の範囲外です。")
@@ -381,7 +381,10 @@ class MultiAgentGridEnv:
 
             # 3. 完了報酬
             if done:
-                reward += 200.0 # 終了時の追加報酬 (調整可能)
+                reward += 100.0 # 終了時の追加報酬 (調整可能)
+            
+            # 時間経過の罰則
+            reward += -1.0
 
             # 次のステップのために現在の合計距離を更新します
             self._prev_total_distance_to_goals = current_total_distance

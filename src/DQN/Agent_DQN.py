@@ -60,6 +60,7 @@ class Agent:
         # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 3)
         self.model = DQNModel(
             args.optimizer,
+            args.grid_size,
             args.gamma,
             args.batch_size,
             args.agents_number,
@@ -100,7 +101,7 @@ class Agent:
 
         Args:
             i (int): 行動を選択するエージェントのインデックス.
-            global_state_tensor (torch.Tensor): 環境の現在の全体状態を表すテンソル.
+            global_state_tensor (torch.Tensor): 環境の現在の全体状態を表す1次元テンソル.
 
         Returns:
             int: 選択された行動 (0-4).
@@ -125,6 +126,8 @@ class Agent:
             # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
             # unsqueeze(0) で形状を (1, state_dim) にする
             agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
+            # print(f"形状: {agent_state_tensor}, {agent_state_tensor.shape}")
+            agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(agent_state_tensor)
 
             # QNetを使って各行動のQ値を計算
             with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -146,7 +149,7 @@ class Agent:
         Args:
             step (int): 現在のステップ数（またはエピソード数）。
         """
-        lambda_ = 0.0005
+        lambda_ = 0.0001
         # 指数減衰式: ε_t = ε_start * (decay_rate)^t
         self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
         

@@ -32,7 +32,7 @@ class MultiAgent_DQN:
                    save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
             agents (list[Agent_DQN]): 使用するエージェントオブジェクトのリスト.
         """
-        self.env = MultiAgentGridEnv(args)
+        self.env = MultiAgentGridEnv(args, fixrd_goals=[(args.grid_size-1,args.grid_size-1)])
         self.agents = agents
 
         self.reward_mode = args.reward_mode
@@ -122,7 +122,7 @@ class MultiAgent_DQN:
 
 
             # 各エピソード開始時に環境をリセット
-            current_global_state = self.env.reset(initial_agent_positions=[(self.grid_size-1,self.grid_size-1)])
+            current_global_state = self.env.reset(initial_agent_positions=[(0,0)])
 
             done = False # エピソード完了フラグ
             step_count = 0 # 現在のエピソードのステップ数

@@ -44,7 +44,7 @@ if __name__ == '__main__':
         parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
         parser.add_argument('--neighbor_distance', default=2, type=int)
         parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=3, type=int)
+        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('-e','--episode_number', default=1200, type=int)
         parser.add_argument('--max_timestep', default=150, type=int)

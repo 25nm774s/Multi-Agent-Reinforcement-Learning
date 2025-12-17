@@ -1,6 +1,5 @@
 import sys
 import os
-from typing import Optional # Added for type hinting
 
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 
@@ -32,8 +31,12 @@ class MultiAgent_DQN:
                    save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
             agents (list[Agent_DQN]): 使用するエージェントオブジェクトのリスト.
         """
-        self.env = MultiAgentGridEnv(args, fixrd_goals=[(args.grid_size-1,args.grid_size-1),(args.grid_size//2,2*args.grid_size//3)])
-        # self.env = MultiAgentGridEnv(args, fixrd_goals=[(args.grid_size-1,args.grid_size-1)])
+        # 3つまでゴールを手動で設定できるように変更。
+        fix_goal_pool = [(args.grid_size-1,args.grid_size-1),(args.grid_size//4,args.grid_size//3)]
+        self._fix_goal_from_goal_number = fix_goal_pool[:min(args.goals_number, len(fix_goal_pool))]
+
+        self.env = MultiAgentGridEnv(args, fixrd_goals=self._fix_goal_from_goal_number)
+
         self.agents = agents
 
         self.reward_mode = args.reward_mode
@@ -89,7 +92,7 @@ class MultiAgent_DQN:
         achieved_episodes_temp = 0
         avg_loss_temp = 0
         learning_steps_in_period = 0
-        renzoku_not_done = 0# 連敗記録
+        # renzoku_not_done = 0# 連敗記録
 
         # ----------------------------------
         # メインループ（各エピソード）
@@ -103,11 +106,11 @@ class MultiAgent_DQN:
                 avg_loss_temp = 0
                 learning_steps_in_period = 0
 
-            if renzoku_not_done % 100==0 and renzoku_not_done>0:# 連敗が続くとき探索を強制
-                pre_epsilon = self.agents[0].epsilon
-                for agent in self.agents:
-                    agent.epsilon = min(agent.epsilon+0.50, 1.0)
-                print(f"連敗記録:{renzoku_not_done}。探索率を{pre_epsilon:.3}から{agent.epsilon:.3}に上昇。")
+            # if renzoku_not_done % 100==0 and renzoku_not_done>0:# 連敗が続くとき探索を強制
+            #     pre_epsilon = self.agents[0].epsilon
+            #     for agent in self.agents:
+            #         agent.epsilon = min(agent.epsilon+0.50, 1.0)
+            #     print(f"連敗記録:{renzoku_not_done}。探索率を{pre_epsilon:.3}から{agent.epsilon:.3}に上昇。")
 
             print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
@@ -134,7 +137,8 @@ class MultiAgent_DQN:
 
 
             # 各エピソード開始時に環境をリセット
-            current_global_state = self.env.reset(initial_agent_positions=[(0,0),(0,1)])
+            iap = [(0,i) for i in range(self.agents_number)]
+            current_global_state = self.env.reset(initial_agent_positions=iap)
             # current_global_state = self.env.reset(initial_agent_positions=[(0,0)])
 
             done = False # エピソード完了フラグ
@@ -207,9 +211,9 @@ class MultiAgent_DQN:
             if done:
                 achieved_episodes_temp += 1
                 avg_step_temp += step_count # 達成した場合のステップ数のみ加算
-                renzoku_not_done = 0 # 連敗をリセット
-            else:
-                renzoku_not_done += 1 # 連敗カウンタ
+                # renzoku_not_done = 0 # 連敗をリセット
+            # else:
+            #     renzoku_not_done += 1 # 連敗カウンタ
 
             # Calculate average loss for the episode for logging
             ep_avg_loss = ep_total_loss / ep_learning_steps if ep_learning_steps > 0 else 0
@@ -250,7 +254,7 @@ class MultiAgent_DQN:
             agent.model.qnet.load_state_dict(loaded_state_dict)
             agent.model.qnet_target.load_state_dict(loaded_state_dict)
 
-    def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep: Optional[int] = None):
+    def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
         """
         学習済みモデルを使ってエージェントの行動をシミュレーションします。
 
@@ -262,7 +266,7 @@ class MultiAgent_DQN:
         print(f"{GREEN}--- シミュレーション開始 (学習済みモデル使用) ---" + f"{RESET}")
         print(f"シミュレーションエピソード数: {num_simulation_episodes}\n")
 
-        if max_simulation_timestep is None:
+        if max_simulation_timestep ==-1:
             max_simulation_timestep = self.max_ts
 
         self.load_model_weights()
@@ -270,8 +274,8 @@ class MultiAgent_DQN:
         for episode_idx in range(1, num_simulation_episodes + 1):
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
 
-            # current_global_state = self.env.reset(initial_agent_positions=[(0,0)]) # エージェントの初期位置を設定
-            current_global_state = self.env.reset(initial_agent_positions=[(0,0),(0,1)]) # エージェントの初期位置を設定
+            # エージェントの初期位置を設定
+            current_global_state = self.env.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)]) 
             done = False
             step_count = 0
             ep_reward = 0.0

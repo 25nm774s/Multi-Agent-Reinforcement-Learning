@@ -299,10 +299,12 @@ class MultiAgentGridEnv:
         return agent_pos_dict
 
 
-    def _calculate_total_distance_to_goals(self) -> float:
+    def _calculate_total_distance_to_goals_LEGACY(self) -> float:
         """
         各ゴールから最も近いエージェントまでのマンハッタン距離の合計を計算します。
         """
+        # print("このメソッドの代わりに_calculate_total_distance_to_goalsを使うことを検討。")
+
         goal_positions = list(self.get_goal_positions().values())
         agent_positions = list(self.get_agent_positions().values())
 
@@ -325,6 +327,48 @@ class MultiAgentGridEnv:
 
         return float(total_distance)
 
+    def _calculate_total_distance_to_goals(self) -> float:
+        """
+        エージェントとゴールの最適なペアリング（近い順）を行い、
+        そのマンハッタン距離の合計を計算します。
+        """
+        # 計算量のチェック (100はかなり安全圏。必要に応じて400等に調整)
+        if self.agents_number * self.goals_number > 400:
+            raise Exception(f"\x1b[41m[警告] 計算量のオーバーヘッドが懸念されます。\x1b[49mペア数: {self.agents_number * self.goals_number}")
+
+        goal_positions = list(self.get_goal_positions().values())
+        agent_positions = list(self.get_agent_positions().values())
+
+        if not agent_positions or not goal_positions:
+            return float(self.grid_size * 2 * self.goals_number)
+
+        # 1. 全ペアの距離を計算
+        all_pairs = []
+        for a_idx, a_pos in enumerate(agent_positions):
+            for g_idx, g_pos in enumerate(goal_positions):
+                dist = abs(a_pos[0] - g_pos[0]) + abs(a_pos[1] - g_pos[1])
+                all_pairs.append((dist, a_idx, g_idx))
+
+        # 2. 距離が近い順にソート
+        all_pairs.sort(key=lambda x: x[0])
+
+        # 3. 近いペアから順に確定
+        total_distance = 0.0
+        used_agents = set()
+        used_goals = set()
+        matched_count = 0
+
+        for dist, a_idx, g_idx in all_pairs:
+            if a_idx not in used_agents and g_idx not in used_goals:
+                used_agents.add(a_idx)
+                used_goals.add(g_idx)
+                total_distance += dist
+                matched_count += 1
+                
+                if matched_count == min(len(agent_positions), len(goal_positions)):
+                    break
+
+        return float(total_distance)
 
     def _calculate_reward(self,done_mode) -> float:
         """
@@ -343,15 +387,16 @@ class MultiAgentGridEnv:
             reward = 100.0 if done else 0.0
 
         elif self.reward_mode == 1:
-            # モード 1: 未完了 -5、完了 500
-            reward = 500.0 if done else -5.0
-
-        elif self.reward_mode == 2:
             # モード 2: ゴールまでの合計距離の負の値
+            current_total_distance = self._calculate_total_distance_to_goals_LEGACY()
+            reward = - current_total_distance
+        
+        elif self.reward_mode == 2:
+            # モード 2: 近いペアから順に確定させていく（貪欲法）」ロジック
             current_total_distance = self._calculate_total_distance_to_goals()
             reward = - current_total_distance
 
-        elif self.reward_mode == 3:
+        elif self.reward_mode == 3: # うまくいくケースが見つからなかった。よって不採用
             # モード 3: 密な報酬 (距離変化) + 段階報酬 + 完了報酬
             current_total_distance = self._calculate_total_distance_to_goals()
 
@@ -359,7 +404,11 @@ class MultiAgentGridEnv:
             # _prev_total_distance_to_goals が初期化されているか (つまり、エージェントが配置されているか) チェックします
             if self._prev_total_distance_to_goals != float('inf'):
                 distance_change = self._prev_total_distance_to_goals - current_total_distance # 距離が減ると正、増えると負
-                reward += distance_change * 1.0 # スケールは調整可能
+                if distance_change > 0:
+                    reward +=  1.0 # 距離が減った報酬
+                else:
+                    reward += -1.0 # "止"または距離が増えた
+                # reward += distance_change * 1.0 # スケールは調整可能
             # else: 初期状態またはエージェントが配置されていない場合、距離変化報酬なし
 
             # 2. 個別ゴール到達に対する段階報酬

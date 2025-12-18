@@ -348,15 +348,20 @@ class DQNModel:
             print(f"Warning: Unexpected load_model value: {self.load_model}. No learning performed.")
             return None, None # 損失とTD誤差の両方をNoneで返す
 
+    # get_weightsは「状態(dict)」だけを返すようにすると管理が楽です
+    def get_weights(self) -> tuple[dict, dict, dict]:
+        return self.qnet.state_dict(), self.qnet_target.state_dict(), self.optimizer.state_dict()
 
-    def get_weights(self) ->tuple[QNet,QNet,dict]:
-        return self.qnet,self.qnet_target,self.optimizer.state_dict()
+    # インスタンスを差し替えるのではなく、中身(state_dict)を流し込む
+    def set_qnet_state(self, state_dict: dict):
+        self.qnet.load_state_dict(state_dict)
 
-    def set_model_weights(self, qnet: QNet):
-        self.qnet = qnet
+    # 推論時には呼ばないが、将来の拡張のために残す
+    def set_target_state(self, state_dict: dict):
+        self.qnet_target.load_state_dict(state_dict)
 
-    def set_target_weights(self, qnet_target: QNet):
-        self.qnet_target = qnet_target
+    def set_optimizer_state(self, state_dict: dict):
+        self.optimizer.load_state_dict(state_dict)
 
     def bat_data_transform_for_NN_model_for_batch(self, i: int, batch_raw_data: torch.Tensor) -> torch.Tensor:
         """

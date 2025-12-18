@@ -268,5 +268,17 @@ class Agent:
     def get_weights(self):
         return self.model.get_weights()
 
-    def set_weights(self, qnet: QNet):
-        self.model.set_model_weights(qnet)
+    def set_weights_for_training(self, qnet_dict, target_dict, optim_dict, epsilon):
+        self.model.set_qnet_state(qnet_dict)
+        self.model.set_target_state(target_dict)
+        self.model.set_optimizer_state(optim_dict)
+        
+        self.epsilon = epsilon
+        
+        self.model.qnet.train() # 学習モード
+
+    # 推論用：最小限のデータで実行準備をする
+    def set_weights_for_inference(self, q_dict):
+        self.model.set_qnet_state(q_dict)
+        self.epsilon = 0.0
+        self.model.qnet.eval()  # 推論モード

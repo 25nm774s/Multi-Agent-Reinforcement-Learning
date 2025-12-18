@@ -29,7 +29,7 @@ class Saver:
         self.grid_size = grid_size # グリッドサイズを保存
         self.scores_summary_path = os.path.join(self.save_dir, "scores_summary.csv")
         # 100エピソードサマリー用の新しいパス
-        self.scores_summary_100_path = os.path.join(self.save_dir, "scores_summary100.csv")
+        self.scores_summary_100_path = os.path.join(self.save_dir, f"scores_summary{self.CALCULATION_PERIOD}.csv")
         # ヒートマップデータ用にファイル名と形式を.npyに変更
         self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
         #self.model_dir_path = os.path.join(self.save_dir, 'model_weights')
@@ -125,7 +125,7 @@ class Saver:
         self.episode_data_counter += 1
 
         # カウンターが100の倍数で、かつ0より大きいかチェック
-        if self.episode_data_counter % 100 == 0 and self.episode_data_counter > 0:
+        if self.episode_data_counter % self.CALCULATION_PERIOD == 0 and self.episode_data_counter > 0:
             # バッファをDataFrameに変換
             buffer_df = pd.DataFrame(self.episode_data_buffer)
 

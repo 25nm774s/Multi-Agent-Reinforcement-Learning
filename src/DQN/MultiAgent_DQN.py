@@ -52,6 +52,8 @@ class MultiAgent_DQN:
 
         self.save_agent_states = args.save_agent_states
 
+        self.start_episode = 1
+
         # 結果保存ディレクトリの設定と作成
         self.save_dir = os.path.join(
             "output",
@@ -65,7 +67,10 @@ class MultiAgent_DQN:
 
         # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(self.save_dir,self.grid_size)
+        self.saver.CALCULATION_PERIOD = 50
         self.plot_results = PlotResults(self.save_dir)
+
+        self.load_checkpoint(None)
 
     def result_save(self):
         self.plot_results.draw_heatmap()
@@ -92,31 +97,26 @@ class MultiAgent_DQN:
         achieved_episodes_temp = 0
         avg_loss_temp = 0
         learning_steps_in_period = 0
-        # renzoku_not_done = 0# 連敗記録
 
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
-        for episode_num in range(1, self.episode_num + 1):
+        for episode in range(self.start_episode, self.episode_num + 1):
             # 100エピソードごとの集計期間の開始時に変数をリセット
-            if (episode_num - 1) % 50 == 0:
+            if (episode - 1) % 50 == 0 and episode>0:
                 avg_reward_temp = 0
                 avg_step_temp = 0
                 achieved_episodes_temp = 0
                 avg_loss_temp = 0
                 learning_steps_in_period = 0
 
-            # if renzoku_not_done % 100==0 and renzoku_not_done>0:# 連敗が続くとき探索を強制
-            #     pre_epsilon = self.agents[0].epsilon
-            #     for agent in self.agents:
-            #         agent.epsilon = min(agent.epsilon+0.50, 1.0)
-            #     print(f"連敗記録:{renzoku_not_done}。探索率を{pre_epsilon:.3}から{agent.epsilon:.3}に上昇。")
+                self.save_checkpoint(episode)#チェックポイントを50毎に保存
 
             print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
             # 100エピソードごとに集計結果を出力
             CONSOLE_LOG_FREQ = 50
-            if episode_num % CONSOLE_LOG_FREQ == 0:
+            if episode % CONSOLE_LOG_FREQ == 0:
                 print() # 改行
                 avg_reward = avg_reward_temp / CONSOLE_LOG_FREQ       # 期間内の平均報酬
 
@@ -129,10 +129,10 @@ class MultiAgent_DQN:
                 # 平均損失は学習が発生したステップ数で割る
                 avg_loss = avg_loss_temp / learning_steps_in_period if learning_steps_in_period > 0 else 0
 
-                print(f"     エピソード {episode_num - CONSOLE_LOG_FREQ} ~ {episode_num} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
-                print(f"     エピソード {episode_num - CONSOLE_LOG_FREQ} ~ {episode_num} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
-                print(f"     エピソード {episode_num - CONSOLE_LOG_FREQ} ~ {episode_num} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
-                print(f"     エピソード {episode_num - CONSOLE_LOG_FREQ} ~ {episode_num} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
                 print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.agents[0].epsilon:.3f}{RESET}, beta: {GREEN}{self.agents[0].beta:.3f}{RESET}") #
 
 
@@ -211,16 +211,13 @@ class MultiAgent_DQN:
             if done:
                 achieved_episodes_temp += 1
                 avg_step_temp += step_count # 達成した場合のステップ数のみ加算
-                # renzoku_not_done = 0 # 連敗をリセット
-            # else:
-            #     renzoku_not_done += 1 # 連敗カウンタ
 
             # Calculate average loss for the episode for logging
             ep_avg_loss = ep_total_loss / ep_learning_steps if ep_learning_steps > 0 else 0
 
             # Saverでエピソードごとのスコアをログに記録
             # エピソード番号、最終ステップ数、累積報酬、エピソード中の平均損失を記録
-            self.saver.log_episode_data(episode_num, step_count, ep_reward, ep_avg_loss, done)
+            self.saver.log_episode_data(episode, step_count, ep_reward, ep_avg_loss, done)
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             avg_reward_temp += ep_reward
@@ -251,8 +248,9 @@ class MultiAgent_DQN:
             loaded_state_dict = model_io.load(file_path) # state_dictをロード
 
             # Fixed: Directly load state_dict into the agent's existing qnet and qnet_target modules
-            agent.model.qnet.load_state_dict(loaded_state_dict)
-            agent.model.qnet_target.load_state_dict(loaded_state_dict)
+            # agent.model.qnet.load_state_dict(loaded_state_dict)
+            # agent.model.qnet_target.load_state_dict(loaded_state_dict)
+            agent.set_weights_for_inference(loaded_state_dict)
 
     def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
         """
@@ -330,3 +328,46 @@ class MultiAgent_DQN:
             print("\n" + "-" * 50 + "\n")
 
         print(f"{GREEN}--- シミュレーション終了 ---" + f"{RESET}")
+
+    def load_checkpoint(self, episode:int|None=None):
+        model_io = Model_IO()
+        model_dir = os.path.join(self.save_dir, "checkpoints")
+        
+        if not os.path.exists(model_dir):
+            print(f"{model_dir}は存在しなかったため、新規学習とする")
+            return
+
+        try:
+            for agent in self.agents:            
+                if episode:
+                    file_path = os.path.join(model_dir, f"checkpoint_episode[{episode}]_id[{agent.agent_id}].pth")
+                else:
+                    file_path = os.path.join(model_dir, f"checkpoint_{agent.agent_id}.pth")
+
+                # Model_IOから辞書データを取得
+                # ※Model_IO側でtarget_stateも返すように修正が必要（後述）
+
+                q_dict, t_dict, optim_dict, epoch, epsilon = model_io.load_checkpoint(file_path)
+                
+                # エージェントの状態を一括更新
+                agent.set_weights_for_training(q_dict, t_dict, optim_dict, epsilon)
+                self.start_episode = epoch # Trainerのエピソード数も同期
+        except:
+            Exception("load_checkpointメソッドでのエラー")
+        
+        print(f"エピソード{self.start_episode}から再開")
+
+    def save_checkpoint(self, episode:int):
+        model_io = Model_IO()
+        model_dir = os.path.join(self.save_dir, "checkpoints")
+        if not os.path.exists(model_dir): os.makedirs(model_dir)
+
+        for agent in self.agents:
+            # DQNModelから各state_dictを取得
+            q_dict, t_dict, optim_dict = agent.get_weights()
+            file_path = os.path.join(model_dir, f"checkpoint_{agent.agent_id}.pth")
+            file_path_episode = os.path.join(model_dir, f"checkpoint_episode[{episode}]_id[{agent.agent_id}].pth")
+            
+            # 最新と現在のエピソードの2ファイルを書き込み
+            model_io.save_checkpoint(file_path, q_dict, t_dict, optim_dict, episode, agent.epsilon)
+            model_io.save_checkpoint(file_path_episode, q_dict, t_dict, optim_dict, episode, agent.epsilon)

@@ -92,49 +92,45 @@ class MultiAgent_DQN:
 
         total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
-        avg_reward_temp = 0
-        avg_step_temp = 0
-        achieved_episodes_temp = 0
-        avg_loss_temp = 0
-        learning_steps_in_period = 0
+        episode_rewards: list[float] = []   # エピソードごとの報酬を格納
+        episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
+        episode_losses : list[float] = []   # エピソードごとの損失を格納
+        done_counts    : list[int]   = []   # エピソードごとで成功/失敗を記録
 
         # ----------------------------------
         # メインループ（各エピソード）
         # ----------------------------------
         for episode in range(self.start_episode, self.episode_num + 1):
-            # 100エピソードごとの集計期間の開始時に変数をリセット
-            if (episode - 1) % 50 == 0 and episode>0:
-                avg_reward_temp = 0
-                avg_step_temp = 0
-                achieved_episodes_temp = 0
-                avg_loss_temp = 0
-                learning_steps_in_period = 0
-
-                self.save_checkpoint(episode)#チェックポイントを50毎に保存
 
             print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
-            # 100エピソードごとに集計結果を出力
+            # 50エピソードごとに集計結果を出力
             CONSOLE_LOG_FREQ = 50
-            if episode % CONSOLE_LOG_FREQ == 0:
-                print() # 改行
-                avg_reward = avg_reward_temp / CONSOLE_LOG_FREQ       # 期間内の平均報酬
+            if (episode % 50 == 0) and (episode!=self.start_episode):
+                print() # 改行して進捗表示をクリア
 
-                avg_step = 0.00     # 期間内の平均ステップ数
-                if achieved_episodes_temp > 0: # 達成したエピソードがある場合のみ平均ステップ数を計算
-                    avg_step = avg_step_temp / achieved_episodes_temp
+                # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
+                avg_loss   = sum(episode_losses) / len(episode_losses)      # 期間内の平均損失
+                avg_reward = sum(episode_rewards) / len(episode_rewards)    # 期間内の平均報酬
+                avg_step   = sum(episode_steps) / len(episode_steps)        # 期間内の平均ステップ数
+                done_rate  = sum(done_counts) / len(done_counts)            # 達成率
 
-                achievement_rate = achieved_episodes_temp / CONSOLE_LOG_FREQ    # 達成率を計算 (達成したエピソード数 / 集計エピソード数)
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
+                if self.agents[0].model.use_per:
+                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.agents[0].epsilon:.3f}{RESET}, beta: {GREEN}{self.agents[0].beta:.3f}{RESET}")
+                else:
+                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.agents[0].epsilon:.3f}{RESET}")
 
-                # 平均損失は学習が発生したステップ数で割る
-                avg_loss = avg_loss_temp / learning_steps_in_period if learning_steps_in_period > 0 else 0
+                episode_losses = [] # 100エピソードごとに損失リストもリセット
+                episode_rewards = []
+                episode_steps  = []
+                done_counts = []
 
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の達成率     : {GREEN}{achievement_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
-                print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.agents[0].epsilon:.3f}{RESET}, beta: {GREEN}{self.agents[0].beta:.3f}{RESET}") #
-
+            if episode % 50 == 0:
+                self.save_checkpoint(episode)
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
@@ -142,12 +138,10 @@ class MultiAgent_DQN:
             # current_global_state = self.env.reset(initial_agent_positions=[(0,0)])
 
             done = False # エピソード完了フラグ
-            step_count = 0 # 現在のエピソードのステップ数
-            ep_reward = 0.0 # 現在のエピソードの累積報酬
+            step_count:int = 0 # 現在のエピソードのステップ数
+            episode_reward:float = 0.0 # 現在のエピソードの累積報酬
 
-            # Variables to track loss for this episode's logging
-            ep_total_loss = 0
-            ep_learning_steps = 0
+            step_losses:list[float] = []
 
             # ---------------------------
             # 1エピソードのステップループ
@@ -175,7 +169,7 @@ class MultiAgent_DQN:
                 next_global_state, reward, done, _ = self.env.step(actions)
 
                 # 各ステップで獲得した報酬をエピソード報酬に加算
-                ep_reward += reward
+                episode_reward += reward
 
                 # 各エージェントの経験をリプレイバッファにストアし、学習を試行
                 for i, agent in enumerate(self.agents):
@@ -191,11 +185,7 @@ class MultiAgent_DQN:
                         current_loss = agent.learn_from_experience(i, total_step) # 総エピソード数を渡す
                         if current_loss is not None:
                             # 学習が発生した場合、その損失を累積 (for episode logging)
-                            ep_total_loss += current_loss
-                            ep_learning_steps += 1 # Count steps where at least one agent learned in this episode
-                            # Also accumulate for the 100-episode period average
-                            avg_loss_temp += current_loss
-                            learning_steps_in_period += 1 # Count learning steps in the period
+                            step_losses.append(current_loss)
 
                 # 全体状態を次の状態に更新
                 current_global_state = next_global_state
@@ -209,18 +199,21 @@ class MultiAgent_DQN:
 
             # エピソードが完了 (done == True) した場合、達成エピソード数カウンタをインクリメント
             if done:
-                achieved_episodes_temp += 1
-                avg_step_temp += step_count # 達成した場合のステップ数のみ加算
+                episode_steps.append(step_count) # 達成した場合のステップ数のみ加算
 
-            # Calculate average loss for the episode for logging
-            ep_avg_loss = ep_total_loss / ep_learning_steps if ep_learning_steps > 0 else 0
+            # エピソードの平均損失を計算
+            episode_loss:float = sum(step_losses)/len(step_losses) if step_losses else 0.0
+            episode_step:int = step_count
 
             # Saverでエピソードごとのスコアをログに記録
             # エピソード番号、最終ステップ数、累積報酬、エピソード中の平均損失を記録
-            self.saver.log_episode_data(episode, step_count, ep_reward, ep_avg_loss, done)
+            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, done)
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
-            avg_reward_temp += ep_reward
+            episode_losses.append(episode_loss) # 100エピソードまで貯め続ける
+            episode_rewards.append(episode_reward)
+            episode_steps.append(episode_step)
+            done_counts.append(done)
 
         self.saver.save_remaining_episode_data()
         self.saver.save_visited_coordinates()
@@ -351,7 +344,7 @@ class MultiAgent_DQN:
                 
                 # エージェントの状態を一括更新
                 agent.set_weights_for_training(q_dict, t_dict, optim_dict, epsilon)
-                self.start_episode = epoch # Trainerのエピソード数も同期
+                self.start_episode = epoch +1 # Trainerのエピソード数も同期
         except:
             Exception("load_checkpointメソッドでのエラー")
         

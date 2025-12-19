@@ -125,7 +125,7 @@ class MultiAgent_Q:
                     goal_pos = load_data.get('goal_position', [])
                 if loaded_episode == 0: # loaded_episodeがまだ設定されていない場合
                     loaded_episode = load_data.get('episode', 0)
-                if loaded_epsilon == 0:
+                if loaded_epsilon == 1.0:
                     loaded_epsilon = load_data.get('epsilon', 1.0)
 
             else: # チェックポイントファイルが存在しない、または読み込みエラーの場合
@@ -203,21 +203,25 @@ class MultiAgent_Q:
         done = False
         time_step = 0
         reward = 0.0
+        action_str = ["↑","↓","←","→","停"]
 
         states = self.env.reset()
+        states_log.append(states)
 
         for agent in self.agents: agent.epsilon = 0.0 # 無理くり探索させない
 
-        while not done and time_step < self.max_ts:
+        while not done and time_step < 50:
             
-            actions = []
+            actions:list[int] = []
             
             for agent in self.agents:
-                a = agent.get_action(states)                #<-ここの仕様が統一感がない
+                a = agent.get_action(states)               #<-ここの仕様が統一感がない
+                print(f"[{time_step}] agent {agent.agent_id} 行動{GREEN}[{action_str[a]}]{RESET}: {agent.q_table.get_q_values(agent._get_q_state(states))}")
                 actions.append(a)
             
             next_states, r, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
 
+            print("state:",states[self.goals_number:], "\nns", next_states[self.goals_number:],"\nreward: ",reward)
             states = next_states
             states_log.append(states)
 
@@ -282,7 +286,7 @@ class MultiAgent_Q:
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
-                print(f"==== エピソード {episode - 999} ~ {episode} の成功率     : {GREEN}{done_rate:.2f}{RESET}")
+                print(f"==== エピソード {episode - 999} ~ {episode} の成功率     : {GREEN}{done_rate:.3f}{RESET}")
                 print(f"==== ε: {self.agents[0].epsilon:.3f}")
                 print(f"==== エピソード {episode - 999} ~ {episode} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
                 

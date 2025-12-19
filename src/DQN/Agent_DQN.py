@@ -22,7 +22,7 @@ class Agent:
         Args:
             args: エージェントの設定を含む属性を持つオブジェクト (例: argparse.Namespace).
                   必要な属性: agents_number, batch_size, epsilon_decay,
-                  load_model, goals_num, mask, device, buffer_size,
+                  goals_num, mask, device, buffer_size,
                   optimizer, gamma, learning_rate, target_update_frequency,
                   alpha, beta, beta_anneal_steps.
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
@@ -61,7 +61,6 @@ class Agent:
             args.batch_size,
             args.agents_number,
             self.goals_num,
-            args.load_model,
             args.learning_rate,
             args.mask,
             args.device,

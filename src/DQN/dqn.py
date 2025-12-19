@@ -53,7 +53,7 @@ class DQNModel:
 
     # Add use_per parameter to __init__ (Step 1)
     def __init__(self, optimizer_type: str, grid_size: int,gamma: float, batch_size: int, agent_num: int,
-                 goals_num: int, load_model: int, learning_rate: float, mask: bool, device:str, target_update_frequency: int = 100, use_per: bool = False):
+                 goals_num: int, learning_rate: float, mask: bool, device:str, target_update_frequency: int = 100, use_per: bool = False):
         """
         DQNModel クラスのコンストラクタ.
 
@@ -63,7 +63,6 @@ class DQNModel:
             batch_size (int): 学習に使用するバッチサイズ.
             agent_num (int): 環境中のエージェント数.
             goals_num (int): 環境中のゴール数.
-            load_model (int): モデルのロード設定 (0: 学習, 1: 学習済みモデル使用(推論), 2: 知識蒸留/模倣学習).
             learning_rate (float): 学習率.
             mask (bool): 状態にマスキングを適用するかどうか (True: 自身の位置のみ, False: 全体状態).
             device (str): device名
@@ -75,7 +74,6 @@ class DQNModel:
         self.batch_size: int = batch_size
         self.agents_num: int = agent_num
         self.goals_num: int = goals_num
-        self.load_model: int = load_model
         self.mask: bool = mask
         self.lr: float = learning_rate
         self.action_size: int = 5
@@ -323,30 +321,13 @@ class DQNModel:
                 - 計算された損失の平均値 (学習が行われた場合)、または None.
                 - 計算されたTD誤差 (絶対値) (形状: (batch_size,)) (PER有効時のみ)、または None.
         """
-        # load_model == 1 の場合は学習は行わない
-        if self.load_model == 1:
-            return None, None # 損失とTD誤差の両方をNoneで返す
-
         # 1. データの準備とフィルタリング (全体の状態バッチから特定エージェントの状態バッチを抽出)
         agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(i, global_states_batch)
         next_agent_states_batch_for_NN = self.bat_data_transform_for_NN_model_for_batch(i, next_global_states_batch)
 
-        # 2. 学習モードの分岐と実行 (特定エージェントの状態バッチを使用)
-        if self.load_model == 0:
-            # 通常のDQN学習モード (PER対応)
-            # Pass IS weights conditionally, _perform_standard_dqn_update returns TD errors conditionally (Step 4)
-            # loss, td_errors = self._perform_standard_dqn_update(agent_states_batch, actions_batch, rewards_batch, next_agent_states_batch, dones_batch, total_step, is_weights_batch if self.use_per else None)
-            loss, td_errors = self._perform_standard_dqn_update(agent_states_batch_for_NN, actions_batch, rewards_batch, next_agent_states_batch_for_NN, dones_batch, total_step, is_weights_batch if self.use_per else None)
-            # Return TD errors conditionally (Step 4)
-            return loss, td_errors if self.use_per else None
-        # elif self.load_model == 2:
-        #     # 特殊な学習モード (知識蒸留/模倣学習など) (PER非対応)
-        #     # _perform_knowledge_distillation_updateはTD誤差を返さない
-        #     loss, td_errors = self._perform_knowledge_distillation_update(agent_states_batch, actions_batch)
-        #     return loss, None # TD誤差は常にNone
-        else: # load_model が 0, 1, 2 以外の値の場合 (予期しない値)
-            print(f"Warning: Unexpected load_model value: {self.load_model}. No learning performed.")
-            return None, None # 損失とTD誤差の両方をNoneで返す
+        loss, td_errors = self._perform_standard_dqn_update(agent_states_batch_for_NN, actions_batch, rewards_batch, next_agent_states_batch_for_NN, dones_batch, total_step, is_weights_batch if self.use_per else None)
+
+        return loss, td_errors if self.use_per else None
 
     # get_weightsは「状態(dict)」だけを返すようにすると管理が楽です
     def get_weights(self) -> tuple[dict, dict, dict]:

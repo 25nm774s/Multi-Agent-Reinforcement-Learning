@@ -102,7 +102,7 @@ class MultiAgent_DQN:
         # ----------------------------------
         for episode in range(self.start_episode, self.episode_num + 1):
 
-            print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
+            # print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
             # 50エピソードごとに集計結果を出力
             CONSOLE_LOG_FREQ = 50

@@ -34,7 +34,6 @@ RESET = '\033[0m'
 if __name__ == '__main__':
     def parse_args():
         parser = argparse.ArgumentParser()
-        #parser.add_argument('--dir_path', default='./')
         parser.add_argument('-g','--grid_size', default=4, type=int)
         parser.add_argument('-A','--agents_number', default=2, type=int)
         parser.add_argument('-G','--goals_number', default=2, type=int)
@@ -43,12 +42,11 @@ if __name__ == '__main__':
         parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
         parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
         parser.add_argument('--neighbor_distance', default=2, type=int)
-        parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
+        # parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
         parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('-e','--episode_number', default=1200, type=int)
         parser.add_argument('--max_timestep', default=150, type=int)
-        # parser.add_argument('--decay_epsilon', default=500000, type=int)
         parser.add_argument('--epsilon_decay', default=0.50, type=float)
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)

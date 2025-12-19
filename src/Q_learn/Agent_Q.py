@@ -78,7 +78,7 @@ class Agent:
         self.epsilon = getattr(args, 'epsilon', 1.0)
         self.min_epsilon = getattr(args, 'min_epsilon', 0.01)
         self.max_epsilon = getattr(args, 'max_epsilon', 1.0)
-        self.epsilon_decay_alpha = args.epsilon_decay_alpha #getattr(args, 'epsilon_decay_alpha', 0.70)
+        self.epsilon_decay = args.epsilon_decay #getattr(args, 'epsilon_decay_alpha', 0.70)
 
 
     #def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
@@ -121,10 +121,10 @@ class Agent:
     def decay_epsilon_pow(self, step:int):
         """
         ステップ数に基づいてεをべき乗減衰させる.
-        Uses self.epsilon_decay_alpha.
+        Uses self.epsilon_decay.
         """
         effect_step = max(1,step)
-        self.epsilon = self.max_epsilon * (1.0 / effect_step**self.epsilon_decay_alpha)
+        self.epsilon = self.max_epsilon * (1.0 / effect_step**self.epsilon_decay)
         self.epsilon = max(self.epsilon, self.min_epsilon)
 
 

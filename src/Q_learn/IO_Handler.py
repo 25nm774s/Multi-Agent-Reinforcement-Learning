@@ -1,8 +1,8 @@
 import os
 import torch
+from Base.IO_Base import BaseModelIO
 
-
-class IOHandler:
+class IOHandler(BaseModelIO):
     """
     モデルデータやチェックポイントデータなどの保存と読み込みを担当する汎用クラス。
     torch.save/load を使用してデータをファイルに保存・読み込みする。

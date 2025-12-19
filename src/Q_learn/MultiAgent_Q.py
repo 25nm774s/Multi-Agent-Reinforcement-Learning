@@ -9,7 +9,6 @@ RESET = '\033[0m'
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
-#from utils.ConfigManager import ConfigManager, ConfigLoader
 from .IO_Handler import IOHandler
 from utils.render import Render
 
@@ -33,10 +32,23 @@ class MultiAgent_Q:
         self.grid_size = args.grid_size
 
         # IQL: maskあり/CQL: maskなし
-        Q_Strategy = "IQL" if args.mask else "CQL"
+        # observation_range_str = "部分観測" if args.neighbor_distance < self.grid_size else "全観測"
+        folder_name = ""
+        if args.mask or args.neighbor_distance==0:
+            folder_name += "IQL"
+        else:
+            folder_name += "CQL"
+            if args.neighbor_distance < self.grid_size:
+                folder_name += "観測"
+                folder_name += f"[{args.neighbor_distance}]"
+            else:
+                folder_name += "全観測"
+        
+        folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_A[{self.agents_number}]_G[{self.goals_number}]"
+        
         self.save_dir = os.path.join(
             "output",
-            f"{Q_Strategy}_部分観測[{args.neighbor_distance}]_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
+            folder_name
         )
 
         # self.io_handler = IOHandler() # IOHandlerのインスタンスを作成
@@ -125,7 +137,7 @@ class MultiAgent_Q:
                     goal_pos = load_data.get('goal_position', [])
                 if loaded_episode == 0: # loaded_episodeがまだ設定されていない場合
                     loaded_episode = load_data.get('episode', 0)
-                if loaded_epsilon == 0:
+                if loaded_epsilon == 1.0:
                     loaded_epsilon = load_data.get('epsilon', 1.0)
 
             else: # チェックポイントファイルが存在しない、または読み込みエラーの場合
@@ -203,21 +215,25 @@ class MultiAgent_Q:
         done = False
         time_step = 0
         reward = 0.0
+        action_str = ["↑","↓","←","→","停"]
 
         states = self.env.reset()
+        states_log.append(states)
 
         for agent in self.agents: agent.epsilon = 0.0 # 無理くり探索させない
 
-        while not done and time_step < self.max_ts:
+        while not done and time_step < 50:
             
-            actions = []
+            actions:list[int] = []
             
             for agent in self.agents:
-                a = agent.get_action(states)                #<-ここの仕様が統一感がない
+                a = agent.get_action(states)               #<-ここの仕様が統一感がない
+                print(f"[{time_step}] agent {agent.agent_id} 行動{GREEN}[{action_str[a]}]{RESET}: {agent.q_table.get_q_values(agent._get_q_state(states))}")
                 actions.append(a)
             
             next_states, r, done, _ = self.env.step(actions)#<-ここの仕様が統一感がない
 
+            print("state:",states[self.goals_number:], "\nns", next_states[self.goals_number:],"\nreward: ",reward)
             states = next_states
             states_log.append(states)
 
@@ -251,8 +267,8 @@ class MultiAgent_Q:
         print(f"{GREEN}Q学習で学習中{RESET}\n")
         print(f"ゴール位置: {self.env.get_goal_positions().values()}")
 
-        #total_step = 0
-        #avg_reward_temp, avg_step_temp = 0, 0
+        total_step = 0
+
         episode_rewards: list[float] = []   # エピソードごとの報酬を格納
         episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
         episode_losses : list[float] = []   # エピソードごとの損失を格納
@@ -282,7 +298,8 @@ class MultiAgent_Q:
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 step  : {GREEN}{avg_step:.2f}{RESET}")
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 reward: {GREEN}{avg_reward:.2f}{RESET}")
                 print(f"==== エピソード {episode - 999} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.4f}{RESET}")
-                print(f"==== エピソード {episode - 999} ~ {episode} の成功率     : {GREEN}{done_rate:.2f}{RESET}")
+                print(f"==== エピソード {episode - 999} ~ {episode} の成功率     : {GREEN}{done_rate:.3f}{RESET}")
+                print(f"==== ε: {self.agents[0].epsilon:.3f}")
                 print(f"==== エピソード {episode - 999} ~ {episode} のデータ量   : {GREEN}{q_table_size}{RESET}\n")
                 
                 #avg_reward_temp, avg_step_temp = 0, 0
@@ -316,7 +333,7 @@ class MultiAgent_Q:
                 actions:list[int] = []
                 for i, agent in enumerate(self.agents):
                     # Agentクラスのdecay_epsilon_powを呼び出し
-                    agent.decay_epsilon_pow(episode)
+                    agent.decay_epsilon_power(total_step)
 
                     # Agentクラスのget_actionを呼び出し (global_stateのみ渡す)
                     actions.append(agent.get_action(current_states))
@@ -363,6 +380,7 @@ class MultiAgent_Q:
             episode_rewards.append(episode_reward)
             episode_steps.append(episode_step)
             done_counts.append(done)
+            total_step += episode_step
 
         #self.saver.save_remaining_episode_data() <- 2000-2000が生成される原因になる。この半端なエピドートは捨てることで解決を図る。
         self.saver.save_visited_coordinates()

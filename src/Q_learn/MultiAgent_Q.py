@@ -9,7 +9,6 @@ RESET = '\033[0m'
 from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
-#from utils.ConfigManager import ConfigManager, ConfigLoader
 from .IO_Handler import IOHandler
 from utils.render import Render
 
@@ -33,10 +32,23 @@ class MultiAgent_Q:
         self.grid_size = args.grid_size
 
         # IQL: maskあり/CQL: maskなし
-        Q_Strategy = "IQL" if args.mask else "CQL"
+        # observation_range_str = "部分観測" if args.neighbor_distance < self.grid_size else "全観測"
+        folder_name = ""
+        if args.mask or args.neighbor_distance==0:
+            folder_name += "IQL"
+        else:
+            folder_name += "CQL"
+            if args.neighbor_distance < self.grid_size:
+                folder_name += "観測"
+                folder_name += f"[{args.neighbor_distance}]"
+            else:
+                folder_name += "全観測"
+        
+        folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_A[{self.agents_number}]_G[{self.goals_number}]"
+        
         self.save_dir = os.path.join(
             "output",
-            f"{Q_Strategy}_部分観測[{args.neighbor_distance}]_r[{self.reward_mode}]_env[{self.grid_size}x{self.grid_size}]_max_ts[{self.max_ts}]_agents[{self.agents_number}]_goals[{self.goals_number}]"
+            folder_name
         )
 
         # self.io_handler = IOHandler() # IOHandlerのインスタンスを作成

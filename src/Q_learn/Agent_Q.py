@@ -34,7 +34,7 @@ class Agent:
         self.action_size:int        = 5 # UP, DOWN, LEFT, RIGHT, STAY
         self.total_agents:int       = args.agents_number
         self.mask:bool              = args.mask
-        self.observation_mode:str   = args.observation_mode
+        # self.observation_mode:str   = args.observation_mode
         self.neighbor_distance:int  = args.neighbor_distance
 
         # マスク値に基づいて戦略をインスタンス化

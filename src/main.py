@@ -31,44 +31,100 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 
-if __name__ == '__main__':
-    def parse_args():
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-g','--grid_size', default=4, type=int)
-        parser.add_argument('-A','--agents_number', default=2, type=int)
-        parser.add_argument('-G','--goals_number', default=2, type=int)
-        parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
-        parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
-        parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-        parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
-        parser.add_argument('--neighbor_distance', default=2, type=int)
-        # parser.add_argument('--load_model', choices=[0, 1, 2], default=0, type=int)
-        parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
-        parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
-        parser.add_argument('-e','--episode_number', default=1200, type=int)
-        parser.add_argument('--max_timestep', default=150, type=int)
-        parser.add_argument('--epsilon_decay', default=0.50, type=float)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
-        parser.add_argument('--gamma', default=0.99, type=float)
-        parser.add_argument('--buffer_size', default=10000, type=int)
-        parser.add_argument('--batch_size', default=32, type=int)
-        parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
-        parser.add_argument('--window_width', default=500, type=int)
-        parser.add_argument('--window_height', default=500, type=int)
-        parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
-        parser.add_argument('--pause_duration', default=0.1, type=float)
-        parser.add_argument('--target_update_frequency', default=500, type=int)
-        # Add PER parameters
-        parser.add_argument('--alpha', default=0.6, type=float, help='PER alpha parameter (prioritization exponent)')
-        parser.add_argument('--beta', default=0.4, type=float, help='PER beta parameter (importance sampling exponent, starts at this value)')
-        parser.add_argument('--beta_anneal_steps', default=20000, type=int, help='Number of episodes over which beta is annealed to 1.0')
-        # Add --use_per argument
-        parser.add_argument('--use_per', choices=[0, 1], default=0, type=int, help='Enable Prioritized Experience Replay')
-        
-        return parser.parse_args()
-    
+def parse_args():
+    # 1. プリセットの定義
+    PRESETS = {
+        "test_Q": {
+            "grid_size": 4,
+            "agents_number": 2,
+            "learning_mode": "Q",
+            "episode_number": 1000,
+            "max_timestep": 150,
+            "neighbor_distance": 3,
+            "epsilon_decay": 0.30,
+            "learning_rate": 0.10
+        },
+        "test_Q_large": {
+            "grid_size": 10,
+            "agents_number": 3,
+            "goals_number": 3,
+            "episode_number": 5000
+        },
+        "test_DQN":{
+            "grid_size": 4,
+            "agents_number": 2,
+            "goals_number": 2, 
+            "batch_size": 32
+        },
+        "DQN_normal":{
+            "grid_size": 10,
+            "agents_number": 3,
+            "goals_number": 3,
+            "max_timestep": 200,
+            "batch_size": 32
+        },
+        # エイリアスの例
+        "QN": "test_Q",
+        "QL": "test_Q_large",
+        "DQN_N": "DQN_normal"
+    }
 
+    parser = argparse.ArgumentParser()
+    
+    # 2. プリセット選択用の引数を追加
+    parser.add_argument('-P', '--preset', choices=PRESETS.keys(), help="Use a predefined preset")
+
+    # --- 既存の引数 ---
+    parser.add_argument('-g','--grid_size', default=4, type=int)
+    parser.add_argument('-A','--agents_number', default=2, type=int)
+    parser.add_argument('-G','--goals_number', default=2, type=int)
+    parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
+    parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
+    parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
+    parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
+    parser.add_argument('--neighbor_distance', default=2, type=int)
+    parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
+    parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
+    parser.add_argument('-e','--episode_number', default=1200, type=int)
+    parser.add_argument('--max_timestep', default=150, type=int)
+    parser.add_argument('--epsilon_decay', default=0.50, type=float)
+    parser.add_argument('--learning_rate', default=0.001, type=float)
+    parser.add_argument('--gamma', default=0.99, type=float)
+    parser.add_argument('--buffer_size', default=10000, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
+    parser.add_argument('--window_width', default=500, type=int)
+    parser.add_argument('--window_height', default=500, type=int)
+    parser.add_argument('--render_mode', choices=[0, 1], default=0, type=int)
+    parser.add_argument('--pause_duration', default=0.1, type=float)
+    parser.add_argument('--target_update_frequency', default=500, type=int)
+    parser.add_argument('--alpha', default=0.6, type=float)
+    parser.add_argument('--beta', default=0.4, type=float)
+    parser.add_argument('--beta_anneal_steps', default=20000, type=int)
+    parser.add_argument('--use_per', choices=[0, 1], default=0, type=int)
+
+    # 3. 解析処理
+    temp_args, remaining_argv = parser.parse_known_args()
+    
+    if temp_args.preset:
+        target = PRESETS[temp_args.preset]
+        
+        # 文字列（エイリアス）ならもう一度辞書を引く
+        if isinstance(target, str):
+            target = PRESETS[target]
+        
+        # プリセットの内容をデフォルト値として設定
+        parser.set_defaults(**target)
+    
+    # 最終的なパース（個別のコマンドライン引数が優先される）
+    # プリセット指定がない場合も含め、一括でここで処理するのがスマート
+    args = parser.parse_args(remaining_argv)
+    
+    return args
+
+if __name__ == '__main__':
     config = parse_args()
+    print(f"Loaded config: {config}")
 
     # auto選択時のデバイス決定ロジックを追加
     if config.device == 'auto':

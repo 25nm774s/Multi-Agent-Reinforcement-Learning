@@ -33,7 +33,7 @@ class Agent:
         self.epsilon_decay = args.epsilon_decay
         self.action_size = 5
         self.epsilon = MAX_EPSILON
-        self.load_model = args.load_model
+        # self.load_model = args.load_model
         self.goals_num = args.goals_number
         self.mask = args.mask
         self.device = torch.device(args.device)
@@ -217,8 +217,8 @@ class Agent:
             float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
         """
         # モデルロード設定が1 (学習済みモデル使用) の場合は学習しない
-        if self.load_model == 1:
-            return None
+        # if self.load_model == 1:
+        #     return None
 
         # リプレイバッファにバッチサイズ分の経験が溜まっていない場合は学習しない
         if len(self.replay_buffer) < self.batch_size:

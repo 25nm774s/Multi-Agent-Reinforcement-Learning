@@ -46,7 +46,7 @@ class MultiAgent_DQN:
         self.agents_number = args.agents_number
         self.goals_number = args.goals_number # Fixed: Changed args.goals_num to args.goals_number
         self.grid_size = args.grid_size
-        self.load_model = args.load_model
+        # self.load_model = args.load_model
         self.mask = args.mask
         self.update_frequency = 4# 学習の頻度
 

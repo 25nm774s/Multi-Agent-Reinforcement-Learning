@@ -10,6 +10,18 @@ from contextlib import redirect_stdout
 from src.utils.Saver import Saver
 
 class TestSaver(unittest.TestCase):
+    """
+    ### `Saver`クラス単体テストの概要
+
+この単体テストは、`Saver`クラスが意図通りに動作することを確認するために実装されています。主要なテスト項目は以下の通りです。
+
+*   **初期化 (`test_init`)**: `Saver`インスタンスの初期化が正しく行われるか、必要なファイル（`scores_summary100.csv`）が作成され、正しいヘッダーが書き込まれているか、`visited_count_grid`が適切に初期化されているかを確認します。
+*   **エージェントの状態ロギング (`test_log_agent_states`)**: エージェントの訪問座標が`visited_count_grid`に正しく記録され、無効な座標が渡された場合に`ValueError`が発生するかを検証します。
+*   **訪問座標の保存 (`test_save_visited_coordinates`)**: メモリ上の`visited_count_grid`が`.npy`ファイルとして正しく保存され、保存後に`visited_updates_counter`がリセットされるかを確認します。
+*   **エピソードデータの集計と保存 (`test_log_episode_data_aggregation`)**: エピソードデータがバッファリングされ、`CALCULATION_PERIOD`（この場合は100エピソード）ごとに集計されて`scores_summary100.csv`に保存されるか、計算された平均値が正しいかを検証します。
+*   **残りのエピソードデータの保存 (`test_save_remaining_episode_data`)**: 学習終了時にバッファに残ったエピソードデータが正しく集計され、`scores_summary100.csv`に保存されるかを確認します。また、データがない場合に`save_remaining_episode_data`を呼び出しても問題ないことも確認します。
+*   **ダミー実装のテスト (`test_q_table_and_dqn_weights_placeholders`)**: `save_q_table`と`save_dqn_weights`が、期待されるプレースホルダーメッセージをコンソールに出力することを確認します。
+    """
 
     def setUp(self):
         """

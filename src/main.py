@@ -46,7 +46,7 @@ if __name__ == '__main__':
         parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
         parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
         parser.add_argument('-e','--episode_number', default=1200, type=int)
-        parser.add_argument('--max_timestep', default=150, type=int)
+        parser.add_argument('-T','--max_timestep', default=150, type=int)
         parser.add_argument('--epsilon_decay', default=0.50, type=float)
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--gamma', default=0.99, type=float)

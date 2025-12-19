@@ -67,7 +67,7 @@ class Saver:
             agents: Qテーブルを持つエージェントのリストまたは辞書。
             mask: 保存マスク (任意)。
         """
-        raise Exception('Qテーブル保存プロセスはModel_IOに移行')
+        print('Qテーブル保存プロセスはModel_IOに移行')
 
     def save_dqn_weights(self, agents):
         """
@@ -76,7 +76,7 @@ class Saver:
         Args:
             agents: DQNモデルを持つエージェントのリストまたは辞書。
         """
-        raise Exception('モデル重み保存プロセスはModel_IOに移行')
+        print('モデル重み保存プロセスはModel_IOに移行')
 
     # グリッド内のカウントをインクリメントするように修正
     def log_agent_states(self, agent_id, x, y):

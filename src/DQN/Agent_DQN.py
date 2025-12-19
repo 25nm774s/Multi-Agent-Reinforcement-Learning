@@ -1,7 +1,3 @@
-"""
-エージェントの行動を出力.
-学習器の更新など.
-"""
 import torch
 import numpy as np
 
@@ -9,9 +5,9 @@ from utils.replay_buffer import ReplayBuffer
 from DQN.dqn import DQNModel, QNet
 
 MAX_EPSILON = 1.0
-MIN_EPSILON = 0.01
+MIN_EPSILON = 0.05
 
-class Agent_DQN:
+class Agent:
     """
     DQN エージェントクラス.
 
@@ -19,21 +15,22 @@ class Agent_DQN:
     および DQN モデルの学習ロジックを管理します。
     """
     # Add use_per parameter to __init__ (Step 1)
-    def __init__(self, args, use_per: bool = False):
+    def __init__(self, agent_id, args, use_per: bool = False):
         """
         Agent_DQN クラスのコンストラクタ.
 
         Args:
             args: エージェントの設定を含む属性を持つオブジェクト (例: argparse.Namespace).
-                  必要な属性: agents_number, batch_size, decay_epsilon,
-                  load_model, goals_num, mask, device, buffer_size,
+                  必要な属性: agents_number, batch_size, epsilon_decay,
+                  goals_num, mask, device, buffer_size,
                   optimizer, gamma, learning_rate, target_update_frequency,
                   alpha, beta, beta_anneal_steps.
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
-        self.agents_num = args.agents_number
+        # self.agents_num = args.agents_number
+        self.agent_id = agent_id
         self.batch_size = args.batch_size
-        self.decay_epsilon_step = args.decay_epsilon
+        self.epsilon_decay = args.epsilon_decay
         self.action_size = 5
         self.epsilon = MAX_EPSILON
         self.load_model = args.load_model
@@ -43,7 +40,7 @@ class Agent_DQN:
 
         self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
         self.beta = args.beta if hasattr(args, 'beta') else 0.4 # Betaの初期値
-        self.beta_anneal_steps = args.beta_anneal_steps if hasattr(args, 'beta_anneal_steps') else args.episode_number # ベータを1.0まで増加させるエピソード数
+        self.beta_anneal_steps = int(args.episode_number * args.max_timestep/4) # ベータを1.0まで増加させるエピソード数
         self.use_per = use_per
 
         # ReplayBuffer の初期化 (PER パラメータ alpha と use_per を渡す) (Step 2)
@@ -59,15 +56,15 @@ class Agent_DQN:
         # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 3)
         self.model = DQNModel(
             args.optimizer,
+            args.grid_size,
             args.gamma,
             args.batch_size,
-            self.agents_num,
+            args.agents_number,
             self.goals_num,
-            args.load_model,
             args.learning_rate,
             args.mask,
             args.device,
-            args.target_update_frequency if hasattr(args, 'target_update_frequency') else 100,
+            args.target_update_frequency,
             use_per=self.use_per # Pass use_per to DQNModel (Step 3)
         )
 
@@ -90,6 +87,44 @@ class Agent_DQN:
         # ε-greedyに基づいて行動を選択
         return self.nn_greedy_actor(i, global_state_tensor)
 
+    def get_all_q_values(self, i: int, global_state: tuple) -> torch.Tensor:
+        """
+        現在の全体状態における、指定されたエージェントの各行動に対するQ値を取得する。
+        `nn_greedy_actor` と同様に状態の前処理を行い、QNetからQ値を取得する。
+
+        Args:
+            i (int): Q値を計算するエージェントのインデックス.
+            global_state (tuple): 環境の現在の全体状態 (ゴール位置と全エージェント位置のタプル).
+
+        Returns:
+            torch.Tensor: 各行動に対するQ値のテンソル (形状: (output_size,)).
+        """
+        # 全体状態をNNの入力形式に変換
+        flat_global_state = np.array(global_state).flatten()
+        global_state_tensor = torch.tensor(flat_global_state, dtype=torch.float32) # 1次元のテンソルに変換
+
+        # QNetへの入力となる状態を準備 (masking)
+        if self.mask:
+            # マスクがTrueの場合、全体状態テンソルからエージェントi自身の位置情報のみを抽出
+            # 全体状態テンソルの構造: [goal1_x, g1_y, ..., agent1_x, a1_y, ..., agent_i_x, a_i_y, ...]
+            # goals_num * 2 がゴール部分の次元数
+            # i * 2 がエージェントiの開始インデックス (0-indexed)
+            agent_state_tensor = global_state_tensor[self.goals_num * 2 + i * 2 : self.goals_num * 2 + i * 2 + 2] # (x, y)の2次元を抽出
+        else:
+            # マスクがFalseの場合、全体状態テンソルをそのまま使用
+            agent_state_tensor = global_state_tensor # 形状: ((goals+agents)*2,)
+
+        # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
+        # unsqueeze(0) で形状を (1, state_dim) にする
+        agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
+        agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
+
+        # QNetを使って各行動のQ値を計算
+        with torch.no_grad(): # 推論時は勾配計算を無効化
+            qs = self.model.qnet(agent_state_tensor) # 形状: (1, action_size)
+
+        return qs.squeeze(0) # バッチ次元を削除して (action_size,) のテンソルを返す
+
     # Q系列のNNモデル使用時のε-greedy
     def nn_greedy_actor(self, i: int, global_state_tensor: torch.Tensor) -> int:
         """
@@ -99,7 +134,7 @@ class Agent_DQN:
 
         Args:
             i (int): 行動を選択するエージェントのインデックス.
-            global_state_tensor (torch.Tensor): 環境の現在の全体状態を表すテンソル.
+            global_state_tensor (torch.Tensor): 環境の現在の全体状態を表す1次元テンソル.
 
         Returns:
             int: 選択された行動 (0-4).
@@ -124,6 +159,8 @@ class Agent_DQN:
             # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
             # unsqueeze(0) で形状を (1, state_dim) にする
             agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
+            # print(f"形状: {agent_state_tensor}, {agent_state_tensor.shape}")
+            agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
 
             # QNetを使って各行動のQ値を計算
             with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -133,25 +170,24 @@ class Agent_DQN:
             return qs.argmax().item()
 
     # epsilonの線形アニーリング (現在のコードでは power アニーリングが使われているが、参考として残す)
-    def decay_epsilon(self, step):
-        if step < self.decay_epsilon_step:
-            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.decay_epsilon_step - step) / self.decay_epsilon_step
+    def decay_epsilon_linear(self, step):
+        if step < self.epsilon_decay:
+            self.epsilon = MIN_EPSILON + (MAX_EPSILON - MIN_EPSILON) * (self.epsilon_decay - step) / self.epsilon_decay
         else:
             self.epsilon = MIN_EPSILON
 
-    def decay_epsilon_power(self,step:int,alpha=0.5):
+    def decay_epsilon_power(self, step: int):
         """
-        εをステップ数に基づいてべき乗で減衰させる。
-        探索率εは step^(-alpha) に比例して減少する。
-
+        ステップ数に基づき、探索率εを指数的に減衰させる関数。
         Args:
-            step (int): 現在のステップ数.
-            alpha (float, optional): 減衰率を調整するパラメータ. Defaults to 0.9.
+            step (int): 現在のステップ数（またはエピソード数）。
         """
-        # ゼロ除算対策
-        effective_step = max(1, step)
-        self.epsilon = MAX_EPSILON * (1.0 / (effective_step ** alpha))
-        # 必要に応じて MIN_EPSILON で下限を設ける
+        lambda_ = 0.0001
+        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
+        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
+        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+
+        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
         self.epsilon = max(MIN_EPSILON, self.epsilon)
 
     def observe_and_store_experience(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
@@ -167,7 +203,7 @@ class Agent_DQN:
         """
         self.replay_buffer.add(global_state, action, reward, next_global_state, done)
 
-    def learn_from_experience(self, i: int, episode_num: int, total_episode_num: int) -> float | None:
+    def learn_from_experience(self, i: int, total_step: int) -> float | None:
         """
         リプレイバッファからバッチを取得し、モデルを学習させる。
         バッチサイズに満たない場合は学習を行わない。PERを使用する場合は、
@@ -175,8 +211,7 @@ class Agent_DQN:
 
         Args:
             i (int): 学習を行うエージェントのインデックス.
-            episode_num (int): 現在のエピソード番号 (ターゲットネットワーク更新タイミングに使用).
-            total_episode_num (int): 全体のエピソード数 (betaアニーリング用).
+            total_step (int): 全ステップ数 (ターゲットネットワーク更新タイミングに使用).
 
         Returns:
             float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
@@ -196,7 +231,7 @@ class Agent_DQN:
         batch_data = self.replay_buffer.sample(self.beta if self.use_per else 0.0) # Pass beta conditionally
 
         if batch_data is None:
-             return None
+            return None
 
         # sample メソッドは Tuple[..., is_weights_tensor, sampled_indices] を返すことを期待する
         global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices = batch_data
@@ -210,7 +245,7 @@ class Agent_DQN:
             rewards_batch,
             next_global_states_batch,
             dones_batch,
-            episode_num,
+            total_step,
             is_weights_batch if self.use_per else None, # Pass IS weights conditionally
             sampled_indices if self.use_per else None # Pass sampled indices conditionally
         )
@@ -218,19 +253,31 @@ class Agent_DQN:
         # 3. PER: 優先度の更新 (Step 6)
         # モデルの update メソッドから計算されたTD誤差の絶対値を取得し、リプレイバッファの優先度を更新
         if self.use_per and td_errors is not None and sampled_indices is not None:
-             self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
+            self.replay_buffer.update_priorities(sampled_indices, td_errors.detach().cpu().numpy()) # TD誤差をCPUに移動しNumPyに変換
 
         # 4. PER: Betaの線形アニーリング (Step 7)
         # エピソードの進行に応じて beta を線形的に 1.0 まで増加させる
         # Perform beta annealing only if use_per is True (Step 7)
         if self.use_per:
-            beta_increment_per_episode = (1.0 - (self.beta)) / (self.beta_anneal_steps)
-            self.beta = min(1.0, self.beta + beta_increment_per_episode)
+            beta_increment_per_learning_step = (1.0 - (self.beta)) / (self.beta_anneal_steps)
+            self.beta = min(1.0, self.beta + beta_increment_per_learning_step)
 
         return loss
-    
+
     def get_weights(self):
         return self.model.get_weights()
 
-    def set_weights(self, qnet: QNet):
-        self.model.set_model_weights(qnet)
+    def set_weights_for_training(self, qnet_dict, target_dict, optim_dict, epsilon):
+        self.model.set_qnet_state(qnet_dict)
+        self.model.set_target_state(target_dict)
+        self.model.set_optimizer_state(optim_dict)
+        
+        self.epsilon = epsilon
+        
+        self.model.qnet.train() # 学習モード
+
+    # 推論用：最小限のデータで実行準備をする
+    def set_weights_for_inference(self, q_dict):
+        self.model.set_qnet_state(q_dict)
+        self.epsilon = 0.0
+        self.model.qnet.eval()  # 推論モード

@@ -10,6 +10,9 @@ from Q_learn.strategys.masked_strategies import CooperativeActionSelection, Coop
 
 from Enviroments.Grid import PositionType
 
+MAX_EPSILON = 1.0
+MIN_EPSILON = 0.05
+
 class Agent:
     """
     エージェント個別のロジックを管理するクラス.
@@ -118,14 +121,19 @@ class Agent:
         )
 
 
-    def decay_epsilon_pow(self, step:int):
+    def decay_epsilon_power(self, step: int):
         """
-        ステップ数に基づいてεをべき乗減衰させる.
-        Uses self.epsilon_decay.
+        ステップ数に基づき、探索率εを指数的に減衰させる関数。
+        Args:
+            step (int): 現在のステップ数（またはエピソード数）。
         """
-        effect_step = max(1,step)
-        self.epsilon = self.max_epsilon * (1.0 / effect_step**self.epsilon_decay)
-        self.epsilon = max(self.epsilon, self.min_epsilon)
+        lambda_ = 0.00001
+        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
+        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
+        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+
+        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
+        self.epsilon = max(MIN_EPSILON, self.epsilon)
 
 
     #def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:

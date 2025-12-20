@@ -1,10 +1,15 @@
 import torch
 import numpy as np
+from typing import Tuple, Any
 
 from utils.replay_buffer import ReplayBuffer
 from utils.StateProcesser import StateProcessor
-from DQN.dqn import DQNModel, QNet
-from Q_learn.strategys.masked_strategies import CooperativeActionSelection
+from DQN.dqn import DQNModel
+from Base.StateRepresentationStrategy import StateRepresentationStrategy
+from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
+from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
+
+PositionType = Tuple[int, int]
 
 from Base.Agent_Base import AgentBase
 
@@ -60,10 +65,26 @@ class Agent(AgentBase):
             state_processor=self.state_processor
         )
 
-        # self.grid_size = args.grid_size # action selectionのため
-        self.state_representation = CooperativeActionSelection(args.grid_size, self.goals_num, self.agent_id, args.agents_number)
+        # 部分観測（mask=0のときであれば）の状態表現を委譲する
+        self._state_representation_strategy:StateRepresentationStrategy = self._get_strategy(args.mask, args.grid_size)
 
-    def get_action(self, i: int, global_state: tuple) -> int:
+    def _get_strategy(self, mask: bool, grid_size: int) -> StateRepresentationStrategy:
+        # State Representation Strategy for DQN
+        if mask == 0:
+            state_representation_strategy = CooperativeStateRepresentation(
+                grid_size=grid_size, goals_num=self.goals_num,
+                agent_id=self.agent_id, total_agents=self.total_agents
+            )
+            print(f"Agent {self.agent_id} (DQN): Using Cooperative State Representation (mask=0)")
+        else:
+            state_representation_strategy:StateRepresentationStrategy = SelfishStateRepresentation(
+                grid_size=grid_size, goals_num=self.goals_num,
+                agent_id=self.agent_id, total_agents=self.total_agents
+            )
+            print(f"Agent {self.agent_id} (DQN): Using Selfish State Representation (mask=1)")
+        return state_representation_strategy
+
+    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
         """
         現在の全体状態に基づいて、エージェントの行動を決定する (ε-greedy).
 
@@ -74,24 +95,22 @@ class Agent(AgentBase):
         Returns:
             int: 選択された行動 (0:UP, 1:DOWN, 2:LEFT, 3:RIGHT, 4:STAY).
         """
-        #全体状態をNNの入力形式に変換
-        # 現在のGridWorldの状態表現はタプルなので、フラット化してPyTorchテンソルに変換
-        # pre_gs = global_state
-        global_state = self._get_observation(global_state) # 部分観測に変換(簡易的に)
-        # print(pre_gs,"->\n",global_state)
-        flat_global_state = np.array(global_state).flatten()
-        global_state_tensor = torch.tensor(flat_global_state, dtype=torch.float32) # 1次元のテンソルに変換
+        # global_state をQStateに変換 (部分観測適用)
+        q_state = self._get_observation(global_state)
 
+        # QStateをNN入力形式に変換 (フラット化してPyTorchテンソルに)
+        flat_q_state = np.array(q_state).flatten()
+        q_state_tensor = torch.tensor(flat_q_state, dtype=torch.float32) # 1次元のテンソルに変換
         # ε-greedyに基づいて行動を選択
-        return self.nn_greedy_actor(i, global_state_tensor)
+        return self.nn_greedy_actor(q_state_tensor)
 
-    def get_all_q_values(self, i: int, global_state: tuple) -> torch.Tensor:
+    def get_all_q_values(self, global_state: tuple) -> torch.Tensor:
         """
         現在の全体状態における、指定されたエージェントの各行動に対するQ値を取得する。
         `nn_greedy_actor` と同様に状態の前処理を行い、QNetからQ値を取得する。
 
         Args:
-            i (int): Q値を計算するエージェントのインデックス.
+
             global_state (tuple): 環境の現在の全体状態 (ゴール位置と全エージェント位置のタプル).
 
         Returns:
@@ -103,7 +122,7 @@ class Agent(AgentBase):
 
         # StateProcessor を使用して QNet への入力状態を準備
         # unsqueeze(0) はバッチ次元を追加するため、個別の状態に対しては事前にStateProcessorに渡す前に適用
-        agent_state_tensor = self.state_processor.transform_state_batch(i, global_state_tensor.unsqueeze(0)).to(self.device)
+        agent_state_tensor = self.state_processor.transform_state_batch(self.agent_id, global_state_tensor.unsqueeze(0)).to(self.device)
 
         # QNetを使って各行動のQ値を計算
         with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -112,14 +131,13 @@ class Agent(AgentBase):
         return qs.squeeze(0) # バッチ次元を削除して (action_size,) のテンソルを返す
 
     # Q系列のNNモデル使用時のε-greedy
-    def nn_greedy_actor(self, i: int, global_state_tensor: torch.Tensor) -> int:
+    def nn_greedy_actor(self, global_state_tensor: torch.Tensor) -> int:
         """
         ε-greedy法を用いて、現在の状態から行動を選択する。
         maskがTrueの場合、エージェント自身の状態のみをQNetへの入力とする。
         maskがFalseの場合、全体状態をQNetへの入力とする。
 
         Args:
-            i (int): 行動を選択するエージェントのインデックス.
             global_state_tensor (torch.Tensor): 環境の現在の全体状態を表す1次元テンソル.
 
         Returns:
@@ -134,7 +152,7 @@ class Agent(AgentBase):
             # QNetへの入力となる状態を準備 (masking)
             # StateProcessor を使用して QNet への入力状態を準備
             # unsqueeze(0) はバッチ次元を追加するため、個別の状態に対しては事前にStateProcessorに渡す前に適用
-            agent_state_tensor = self.state_processor.transform_state_batch(i, global_state_tensor.unsqueeze(0)).to(self.device)
+            agent_state_tensor = self.state_processor.transform_state_batch(self.agent_id, global_state_tensor.unsqueeze(0)).to(self.device)
 
             # QNetを使って各行動のQ値を計算
             with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -143,13 +161,13 @@ class Agent(AgentBase):
             # 最大Q値に対応する行動のインデックスを取得
             return qs.argmax().item()
 
-    def _get_observation(self, global_state:tuple[tuple[int,int]]):
+    def _get_observation(self, global_state:Tuple[PositionType,...]):
         """
         部分観測に対応するために、ストラテジーを流用した。
         
         :param global_state: 環境のタプル表現(例: `((Gx1,Gy1),(Gx2,Gy2),...(GxN,GyN),(Ax1,Ay1),...(AxN,AyN))`)
         """
-        return self.state_representation.get_q_state_representation(global_state, self.neighbor_distance)   
+        return self._state_representation_strategy.get_q_state_representation(global_state, self.neighbor_distance)   
 
     # epsilonの線形アニーリング (現在のコードでは power アニーリングが使われているが、参考として残す)
     def decay_epsilon_linear(self, step):
@@ -172,7 +190,7 @@ class Agent(AgentBase):
         # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
         self.epsilon = max(MIN_EPSILON, self.epsilon)
 
-    def observe_and_store_experience(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
+    def observe(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
         """
         環境からの単一ステップの経験 (全体状態, 行動, 報酬, 次の全体状態, 完了フラグ) をリプレイバッファに追加する。
 
@@ -185,23 +203,18 @@ class Agent(AgentBase):
         """
         self.replay_buffer.add(global_state, action, reward, next_global_state, done)
 
-    def learn_from_experience(self, i: int, total_step: int) -> float | None:
+    def learn(self, total_step: int) -> float | None:
         """
         リプレイバッファからバッチを取得し、モデルを学習させる。
         バッチサイズに満たない場合は学習を行わない。PERを使用する場合は、
         サンプリングされた経験の優先度をTD誤差に基づいて更新する。
 
         Args:
-            i (int): 学習を行うエージェントのインデックス.
             total_step (int): 全ステップ数 (ターゲットネットワーク更新タイミングに使用).
 
         Returns:
             float | None: 計算された損失の平均値 (学習が行われた場合)、または None (学習が行われなかった場合).
         """
-        # モデルロード設定が1 (学習済みモデル使用) の場合は学習しない
-        # if self.load_model == 1:
-        #     return None
-
         # リプレイバッファにバッチサイズ分の経験が溜まっていない場合は学習しない
         if len(self.replay_buffer) < self.batch_size:
             return None
@@ -221,7 +234,7 @@ class Agent(AgentBase):
         # 2. モデルの更新
         # DQNModel の update メソッドにバッチデータ、IS重み、サンプリングされたインデックスを渡す (Step 5)
         loss, td_errors = self.model.update(
-            i,
+            self.agent_id,
             global_states_batch,
             actions_batch,
             rewards_batch,
@@ -248,6 +261,16 @@ class Agent(AgentBase):
 
     def get_weights(self):
         return self.model.get_weights()
+
+    def set_weights(self, weights: dict[str, Any]) -> None:
+        """
+        このエージェントのQネットワークとターゲットネットワーク、オプティマイザの重みをロードする。
+        weights は get_weights() から返される辞書と同じ構造を持つことを想定する。
+        """
+        if 'qnet' in weights: self.model.set_qnet_state(weights['qnet'])
+        if 'target_qnet' in weights: self.model.set_target_state(weights['target_qnet'])
+        if 'optimizer' in weights: self.model.set_optimizer_state(weights['optimizer'])
+        # εの値も一緒にロードする場合はここに追加
 
     def set_weights_for_training(self, qnet_dict, target_dict, optim_dict, epsilon):
         self.model.set_qnet_state(qnet_dict)

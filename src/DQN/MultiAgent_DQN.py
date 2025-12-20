@@ -158,13 +158,13 @@ class MultiAgent_DQN:
             while not done and step_count < self.max_ts:
                 # 各エージェントの行動を選択
                 actions = []
-                for i, agent in enumerate(self.agents):
+                for agent in self.agents:
                     # エージェントにε減衰を適用 (全ステップ数に基づき減衰)
                     agent.decay_epsilon_power(total_step)
 
                     # エージェントに行動を選択させる
                     # エージェント内部で自身の観測(masking)を行うため、全体状態を渡す
-                    actions.append(agent.get_action(i, current_global_state))
+                    actions.append(agent.get_action(current_global_state))
 
                 # エージェントの状態を保存（オプション）
                 # 全体状態からエージェント部分を抽出し、Saverでログ記録
@@ -184,17 +184,16 @@ class MultiAgent_DQN:
                 for i, agent in enumerate(self.agents):
                     # エージェントは自身の経験 (状態s, 行動a, 報酬r, 次状態s', 終了フラグdone) をストア
                     # 状態sと次状態s'は環境全体の全体状態を渡す
-                    agent.observe_and_store_experience(current_global_state, actions[i], reward, next_global_state, done)
+                    agent.observe(current_global_state, actions[i], reward, next_global_state, done)
 
-                # 4ステップに1回学習
-                if step_count % self.update_frequency==0:
-                    for i, agent in enumerate(self.agents):
-                        # エージェントに学習を試行させる (総エピソード数を渡す) (Step 4)
-                        # learn_from_experience はバッファサイズが満たされているなど、学習可能な場合に損失を返す
-                        current_loss = agent.learn_from_experience(i, total_step) # 総エピソード数を渡す
-                        if current_loss is not None:
-                            # 学習が発生した場合、その損失を累積 (for episode logging)
-                            step_losses.append(current_loss)
+                # 4ステップに1回学習は中で組み込んでいるためここでは全ステップで呼び出し
+                for agent in self.agents:
+                    # エージェントに学習を試行させる (総エピソード数を渡す) (Step 4)
+                    # learn_from_experience はバッファサイズが満たされているなど、学習可能な場合に損失を返す
+                    current_loss = agent.learn(total_step) # 総エピソード数を渡す
+                    if current_loss is not None:
+                        # 学習が発生した場合、その損失を累積 (for episode logging)
+                        step_losses.append(current_loss)
 
                 # 全体状態を次の状態に更新
                 current_global_state = next_global_state
@@ -287,7 +286,7 @@ class MultiAgent_DQN:
                 # 各エージェントの行動とQ値を収集するためのリスト
                 agent_step_info = []
 
-                for i, agent in enumerate(self.agents):
+                for agent in self.agents:
                     # 推論モードではε-greedyの活用部分のみを使用
                     # エージェント内部で自身の観測(masking)を行うため、全体状態を渡す
                     # global_state_tensor への変換は nn_greedy_actor 内で行われる
@@ -295,11 +294,11 @@ class MultiAgent_DQN:
                     original_epsilon = agent.epsilon
                     agent.epsilon = 0.0
 
-                    action = agent.get_action(i, current_global_state)
-                    all_q_values = agent.get_all_q_values(i, current_global_state) # 全Q値を取得
+                    action = agent.get_action(current_global_state)
+                    all_q_values = agent.get_all_q_values(current_global_state) # 全Q値を取得
 
                     agent_step_info.append({
-                        'agent_id': i,
+                        'agent_id': agent.agent_id,
                         'action': action,
                         'q_values': all_q_values.tolist() # Q値をリストに変換して保存
                     })

@@ -1,15 +1,18 @@
-from typing import Tuple, List
+from typing import Any, Tuple, List
+
+from Base.StateRepresentationStrategy import StateRepresentationStrategy
+
+from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
+from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
+from Base.Agent_Base import AgentBase
+
+from .strategys.SelfishStrategy import SelfishStrategy
+from .strategys.CooperativeStrategy import CooperativeStrategy
+from .QTable import QTable, QTableType
 
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-from Q_learn.QTable import QState, QTableType
-
-from Q_learn.QTable import QTable
-from Q_learn.strategys.action_selection import SelfishActionSelection, ActionSelectionStrategy
-from Q_learn.strategys.learning import SelfishQLearning, LearningStrategy
-from Q_learn.strategys.masked_strategies import CooperativeActionSelection, CooperativeQLearning
-
-from Enviroments.Grid import PositionType
-from Base.Agent_Base import AgentBase
+QState = Tuple[int,...]
+PositionType = Tuple[int,int]
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
@@ -31,39 +34,46 @@ class Agent(AgentBase):
         """
         super().__init__(agent_id, args)
 
+        self.observe_store = {}
+
         # マスク値に基づいて戦略をインスタンス化
         # 戦略に必要な初期化引数を渡す
-        if args.mask == 0:
-            # mask==0: 協調モード (他のエージェントを考慮する)
-            self._action_selection_strategy: ActionSelectionStrategy = CooperativeActionSelection(
-                grid_size=self.grid_size,
-                goals_num=self.goals_num,
-                agent_id=self.agent_id,
-                total_agents=self.total_agents
-            )
-            self._learning_strategy: LearningStrategy = CooperativeQLearning(
-                grid_size=self.grid_size,
-                goals_num=self.goals_num,
-                agent_id=self.agent_id,
-                total_agents=self.total_agents
-            )
-            print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
-        else:
-            # mask==1: 利己的モード（他のエージェントを無視する）
-            self._action_selection_strategy: ActionSelectionStrategy = SelfishActionSelection(
-                 grid_size=self.grid_size,
-                 goals_num=self.goals_num,
-                 agent_id=self.agent_id,
-                 total_agents=self.total_agents
-            )
-            self._learning_strategy: LearningStrategy = SelfishQLearning(
-                 grid_size=self.grid_size,
-                 goals_num=self.goals_num,
-                 agent_id=self.agent_id,
-                 total_agents=self.total_agents
-            )
-            print(f"Agent {self.agent_id}: Using Selfish Strategies (mask=1)")
+        # if args.mask == 0:
+        #     # mask==0: 協調モード (他のエージェントを考慮する)
+        #     self._action_selection_strategy: ActionSelectionStrategy = CooperativeActionSelection(
+        #         grid_size=self.grid_size,
+        #         goals_num=self.goals_num,
+        #         agent_id=self.agent_id,
+        #         total_agents=self.total_agents
+        #     )
+        #     self._learning_strategy: LearningStrategy = CooperativeQLearning(
+        #         grid_size=self.grid_size,
+        #         goals_num=self.goals_num,
+        #         agent_id=self.agent_id,
+        #         total_agents=self.total_agents
+        #     )
+        #     print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
+        # else:
+        #     # mask==1: 利己的モード（他のエージェントを無視する）
+        #     self._action_selection_strategy: ActionSelectionStrategy = SelfishActionSelection(
+        #          grid_size=self.grid_size,
+        #          goals_num=self.goals_num,
+        #          agent_id=self.agent_id,
+        #          total_agents=self.total_agents
+        #     )
+        #     self._learning_strategy: LearningStrategy = SelfishQLearning(
+        #          grid_size=self.grid_size,
+        #          goals_num=self.goals_num,
+        #          agent_id=self.agent_id,
+        #          total_agents=self.total_agents
+        #     )
+        #     print(f"Agent {self.agent_id}: Using Selfish Strategies (mask=1)")
 
+        self._state_representation_strategy = self._get_strategy(args.mask)
+
+        # 現環境全く同じなので代表してSelfishStrategyを使用
+        self._use_strategy = SelfishStrategy(self.grid_size, self.goals_num, self.agent_id, self.total_agents)
+        
         # QTable Instance
         self.q_table = QTable(
             action_size=self.action_size,
@@ -72,11 +82,29 @@ class Agent(AgentBase):
         )
 
         # ε-greedyのためのパラメータを保持
-        self.epsilon = getattr(args, 'epsilon', 1.0)
         self.min_epsilon = getattr(args, 'min_epsilon', 0.01)
         self.max_epsilon = getattr(args, 'max_epsilon', 1.0)
-        self.epsilon_decay = args.epsilon_decay #getattr(args, 'epsilon_decay_alpha', 0.70)
 
+    def _get_strategy(self, mask) -> StateRepresentationStrategy:
+        if mask == 0:
+            # mask==0: 協調モード (他のエージェントを考慮する)
+            action_selection_strategy: StateRepresentationStrategy = CooperativeStateRepresentation(
+                grid_size=self.grid_size,
+                goals_num=self.goals_num,
+                agent_id=self.agent_id,
+                total_agents=self.total_agents
+            )
+            print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
+        else:
+            # mask==1: 利己的モード（他のエージェントを無視する）
+            action_selection_strategy: StateRepresentationStrategy = SelfishStateRepresentation(
+                grid_size=self.grid_size,
+                goals_num=self.goals_num,
+                agent_id=self.agent_id,
+                total_agents=self.total_agents
+            )
+            print(f"Agent {self.agent_id}: Using Selfish Strategies (mask=1)")
+        return action_selection_strategy
 
     #def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
     def _get_q_state(self, global_state: Tuple[PositionType, ...]) -> QState:
@@ -85,7 +113,7 @@ class Agent(AgentBase):
         現在の config (mask, observation_mode) に応じて、異なる状態表現を生成する.
         """
         # global_state の構造: ((g1_x, g1_y), ..., (a1_x, a1_y), ..., (aN_x, aN_y))
-        return self._action_selection_strategy.get_q_state_representation(
+        return self._state_representation_strategy.get_q_state_representation(
             global_state,
             self.neighbor_distance
         )
@@ -107,46 +135,40 @@ class Agent(AgentBase):
         q_state = self._get_q_state(global_state)
 
         # 行動選択ロジックをストラテジーオブジェクトに委譲
-        return self._action_selection_strategy.select_action(
+        return self._use_strategy.select_action(
             self.q_table,      # QTableインスタンス
             q_state,           # 現在の状態 (ストラテジーによって内容が異なる)
             self.action_size,  # 行動空間サイズ
             self.epsilon       # ε値
         )
 
-
-    def decay_epsilon_power(self, step: int):
-        """
-        ステップ数に基づき、探索率εを指数的に減衰させる関数。
-        Args:
-            step (int): 現在のステップ数（またはエピソード数）。
-        """
-        lambda_ = 0.00001
-        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
-        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
-        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
-
-        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
-
-
+    def observe(self, global_state: Tuple[Tuple[int,int],...], action: int, reward: float, next_global_state: Tuple[Tuple[int,int],...], done: bool) -> None:
+        self.observe_store = {
+            "global_state": global_state,
+            "action": action,
+            "reward": reward,
+            "next_global_state": next_global_state,
+            "done": done
+        }
+        
     #def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:
-    def learn(self, global_state: Tuple[PositionType, ...], action: int, reward: float, next_global_state: Tuple[PositionType, ...], done: bool) -> float:
+    def learn(self, i, total_step) -> float:
         """
         単一の経験に基づいてQテーブルを更新するプロセスをAgentが管理する.
         学習ロジックは LearningStrategy オブジェクトに委譲される.
 
         Args:
-            global_state (Tuple[Tuple[int, int], ...]): 経験の現在の全体状態.
-            action (int): エージェントが取った行動.
-            reward (float): 行動によって得られた報酬.
-            next_global_state (Tuple[Tuple[int, int], ...]): 経験の次の全体状態.
-            done (bool): エピソードが完了したかどうかのフラグ.
 
         Returns:
             float: 更新に使用されたTD誤差の絶対値 (LearningStrategyから返される).
         """
         # 現在および次のエージェント固有の状態表現を取得 (ストラテジーに委譲)
+        global_state = self.observe_store['global_state']
+        next_global_state = self.observe_store['next_global_state']
+        action = self.observe_store['action']
+        reward = self.observe_store['reward']
+        done = self.observe_store['done']
+
         current_q_state = self._get_q_state(global_state)
         next_q_state = self._get_q_state(next_global_state)
 
@@ -154,7 +176,7 @@ class Agent(AgentBase):
             raise TypeError(f'actionはint型を期待しますが、実際は{type(action)}でした。')
         
         # 学習ロジックをストラテジーオブジェクトに委譲
-        td_delta = self._learning_strategy.update_q_value(
+        td_delta = self._use_strategy.update_q_value(
             self.q_table,
             current_q_state,
             action,
@@ -166,7 +188,7 @@ class Agent(AgentBase):
         return td_delta
 
 
-    def get_Qtable(self) -> QTableType:
+    def get_weights(self) -> QTableType:
         """
         このエージェントのQテーブルをファイルに保存する.
         Agentに紐づけられたmodel_pathを使用する.
@@ -174,7 +196,7 @@ class Agent(AgentBase):
         """
         return self.q_table.get_Qtable()
     
-    def set_Qtable(self, q_table:QTableType):
+    def set_weights(self, q_table:QTableType):
         self.q_table.set_Qtable(q_table)
 
     def get_q_table_size(self) -> int:
@@ -184,3 +206,6 @@ class Agent(AgentBase):
         """
         return self.q_table.get_q_table_size()
 
+    def get_all_q_values(self, agent_id: int, global_state: Tuple[PositionType,...]) -> list[float]:
+        qs = self._get_q_state(global_state)
+        return self.q_table.get_q_values(qs)

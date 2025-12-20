@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 # --- Type Aliases ---
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-from Enviroments.Grid import PositionType
+PositionType = Tuple[int, int]
 # QTableType はQTableクラスの実際の戻り値型と一致させる
 
 # --- Global Constants ---
@@ -35,7 +35,21 @@ class AgentBase(ABC):
     @abstractmethod
     def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
         pass
+    
+    def decay_epsilon_power(self, step: int):
+        """
+        ステップ数に基づき、探索率εを指数的に減衰させる関数。
+        Args:
+            step (int): 現在のステップ数（またはエピソード数）。
+        """
+        lambda_ = 0.0001
+        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
+        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
+        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
 
+        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
+        self.epsilon = max(MIN_EPSILON, self.epsilon)
+        
     @abstractmethod
     def get_all_q_values(self, agent_id: int, global_state: Tuple[PositionType, ...]) -> Any:
         pass
@@ -46,10 +60,6 @@ class AgentBase(ABC):
 
     @abstractmethod
     def learn(self, agent_id: int, total_step: int | None = None, experience: Any = None) -> float | None:
-        pass
-
-    @abstractmethod
-    def update(self, total_step: int | None = None) -> None:
         pass
 
     @abstractmethod

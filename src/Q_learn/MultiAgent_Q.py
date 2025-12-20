@@ -1,5 +1,6 @@
 import sys
 import os
+from typing import Tuple
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -83,7 +84,7 @@ class MultiAgent_Q:
 
         temp_path_list = []
         for agent in self.agents:
-            q_table_data = agent.get_Qtable()
+            q_table_data = agent.get_weights()
             temp_path = os.path.join(checkpoint_dir, f'temp_agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
             temp_path_list.append(temp_path)
             save_param = {"state_dict":q_table_data, "episode": episode, "goal_position": goal_position, "epsilon": agent.epsilon}
@@ -106,7 +107,7 @@ class MultiAgent_Q:
             os.makedirs(model_dir)
 
         for agent in self.agents:
-            q_table_data = agent.get_Qtable()
+            q_table_data = agent.get_weights()
             file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_model.pth') # ファイル名を変更
             io_handler.save(q_table_data, file_path) # IOHandlerを使用
 
@@ -130,7 +131,7 @@ class MultiAgent_Q:
 
             if load_data: # データが読み込まれた場合
                 qtable: QTableType = load_data.get('state_dict', {}) # 存在しないキーの場合に備えてgetを使用
-                agent.set_Qtable(qtable)
+                agent.set_weights(qtable)
 
                 # 最初の有効なチェックポイントからエピソード数とゴール位置を取得
                 if not goal_pos: # goal_posがまだ設定されていない場合
@@ -143,7 +144,7 @@ class MultiAgent_Q:
             else: # チェックポイントファイルが存在しない、または読み込みエラーの場合
                 print(f"エージェント {agent.agent_id} のチェックポイントが見つからないか、読み込みに失敗しました。Qテーブルを初期化します。")
                 #agent.reset_Qtable() # AgentクラスのQテーブル初期化メソッドを呼び出す
-                agent.set_Qtable({}) # AgentクラスのQテーブル初期化メソッドを呼び出す
+                agent.set_weights({}) # AgentクラスのQテーブル初期化メソッドを呼び出す
                 all_checkpoints_found = False # 1つでも見つからなければFalse
 
         if all_checkpoints_found:
@@ -201,7 +202,7 @@ class MultiAgent_Q:
 
             qtable: QTableType = io_handler.load(file_path) # IOHandlerを使用
             if qtable: # 読み込みに成功した場合のみ設定
-                agent.set_Qtable(qtable)
+                agent.set_weights(qtable)
             else:
                 print(f"エージェント {agent.agent_id} のモデルが見つからないか、読み込みに失敗しました。Qテーブルは更新されません。")
 
@@ -316,7 +317,7 @@ class MultiAgent_Q:
             # これによりエージェントが再配置される
             # --------------------------------------------
             # The reset method in the updated MultiAgentGridEnv now returns observation, info
-            current_states:tuple[tuple[int, int], ...] = self.env.reset()
+            current_states:Tuple[Tuple[int, int], ...] = self.env.reset()
             #print("current_states:",current_states)
 
             done = False
@@ -360,7 +361,8 @@ class MultiAgent_Q:
                 # Q学習は経験ごとに逐次更新
                 # 各エージェントに対して学習を実行
                 for i, agent in enumerate(self.agents):
-                    loss = agent.learn(current_states, int(actions[i]), float(reward), next_observation, bool(done))
+                    agent.observe(current_states, int(actions[i]), float(reward), next_observation, bool(done))
+                    loss = agent.learn(i,total_step)
                     step_losses.append(loss)
 
                 current_states = next_observation # 状態を更新

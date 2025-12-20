@@ -3,8 +3,6 @@ import os
 import csv
 import pandas as pd
 
-from Enviroments.Grid import Grid
-
 class Saver:
     """
     学習中に発生する様々なデータをファイルに保存するためのクラス.
@@ -17,52 +15,48 @@ class Saver:
     # 集計期間
     CALCULATION_PERIOD:int = 100
 
-    def __init__(self, save_dir, grid_size):
+    # コンストラクタにposition_validator_funcを追加
+    def __init__(self, save_dir, grid_size, position_validator_func=None):
         """
         Saverクラスの新しいインスタンスを初期化します。
 
         Args:
             save_dir (str): データを保存するディレクトリのパス。
             grid_size (int): エージェントの訪問座標を記録するグリッドのサイズ (NxN)。
+            position_validator_func (callable, optional): 座標の有効性をチェックする関数。
+                                                           引数として(x, y)のタプルを受け取り、boolを返します。
+                                                           指定しない場合は、内部でGridクラスを使用します。
         """
         self.save_dir = save_dir
         self.grid_size = grid_size # グリッドサイズを保存
-        self.scores_summary_path = os.path.join(self.save_dir, "scores_summary.csv")
-        # 100エピソードサマリー用の新しいパス
-        self.scores_summary_100_path = os.path.join(self.save_dir, f"scores_summary{self.CALCULATION_PERIOD}.csv")
+        
+        # 集計エピソード指標を保存するパス
+        self.episode_batch_summary_path = os.path.join(self.save_dir, f"aggregated_episode_metrics_{self.CALCULATION_PERIOD}.csv")
+
         # ヒートマップデータ用にファイル名と形式を.npyに変更
         self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
-        #self.model_dir_path = os.path.join(self.save_dir, 'model_weights')
 
         os.makedirs(self.save_dir, exist_ok=True)
-        #os.makedirs(self.model_dir_path, exist_ok=True)
 
-        # scores_summary.csvを作成 (集計前の個々のエピソードデータ用バッファ)
-        if not os.path.exists(self.scores_summary_path):
-            # scores_summary.csvのヘッダーは、生のエピソードデータを一時的に保存し、
-            # 集計されたデータがscores_summary100.csvに書き込まれるため、もはや不要です。
-            pass # この一時バッファファイルにはヘッダーは不要
-
-        # scores_summary100.csvを作成 (集計データ用)
-        if not os.path.exists(self.scores_summary_100_path):
-            with open(self.scores_summary_100_path, "w", newline='') as f:
-                # 100エピソードサマリーファイル用の更新されたヘッダー
+        if not os.path.exists(self.episode_batch_summary_path):
+            with open(self.episode_batch_summary_path, "w", newline='') as f:
                 csv.writer(f).writerow(["episode_group_start", "episode_group_end", "avg_time_step_100", "avg_reward_100", "avg_loss_100", "done_rate"])
 
-
-        # 訪問回数を記録するためのNxN numpy配列としてインメモリストレージを初期化
-        # ゼロで初期化
         self.visited_count_grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
 
-        # 個々のエピソードデータ用バッファ
         self.episode_data_buffer = []
-        # 個々のエピソードデータ用カウンター
         self.episode_data_counter = 0
 
-
-        # visited_count_gridは訪問座標用のインメモリバッファ
-        # 訪問座標更新カウンターを追加
         self.visited_updates_counter = 0
+
+        # 依存性注入ポイント: position_validator_funcが指定されればそれを使う
+        # なければデフォルトでGridクラスを利用する
+        if position_validator_func is None:
+            # Gridクラスに頼らず、内部でラムダ関数を定義
+            # 座標の有効性をチェックするラムダ関数
+            self.is_position_valid = lambda pos: 0 <= pos[0] < self.grid_size and 0 <= pos[1] < self.grid_size
+        else:
+            self.is_position_valid = position_validator_func
 
 
     def save_q_table(self, agents, mask):
@@ -96,14 +90,11 @@ class Saver:
             x (int): エージェントの現在のX座標。
             y (int): エージェントの現在のY座標。
         """
-        if not Grid(self.grid_size).is_valid_position((x,y)):
+        # 注入された検証関数を使用
+        if not self.is_position_valid((x,y)):
             raise ValueError(f'エージェント状態座標が無効です: x={x}, y={y} (エージェントID: {agent_id})')
-        
-        # xとyがグリッドの境界内にあると仮定
-        #if 0 <= x < self.grid_size and 0 <= y < self.grid_size:
-        # 訪問したセルのカウントをインクリメント
+
         self.visited_count_grid[y, x] += 1
-        # 訪問更新カウンターをインクリメント
         self.visited_updates_counter += 1
 
 
@@ -163,7 +154,7 @@ class Saver:
             done_rate (float): 集計期間の成功率。
         """
         # 集計されたスコアデータをscores_summary100.csvファイルに直接追記
-        with open(self.scores_summary_100_path, 'a', newline='') as f:
+        with open(self.episode_batch_summary_path, 'a', newline='') as f:
             csv_writer = csv.writer(f)
             csv_writer.writerow([episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate])
 
@@ -192,7 +183,7 @@ class Saver:
             # 残りのデータ用の平均をスコアサマリー100ファイルにログ記録
             self._log_scores(episode_group_start, episode_group_end, avg_time_step, avg_reward, avg_loss, done_rate)
 
-            print(f"Saved {len(self.episode_data_buffer)} remaining episode data entries as an aggregated group to {self.scores_summary_100_path}")
+            print(f"Saved {len(self.episode_data_buffer)} remaining episode data entries as an aggregated group to {self.episode_batch_summary_path}")
             # バッファをクリアし、カウンターをリセット
             self.episode_data_buffer = []
             self.episode_data_counter = 0

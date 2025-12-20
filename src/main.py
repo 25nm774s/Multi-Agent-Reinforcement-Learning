@@ -86,8 +86,7 @@ def parse_args():
     parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
     parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
     parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
-    parser.add_argument('-o','--observation_mode', choices=["global", "neighboring"], default='global', type=str)
-    parser.add_argument('--neighbor_distance', default=2, type=int)
+    parser.add_argument('--neighbor_distance', default=256, type=int)# 大きい値にしておくことで全観測になる。
     parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
     parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
     parser.add_argument('-e','--episode_number', default=1200, type=int)

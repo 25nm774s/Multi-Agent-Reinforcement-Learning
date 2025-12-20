@@ -1,0 +1,42 @@
+{
+    "test_Q": {
+        "grid_size": 4,
+        "agents_number": 2,
+        "learning_mode": "Q",
+        "episode_number": 1000,
+        "max_timestep": 150,
+        "neighbor_distance": 3,
+        "epsilon_decay": 0.30,
+        "learning_rate": 0.10
+    },
+    "Q_normal": {
+        "grid_size": 10,
+        "learning_mode": "Q",
+        "agents_number": 3,
+        "goals_number": 3,
+        "episode_number": 5000
+    },
+    "test_DQN":{
+        "grid_size": 4,
+        "learning_mode": "DQN",
+        "episode_number": 500,
+        "epsilon_decay": 0.40,
+        "target_update_frequency": 200,
+        "agents_number": 2,
+        "goals_number": 2, 
+        "max_timestep": 100,
+        "batch_size": 32
+    },
+    "DQN_normal":{
+        "grid_size": 10,
+        "learning_mode": "DQN",
+        "episode_number": 10000,
+        "target_update_frequency": 1000,
+        "agents_number": 3,
+        "goals_number": 3,
+        "max_timestep": 200,
+        "batch_size": 32
+    },
+    "tq": "test_Q",
+    "DQN_n": "DQN_normal"
+}

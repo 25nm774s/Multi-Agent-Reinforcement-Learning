@@ -25,59 +25,55 @@ TODO: 学習モードごとの処理分岐(if self.learning_mode == ...)がMain�
 
 import argparse
 import torch
+import json
+import os
+import shutil
 
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-def parse_args():
-    # 1. プリセットの定義
-    PRESETS = {
-        "test_Q": {
-            "grid_size": 4,
-            "agents_number": 2,
-            "learning_mode": "Q",
-            "episode_number": 1000,
-            "max_timestep": 150,
-            "neighbor_distance": 3,
-            "epsilon_decay": 0.30,
-            "learning_rate": 0.10
-        },
-        "test_Q_large": {
-            "grid_size": 10,
-            "agents_number": 3,
-            "goals_number": 3,
-            "episode_number": 5000
-        },
-        "test_DQN":{
-            "grid_size": 4,
-            "episode_number": 500,
-            "epsilon_decay": 0.40,
-            "target_update_frequency": 200,
-            "agents_number": 2,
-            "goals_number": 2, 
-            "max_timestep": 100,
-            "batch_size": 32
-        },
-        "DQN_normal":{
-            "grid_size": 10,
-            "episode_number": 10000,
-            "target_update_frequency": 1000,
-            "agents_number": 3,
-            "goals_number": 3,
-            "max_timestep": 200,
-            "batch_size": 32
-        },
-        # エイリアスの例
-        "QN": "test_Q",
-        "QL": "test_Q_large",
-        "DQN_N": "DQN_normal"
-    }
 
-    parser = argparse.ArgumentParser()
-    
-    # 2. 引数の定義（すべての引数を最初に追加しておく）
-    parser.add_argument('-P', '--preset', choices=PRESETS.keys(), help="Use a predefined preset")
+def load_presets(file_path="presets.json", sample_path="presets.json.sample"):
+    """
+    設定ファイルを読み込む。
+    実体がない場合はサンプルからコピーを試みる。
+    """
+    # 1. presets.json がなくて sample がある場合はコピーしてあげる（親切設計）
+    if not os.path.exists(file_path) and os.path.exists(sample_path):
+        print(f"[*] {file_path} not found. Creating from {sample_path}...")
+        shutil.copy(sample_path, file_path)
+
+    # 2. それでもファイルがない場合は空の辞書を返す
+    if not os.path.exists(file_path):
+        print("[!] Warning: No preset file found. Using internal defaults.")
+        return {}
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError:
+            print(f"[!] Error: {file_path} is not a valid JSON. Ignoring presets.")
+            return {}
+
+    # エイリアス展開
+    presets = {k: v for k, v in data.items() if k != "aliases"}
+    aliases = data.get("aliases", {})
+    for alias, target in aliases.items():
+        if target in presets:
+            presets[alias] = presets[target]
+            
+    return presets
+
+def parse_args():
+    # プリセットデータの読み込み
+    PRESETS = load_presets("presets.json")
+
+    parser = argparse.ArgumentParser(description="Multi-Agent RL Parser with Presets")
+
+    # --- 1. プリセット選択引数 ---
+    # choicesに辞書のキーを渡すことで、存在しないプリセット指定をエラーにできる
+    parser.add_argument('-P', '--preset', choices=PRESETS.keys(), help="Use a predefined preset from JSON")
 
     # --- 既存の引数 ---
     parser.add_argument('-g','--grid_size', default=4, type=int)

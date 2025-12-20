@@ -75,7 +75,7 @@ class Agent:
         )
 
         self.grid_size = args.grid_size # action selectionのため
-        self.state_representation = CooperativeActionSelection(self.grid_size, self.goals_num, self.agent_id, args.agents_num)
+        self.state_representation = CooperativeActionSelection(self.grid_size, self.goals_num, self.agent_id, args.agents_number)
 
     def get_action(self, i: int, global_state: tuple) -> int:
         """

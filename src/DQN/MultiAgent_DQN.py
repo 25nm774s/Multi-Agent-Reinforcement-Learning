@@ -55,15 +55,25 @@ class MultiAgent_DQN:
         self.start_episode = 1
 
         # 結果保存ディレクトリの設定と作成
+        folder_name = "DQN_"
+        if args.mask==1 or args.neighbor_distance==0:
+            # mask==1: IQL
+            folder_name+="IQL"
+        else:
+            # mask==0: CQL
+            folder_name+="IQL"
+            if args.neighbor_distance < self.grid_size:
+                folder_name += "観測"
+                folder_name += f"[{args.neighbor_distance}]"
+            else:
+                folder_name += "全観測"
+
+        folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
         self.save_dir = os.path.join(
             "output",
-            f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
+            # f"DQN_mask[{args.mask}]_Reward[{args.reward_mode}]_env[{args.grid_size}x{args.grid_size}]_max_ts[{args.max_timestep}]_agents[{args.agents_number}]" + (f"_PER_alpha[{args.alpha}]_beta_anneal[{args.beta_anneal_steps}]" if args.use_per else "")
+            folder_name
         )
-
-        # cp_dir = os.path.join(self.save_dir, ".checkpoints")
-        # json_data = {"agents_number":self.agents_number,"goal": {"number":self.goals_number,"position":self.env.get_goal_positions()}}
-        # conf = ConfigManager(json_data, cp_dir)   # 設定ファイルをフォルダに作成
-        # print("conf.get_setting('agents_number'):",conf.get_setting("agents_number"))
 
         # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(self.save_dir,self.grid_size)
@@ -102,7 +112,7 @@ class MultiAgent_DQN:
         # ----------------------------------
         for episode in range(self.start_episode, self.episode_num + 1):
 
-            # print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
+            print('■', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
             # 50エピソードごとに集計結果を出力
             CONSOLE_LOG_FREQ = 50

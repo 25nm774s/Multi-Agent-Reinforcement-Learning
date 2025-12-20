@@ -61,6 +61,8 @@ def parse_args():
             "agents_number": 3,
             "goals_number": 3,
             "max_timestep": 200,
+            "episode_number":5000,
+            "epsilon_decay": 0.90,
             "batch_size": 32
         },
         # エイリアスの例

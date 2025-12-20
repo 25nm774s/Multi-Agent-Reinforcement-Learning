@@ -61,7 +61,7 @@ class MultiAgent_DQN:
             folder_name+="IQL"
         else:
             # mask==0: CQL
-            folder_name+="IQL"
+            # folder_name+="CQL" 省略
             if args.neighbor_distance < self.grid_size:
                 folder_name += "観測"
                 folder_name += f"[{args.neighbor_distance}]"

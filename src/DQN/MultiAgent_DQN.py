@@ -135,7 +135,6 @@ class MultiAgent_DQN:
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
             current_global_state = self.env.reset(initial_agent_positions=iap)
-            # current_global_state = self.env.reset(initial_agent_positions=[(0,0)])
 
             done = False # エピソード完了フラグ
             step_count:int = 0 # 現在のエピソードのステップ数

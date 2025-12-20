@@ -84,23 +84,33 @@ class StateProcessor:
         # --- チャネル 2: 他のエージェントのマップの設定 ---
 
         if self.agents_num > 1:
-            # i 以外のエージェントの座標を一時的に保持
-            other_agents_coords_list = []
+            filtered_other_coords_list = []
+            filtered_batch_indices_list = []
 
             for j in range(self.agents_num):
                 if j != i:
-                    other_agents_coords_list.append(all_agent_coords[:, j, :])
+                    current_agent_coords = all_agent_coords[:, j, :]
 
-            if other_agents_coords_list: # 他のエージェントが存在する場合のみ処理
-                # (B * (agents_num - 1), 2) に結合
-                other_coords = torch.cat(other_agents_coords_list, dim=0)
+                    # -1以外の有効な座標をフィルタリング
+                    valid_coords_mask = (current_agent_coords[:, 0] != -1) & (current_agent_coords[:, 1] != -1)
+
+                    # 有効な座標とそれに対応するバッチインデックスを抽出
+                    filtered_coords = current_agent_coords[valid_coords_mask]
+                    filtered_batch_indices = batch_indices_self[valid_coords_mask]
+
+                    if filtered_coords.numel() > 0: # 有効な座標が存在する場合のみ追加
+                        filtered_other_coords_list.append(filtered_coords)
+                        filtered_batch_indices_list.append(filtered_batch_indices)
+
+            if filtered_other_coords_list: # 他のエージェントの有効な座標が存在する場合のみ処理
+                # 全ての有効な他のエージェントの座標を結合
+                other_coords = torch.cat(filtered_other_coords_list, dim=0)
+                # 全ての有効な他のエージェントに対応するバッチインデックスを結合
+                batch_indices_other = torch.cat(filtered_batch_indices_list, dim=0)
 
                 # x座標とy座標を抽出
-                other_x = other_coords[:, 0] # (B * (agents_num - 1),)
-                other_y = other_coords[:, 1] # (B * (agents_num - 1),)
-
-                # 他のエージェントの数に対応したバッチインデックスを準備
-                batch_indices_other = batch_indices_self.repeat_interleave(self.agents_num - 1)
+                other_x = other_coords[:, 0]
+                other_y = other_coords[:, 1]
 
                 # state_map[バッチインデックス, チャネル2, 他のx座標, 他のy座標] = 1.0
                 state_map[batch_indices_other, 2, other_x, other_y] = 1.0

@@ -4,6 +4,7 @@ import numpy as np
 from utils.replay_buffer import ReplayBuffer
 from utils.StateProcesser import StateProcessor
 from DQN.dqn import DQNModel, QNet
+from Q_learn.strategys.masked_strategies import CooperativeActionSelection
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
@@ -37,6 +38,7 @@ class Agent:
         # self.load_model = args.load_model
         self.goals_num = args.goals_number
         self.mask = args.mask
+        self.neighbor_distance = args.neighbor_distance
         self.device = torch.device(args.device)
 
         self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
@@ -72,6 +74,9 @@ class Agent:
             state_processor=self.state_processor
         )
 
+        self.grid_size = args.grid_size # action selectionのため
+        self.state_representation = CooperativeActionSelection(self.grid_size, self.goals_num, self.agent_id, args.agents_num)
+
     def get_action(self, i: int, global_state: tuple) -> int:
         """
         現在の全体状態に基づいて、エージェントの行動を決定する (ε-greedy).
@@ -85,6 +90,9 @@ class Agent:
         """
         #全体状態をNNの入力形式に変換
         # 現在のGridWorldの状態表現はタプルなので、フラット化してPyTorchテンソルに変換
+        # pre_gs = global_state
+        global_state = self._get_observation(global_state) # 部分観測に変換(簡易的に)
+        # print(pre_gs,"->\n",global_state)
         flat_global_state = np.array(global_state).flatten()
         global_state_tensor = torch.tensor(flat_global_state, dtype=torch.float32) # 1次元のテンソルに変換
 
@@ -148,6 +156,14 @@ class Agent:
 
             # 最大Q値に対応する行動のインデックスを取得
             return qs.argmax().item()
+
+    def _get_observation(self, global_state:tuple[tuple[int,int]]):
+        """
+        部分観測に対応するために、ストラテジーを流用した。
+        
+        :param global_state: 環境のタプル表現(例: `((Gx1,Gy1),(Gx2,Gy2),...(GxN,GyN),(Ax1,Ay1),...(AxN,AyN))`)
+        """
+        return self.state_representation.get_q_state_representation(global_state, self.neighbor_distance)   
 
     # epsilonの線形アニーリング (現在のコードでは power アニーリングが使われているが、参考として残す)
     def decay_epsilon_linear(self, step):

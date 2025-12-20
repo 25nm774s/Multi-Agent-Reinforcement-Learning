@@ -2,6 +2,7 @@ import torch
 import numpy as np
 
 from utils.replay_buffer import ReplayBuffer
+from utils.StateProcesser import StateProcessor
 from DQN.dqn import DQNModel, QNet
 
 MAX_EPSILON = 1.0
@@ -52,6 +53,8 @@ class Agent:
         # Pass alpha and use_per to ReplayBuffer (Step 2)
         self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device, alpha=self.alpha, use_per=self.use_per)
 
+        # StateProcessor のインスタンスを初期化
+        self.state_processor = StateProcessor(args.grid_size, args.goals_number, args.agents_number, self.device)
 
         # Agent_DQN の内部で DQNModel を初期化 (use_per フラグを追加) (Step 3)
         self.model = DQNModel(
@@ -65,7 +68,8 @@ class Agent:
             args.mask,
             args.device,
             args.target_update_frequency,
-            use_per=self.use_per # Pass use_per to DQNModel (Step 3)
+            use_per=self.use_per, # Pass use_per to DQNModel
+            state_processor=self.state_processor
         )
 
     def get_action(self, i: int, global_state: tuple) -> int:
@@ -103,21 +107,9 @@ class Agent:
         flat_global_state = np.array(global_state).flatten()
         global_state_tensor = torch.tensor(flat_global_state, dtype=torch.float32) # 1次元のテンソルに変換
 
-        # QNetへの入力となる状態を準備 (masking)
-        if self.mask:
-            # マスクがTrueの場合、全体状態テンソルからエージェントi自身の位置情報のみを抽出
-            # 全体状態テンソルの構造: [goal1_x, g1_y, ..., agent1_x, a1_y, ..., agent_i_x, a_i_y, ...]
-            # goals_num * 2 がゴール部分の次元数
-            # i * 2 がエージェントiの開始インデックス (0-indexed)
-            agent_state_tensor = global_state_tensor[self.goals_num * 2 + i * 2 : self.goals_num * 2 + i * 2 + 2] # (x, y)の2次元を抽出
-        else:
-            # マスクがFalseの場合、全体状態テンソルをそのまま使用
-            agent_state_tensor = global_state_tensor # 形状: ((goals+agents)*2,)
-
-        # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
-        # unsqueeze(0) で形状を (1, state_dim) にする
-        agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
-        agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
+        # StateProcessor を使用して QNet への入力状態を準備
+        # unsqueeze(0) はバッチ次元を追加するため、個別の状態に対しては事前にStateProcessorに渡す前に適用
+        agent_state_tensor = self.state_processor.transform_state_batch(i, global_state_tensor.unsqueeze(0)).to(self.device)
 
         # QNetを使って各行動のQ値を計算
         with torch.no_grad(): # 推論時は勾配計算を無効化
@@ -146,21 +138,9 @@ class Agent:
         else:
             # 活用: Q値に基づいて最適な行動を選択
             # QNetへの入力となる状態を準備 (masking)
-            if self.mask:
-                # マスクがTrueの場合、全体状態テンソルからエージェントi自身の位置情報のみを抽出
-                # 全体状態テンソルの構造: [goal1_x, g1_y, ..., agent1_x, a1_y, ..., agent_i_x, a_i_y, ...]
-                # goals_num * 2 がゴール部分の次元数
-                # i * 2 がエージェントiの開始インデックス (0-indexed)
-                agent_state_tensor = global_state_tensor[self.goals_num * 2 + i * 2 : self.goals_num * 2 + i * 2 + 2] # (x, y)の2次元を抽出
-            else:
-                # マスクがFalseの場合、全体状態テンソルをそのまま使用
-                agent_state_tensor = global_state_tensor # 形状: ((goals+agents)*2,)
-
-            # QNetはバッチ入力を想定しているため、単一の状態テンソルをバッチ次元を追加して渡す
-            # unsqueeze(0) で形状を (1, state_dim) にする
-            agent_state_tensor = agent_state_tensor.unsqueeze(0).to(self.device)
-            # print(f"形状: {agent_state_tensor}, {agent_state_tensor.shape}")
-            agent_state_tensor = self.model.bat_data_transform_for_NN_model_for_batch(i, agent_state_tensor)
+            # StateProcessor を使用して QNet への入力状態を準備
+            # unsqueeze(0) はバッチ次元を追加するため、個別の状態に対しては事前にStateProcessorに渡す前に適用
+            agent_state_tensor = self.state_processor.transform_state_batch(i, global_state_tensor.unsqueeze(0)).to(self.device)
 
             # QNetを使って各行動のQ値を計算
             with torch.no_grad(): # 推論時は勾配計算を無効化

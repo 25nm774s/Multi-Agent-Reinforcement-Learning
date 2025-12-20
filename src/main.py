@@ -30,7 +30,6 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-
 def parse_args():
     # 1. プリセットの定義
     PRESETS = {
@@ -52,17 +51,21 @@ def parse_args():
         },
         "test_DQN":{
             "grid_size": 4,
+            "episode_number": 500,
+            "epsilon_decay": 0.40,
+            "target_update_frequency": 200,
             "agents_number": 2,
             "goals_number": 2, 
+            "max_timestep": 100,
             "batch_size": 32
         },
         "DQN_normal":{
             "grid_size": 10,
+            "episode_number": 10000,
+            "target_update_frequency": 1000,
             "agents_number": 3,
             "goals_number": 3,
             "max_timestep": 200,
-            "episode_number":5000,
-            "epsilon_decay": 0.90,
             "batch_size": 32
         },
         # エイリアスの例
@@ -73,7 +76,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser()
     
-    # 2. プリセット選択用の引数を追加
+    # 2. 引数の定義（すべての引数を最初に追加しておく）
     parser.add_argument('-P', '--preset', choices=PRESETS.keys(), help="Use a predefined preset")
 
     # --- 既存の引数 ---
@@ -105,22 +108,23 @@ def parse_args():
     parser.add_argument('--beta_anneal_steps', default=20000, type=int)
     parser.add_argument('--use_per', choices=[0, 1], default=0, type=int)
 
-    # 3. 解析処理
-    temp_args, remaining_argv = parser.parse_known_args()
+    # 3. 1回目のパース：プリセットの有無だけを確認
+    # args, unknown = parser.parse_known_args() ではなく、
+    # プリセット引数だけを抽出してチェックする
+    temp_args, _ = parser.parse_known_args()
     
     if temp_args.preset:
         target = PRESETS[temp_args.preset]
-        
-        # 文字列（エイリアス）ならもう一度辞書を引く
         if isinstance(target, str):
             target = PRESETS[target]
         
-        # プリセットの内容をデフォルト値として設定
+        # プリセットをデフォルト値として設定
         parser.set_defaults(**target)
     
-    # 最終的なパース（個別のコマンドライン引数が優先される）
-    # プリセット指定がない場合も含め、一括でここで処理するのがスマート
-    args = parser.parse_args(remaining_argv)
+    # 4. 最終的なパース
+    # ここで sys.argv (または引数なし) を使うことで、
+    # 「プリセットで上書きされたデフォルト値」を「個別のコマンド引数」がさらに上書きできる
+    args = parser.parse_args() 
     
     return args
 

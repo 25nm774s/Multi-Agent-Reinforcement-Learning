@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Any
-from QStragetyBase import QTableLearningStrategy, QTableActionSelectionStrategy, QState
+from .QStragetyBase import QTableLearningStrategy, QTableActionSelectionStrategy, QState
 
 class CooperativeStrategy(QTableActionSelectionStrategy, QTableLearningStrategy):
     """

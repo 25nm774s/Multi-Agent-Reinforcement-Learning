@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Any
-from QStragetyBase import QTableLearningStrategy, QTableActionSelectionStrategy, QState
+from .QStragetyBase import QTableLearningStrategy, QTableActionSelectionStrategy, QState
 
 # --- 3.2. SelfishActionSelection (QTable): 利己的行動選択戦略 ---
 class SelfishStrategy(QTableActionSelectionStrategy, QTableLearningStrategy):

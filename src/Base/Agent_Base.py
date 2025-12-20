@@ -29,10 +29,6 @@ class AgentBase(ABC):
         self.device: torch.device   = torch.device(args.device)
 
     @abstractmethod
-    def get_strategy(self,mask):
-        pass
-
-    @abstractmethod
     def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
         pass
     

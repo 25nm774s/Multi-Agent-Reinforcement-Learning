@@ -6,10 +6,12 @@ from utils.StateProcesser import StateProcessor
 from DQN.dqn import DQNModel, QNet
 from Q_learn.strategys.masked_strategies import CooperativeActionSelection
 
+from Base.Agent_Base import AgentBase
+
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
 
-class Agent:
+class Agent(AgentBase):
     """
     DQN エージェントクラス.
 
@@ -29,17 +31,7 @@ class Agent:
                   alpha, beta, beta_anneal_steps.
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. (Step 1)
         """
-        # self.agents_num = args.agents_number
-        self.agent_id = agent_id
-        self.batch_size = args.batch_size
-        self.epsilon_decay = args.epsilon_decay
-        self.action_size = 5
-        self.epsilon = MAX_EPSILON
-        # self.load_model = args.load_model
-        self.goals_num = args.goals_number
-        self.mask = args.mask
-        self.neighbor_distance = args.neighbor_distance
-        self.device = torch.device(args.device)
+        super().__init__(agent_id, args)
 
         self.alpha = args.alpha if hasattr(args, 'alpha') else 0.6
         self.beta = args.beta if hasattr(args, 'beta') else 0.4 # Betaの初期値
@@ -47,13 +39,7 @@ class Agent:
         self.use_per = use_per
 
         # ReplayBuffer の初期化 (PER パラメータ alpha と use_per を渡す) (Step 2)
-        # learning_mode は ReplayBuffer の get_batch の挙動に影響するため、args から渡すか適切に設定する必要がある
-        # 現在の ReplayBuffer 実装は 'V', 'Q', 'else' で分岐しており、DQNでは 'else' が使われる想定
-        # 'else' ブランチに学習モードを指定する必要はないが、ReplayBuffer の __init__ に learning_mode があるため仮に渡す
-        # args に learning_mode がない場合はデフォルト値を設定するか、args に追加が必要
-        """　将来learning_modeはなくす　"""
-        # Pass alpha and use_per to ReplayBuffer (Step 2)
-        self.replay_buffer = ReplayBuffer("DQN", args.buffer_size, self.batch_size, self.device, alpha=self.alpha, use_per=self.use_per)
+        self.replay_buffer = ReplayBuffer(args.buffer_size, self.batch_size, self.device, alpha=self.alpha, use_per=self.use_per)
 
         # StateProcessor のインスタンスを初期化
         self.state_processor = StateProcessor(args.grid_size, args.goals_number, args.agents_number, self.device)
@@ -74,8 +60,8 @@ class Agent:
             state_processor=self.state_processor
         )
 
-        self.grid_size = args.grid_size # action selectionのため
-        self.state_representation = CooperativeActionSelection(self.grid_size, self.goals_num, self.agent_id, args.agents_number)
+        # self.grid_size = args.grid_size # action selectionのため
+        self.state_representation = CooperativeActionSelection(args.grid_size, self.goals_num, self.agent_id, args.agents_number)
 
     def get_action(self, i: int, global_state: tuple) -> int:
         """

@@ -1,0 +1,62 @@
+import torch
+from typing import Tuple, List, Any
+from abc import ABC, abstractmethod
+
+# --- Type Aliases ---
+# 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
+from Enviroments.Grid import PositionType
+# QTableType はQTableクラスの実際の戻り値型と一致させる
+
+# --- Global Constants ---
+MAX_EPSILON = 1.0
+MIN_EPSILON = 0.05
+
+class AgentBase(ABC):
+    """
+    Q学習エージェントとDQNエージェントに共通のインターフェースを定義する抽象基底クラス.
+    """
+    def __init__(self, agent_id: int, args):
+        self.agent_id:int           = agent_id
+        self.grid_size:int          = args.grid_size
+        self.goals_num:int          = args.goals_number
+        self.action_size:int        = 5 # UP, DOWN, LEFT, RIGHT, STAY
+        self.total_agents:int       = args.agents_number
+        self.batch_size: int        = args.batch_size
+        self.epsilon_decay: float   = args.epsilon_decay
+        self.mask:bool              = args.mask
+        self.neighbor_distance:int  = args.neighbor_distance
+        self.epsilon: float         = args.epsilon if hasattr(args, 'epsilon') else MAX_EPSILON
+        self.device: torch.device   = torch.device(args.device)
+
+    @abstractmethod
+    def get_strategy(self,mask):
+        pass
+
+    @abstractmethod
+    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
+        pass
+
+    @abstractmethod
+    def get_all_q_values(self, agent_id: int, global_state: Tuple[PositionType, ...]) -> Any:
+        pass
+
+    @abstractmethod
+    def observe(self, global_state: Tuple[PositionType, ...], action: int, reward: float, next_global_state: Tuple[PositionType, ...], done: bool) -> None:
+        pass
+
+    @abstractmethod
+    def learn(self, agent_id: int, total_step: int | None = None, experience: Any = None) -> float | None:
+        pass
+
+    @abstractmethod
+    def update(self, total_step: int | None = None) -> None:
+        pass
+
+    @abstractmethod
+    def set_weights(self, weights: Any) -> None:
+        pass
+
+    @abstractmethod
+    def get_weights(self) -> Any:
+        pass
+

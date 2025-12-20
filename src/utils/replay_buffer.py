@@ -115,8 +115,7 @@ class SumTree:
 
 
 class ReplayBuffer:
-    def __init__(self, learning_mode: str, buffer_size: int, batch_size: int, device: torch.device, alpha: float = 0.6, use_per: bool = False):
-        self.learning_mode: str = learning_mode
+    def __init__(self, buffer_size: int, batch_size: int, device: torch.device, alpha: float = 0.6, use_per: bool = False):
         self.buffer_size: int = buffer_size
         self.batch_size: int = batch_size
         self.device: torch.device = device
@@ -125,7 +124,7 @@ class ReplayBuffer:
         self._max_priority = 1.0
 
         if self.use_per:
-            self.experiences: List[Tuple[Any, int, float, Any, bool]] = [None] * buffer_size
+            self.experiences: List[Tuple[Any, int, float, Any, bool]] = [None] * buffer_size#type:ignore
             self.tree = SumTree(capacity=buffer_size)
             self.current_idx = 0
             self.size = 0
@@ -170,7 +169,7 @@ class ReplayBuffer:
                 s = random.uniform(a, b)
 
                 tree_idx, priority, data_idx = self.tree.get_prefix_sum_idx(s)
-                sampled_indices.append(data_idx)
+                sampled_indices.append(data_idx)#type:ignore
                 sampled_priorities_from_tree.append(priority) # Store the raw priority from the tree
 
             # Calculate Importance Sampling weights
@@ -194,7 +193,7 @@ class ReplayBuffer:
             max_is_weight = np.max(is_weights_np) if np.max(is_weights_np) > 0 else 1.0
             is_weights_np /= max_is_weight
 
-            is_weights_tensor: torch.Tensor = torch.tensor(is_weights_np, dtype=torch.float32, device=self.device)
+            is_weights_tensor: torch.Tensor = torch.tensor(is_weights_np, dtype=torch.float32, device=self.device)#type:ignore
 
             sampled_experiences = [self.experiences[idx] for idx in sampled_indices]
             sampled_original_indices = sampled_indices # These are the indices within self.experiences, which are stable for update_priorities

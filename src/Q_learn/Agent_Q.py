@@ -9,11 +9,12 @@ from Q_learn.strategys.learning import SelfishQLearning, LearningStrategy
 from Q_learn.strategys.masked_strategies import CooperativeActionSelection, CooperativeQLearning
 
 from Enviroments.Grid import PositionType
+from Base.Agent_Base import AgentBase
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
 
-class Agent:
+class Agent(AgentBase):
     """
     エージェント個別のロジックを管理するクラス.
     QTableインスタンスを持ち、行動選択、ε-greedy、ε減衰、学習プロセスを担う.
@@ -28,14 +29,7 @@ class Agent:
             args: 環境設定を含むオブジェクト (mask属性を含む).
             agent_id (int): このエージェントのID.
         """
-        self.agent_id:int           = agent_id
-        self.grid_size:int          = args.grid_size
-        self.goals_num:int          = args.goals_number
-        self.action_size:int        = 5 # UP, DOWN, LEFT, RIGHT, STAY
-        self.total_agents:int       = args.agents_number
-        self.mask:bool              = args.mask
-        # self.observation_mode:str   = args.observation_mode
-        self.neighbor_distance:int  = args.neighbor_distance
+        super().__init__(agent_id, args)
 
         # マスク値に基づいて戦略をインスタンス化
         # 戦略に必要な初期化引数を渡す

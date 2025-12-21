@@ -1,4 +1,5 @@
-from .Grid import PositionType, Grid
+from .Grid import Grid
+from Base.Constant import PosType
 
 class CollisionResolver:
     """
@@ -14,17 +15,17 @@ class CollisionResolver:
         """
         self._grid: Grid = grid
 
-    def _calculate_next_position(self, current_pos: PositionType, action: int) -> PositionType:
+    def _calculate_next_position(self, current_pos: PosType, action: int) -> PosType:
         """
         現在の位置と行動に基づいて潜在的な次の位置を計算します。
         境界チェックや衝突検出は**行いません**。
 
         Args:
-            current_pos (PositionType): 現在の (x, y) 位置。
+            current_pos (PosType): 現在の (x, y) 位置。
             action (int): 取られた行動 (0: UP, 1: DOWN, 2: LEFT, 3: RIGHT, 4: STAY)。
 
         Returns:
-            PositionType: 潜在的な次の (x, y) 位置。
+            PosType: 潜在的な次の (x, y) 位置。
         """
         x, y = current_pos
         if action == 0: # UP (上方向はy座標が減少)
@@ -39,7 +40,7 @@ class CollisionResolver:
 
         return (x, y)
 
-    def resolve_agent_movements(self, agent_actions: dict[str, int]) -> dict[str, PositionType]:
+    def resolve_agent_movements(self, agent_actions: dict[str, int]) -> dict[str, PosType]:
         """
         エージェントの行動を受け取り、衝突解決後の最終的な位置を計算します。
         参照している Grid インスタンスのエージェント位置を**更新**します。
@@ -48,10 +49,10 @@ class CollisionResolver:
             agent_actions (dict[str, int]): エージェントIDをキー、行動(int)を値とする辞書。
 
         Returns:
-            dict[str, PositionType]: エージェントIDをキー、衝突解決後の最終位置を値とする辞書。
+            dict[str, PosType]: エージェントIDをキー、衝突解決後の最終位置を値とする辞書。
         """
-        potential_positions: dict[str, PositionType] = {}
-        current_agent_positions: dict[str, PositionType] = {}
+        potential_positions: dict[str, PosType] = {}
+        current_agent_positions: dict[str, PosType] = {}
 
         # 現在のエージェント位置を取得し、潜在的な次の位置を計算します
         agent_ids = list(agent_actions.keys()) # 行動が指定されたエージェントのみを考慮
@@ -66,7 +67,7 @@ class CollisionResolver:
 
 
         # 衝突解決後の最終的な位置を決定します
-        final_positions: dict[str, PositionType] = {}
+        final_positions: dict[str, PosType] = {}
 
         # エージェントごとに最終位置を決定します
         for agent_id in agent_ids:

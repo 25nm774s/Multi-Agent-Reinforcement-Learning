@@ -1,12 +1,10 @@
-# Implementation of Grid and MultiAgentGridEnv classes based on the design
-
 import random
-#import matplotlib.pyplot as plt
+from typing import Tuple, List, Dict
 
-from .Grid import Grid, PositionType
+from .Grid import Grid
 from .CollisionResolver import CollisionResolver
-#from utils.grid_renderer import GridRenderer
 
+from Base.Constant import PosType, GlobalState
 # GridRenderer クラスは以前のセルで定義され、利用可能であることを想定しています。
 # もし利用できない場合は、MultiAgentGridEnv.__init__ 内の警告で通知されます。
 
@@ -14,7 +12,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, fixrd_goals:tuple[PositionType,...]|list[PositionType]=[]):
+    def __init__(self, args, fixrd_goals:Tuple[PosType,...]|List[PosType]=[]):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -29,8 +27,6 @@ class MultiAgentGridEnv:
         self.agents_number: int = args.agents_number
         self.goals_number: int = args.goals_number
         self.reward_mode: int = args.reward_mode
-        #self.render_mode: int = args.render_mode
-        #self.pause_duration: float = args.pause_duration
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)
@@ -51,11 +47,10 @@ class MultiAgentGridEnv:
                 fixrd_goals_list.append(goal)
         # 環境初期化時に一度だけ固定ゴールを設定します
         for i, goal in enumerate(fixrd_goals_list):
-            #print("Goal.type: ", type(goal))
             self._grid.add_object(self._goal_ids[i], goal)
 
 
-    def reset(self, initial_agent_positions: list[PositionType] = None, placement_mode: str = 'random') -> tuple[PositionType, ...]:#type:ignore
+    def reset(self, initial_agent_positions: list[PosType] = [], placement_mode: str = 'random') -> GlobalState:
         """
         新しいエピソードのために環境をリセットします。
 
@@ -79,7 +74,7 @@ class MultiAgentGridEnv:
 
 
         # モードまたは明示的な位置に基づいてエージェントを配置します
-        if initial_agent_positions is not None:
+        if initial_agent_positions:
             if len(initial_agent_positions) != self.agents_number:
                 raise ValueError(f"初期エージェント位置数 ({len(initial_agent_positions)}) が設定数 ({self.agents_number}) と異なります。")
             agent_positions = initial_agent_positions
@@ -106,7 +101,7 @@ class MultiAgentGridEnv:
                 except (RuntimeError, ValueError) as e: # ロジックからの特定のエラーを捕捉
                     print(f"ゴール近傍にエージェントを配置できませんでした: {e}")
                     print("このエピソードではランダム配置にフォールバックします。")
-                    agent_positions:list[PositionType] = self._generate_unique_positions(
+                    agent_positions:list[PosType] = self._generate_unique_positions(
                         self.agents_number, existing_positions, self.grid_size
                     )
             else:
@@ -127,7 +122,7 @@ class MultiAgentGridEnv:
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
 
-    def step(self, actions: list[int]):
+    def step(self, actions: List[int])->Tuple[GlobalState,float,bool,Dict]:
         """
         各エージェントのアクションを受け取り、環境を更新します。
 
@@ -164,7 +159,7 @@ class MultiAgentGridEnv:
         next_observation = self._get_observation()
 
         # 7. 情報辞書 (オプション)
-        info = {}
+        info:Dict = {}
 
         return next_observation, reward, done, info
 
@@ -191,7 +186,7 @@ class MultiAgentGridEnv:
             self._grid.add_object(self._goal_ids[i], pos)
 
 
-    def _generate_unique_positions(self, num_positions: int, existing_positions: list[PositionType], grid_size: int) -> list[PositionType]:
+    def _generate_unique_positions(self, num_positions: int, existing_positions: list[PosType], grid_size: int) -> list[PosType]:
         """
         既存の位置を避けながら、グリッド内に指定された数の一意なランダム位置のリストを生成します。
 
@@ -218,7 +213,7 @@ class MultiAgentGridEnv:
         return positions
 
 
-    def _place_agents_near_goals_logic(self) -> list[PositionType]:
+    def _place_agents_near_goals_logic(self) -> list[PosType]:
         """
         ゴール近傍にエージェントを配置する内部ロジック。
 
@@ -255,7 +250,7 @@ class MultiAgentGridEnv:
         return random.sample(near_positions_list, self.agents_number)
 
 
-    def _get_observation(self) -> tuple[PositionType, ...]:
+    def _get_observation(self) -> GlobalState:
         """
         エージェントの観測を生成します。
         ここではグローバル状態 (全位置のタプル: ゴール、次にエージェント) を返します。
@@ -270,7 +265,7 @@ class MultiAgentGridEnv:
         return tuple(tuple(goal_positions) + tuple(agent_positions))
 
 
-    def get_goal_positions(self) -> dict[str, PositionType]:
+    def get_goal_positions(self) -> dict[str, PosType]:
         """現在のゴール位置を取得するヘルパーメソッド。"""
         # グリッドから goal_ids の位置を取得します
         goal_pos_dict = {}
@@ -285,7 +280,7 @@ class MultiAgentGridEnv:
         return goal_pos_dict
 
 
-    def get_agent_positions(self) -> dict[str, PositionType]:
+    def get_agent_positions(self) -> dict[str, PosType]:
         """現在のエージェント位置を取得するヘルパーメソッド。"""
         # グリッドから agent_ids の位置を取得します
         agent_pos_dict = {}
@@ -408,7 +403,7 @@ class MultiAgentGridEnv:
                     reward +=  1.0 # 距離が減った報酬
                 else:
                     reward += -1.0 # "止"または距離が増えた
-                # reward += distance_change * 1.0 # スケールは調整可能
+                
             # else: 初期状態またはエージェントが配置されていない場合、距離変化報酬なし
 
             # 2. 個別ゴール到達に対する段階報酬
@@ -444,19 +439,6 @@ class MultiAgentGridEnv:
 
         return reward
 
-    '''
-    def _check_done_condition(self) -> bool:
-        """
-        エピソードが終了したかチェックします (全ゴールが少なくとも1つのエージェントによって占有されているか)。
-        """
-        goal_positions = list(self.get_goal_positions().values())
-        agent_positions = list(self.get_agent_positions().values())
-        current_agents_pos_set = set(agent_positions)
-
-        # 全てのゴール位置が現在のエージェント位置のセットに存在する場合、エピソードは終了です
-        return all(goal in current_agents_pos_set for goal in goal_positions)
-    '''
-
     def _check_done_condition(self,done_mode) -> bool:
         """
         エピソードが終了したかチェックします。完了条件は self.done_mode に依存します。
@@ -486,33 +468,6 @@ class MultiAgentGridEnv:
     def get_all_object(self):
         r = self._grid.get_all_object_positions()
         return r
-        
-
-##import random
-class GoalSetter:
-    def __init__(self, grid:Grid, fixed_goal=None, seed=None) -> None:
-        self._grid:Grid = grid
-        # 得られた結果が(1,2),(3,4)だとする。
-        if not fixed_goal and seed:
-            goals:tuple[PositionType, ...] = self._goal_setter_from_seed(seed)
-        elif not seed and fixed_goal:
-            goals:tuple[PositionType, ...] = fixed_goal
-
-        self._goal_setter(goals)
-        self._goals = goals
-
-    #def _goal_setter(self, *goals:tuple[tuple[int,int]]):
-    def _goal_setter(self, goals:tuple[PositionType, ...]):
-        for id, goal in enumerate(goals):
-            self._grid.add_object(f'goal_{id}',goal)
-
-    def _goal_setter_from_seed(self,seed:int)-> tuple[PositionType, ...]:
-        # ランダムに得られた結果が(1,2),(3,4)だと仮定する。
-        return ((1,2),(3,4))
-    
-    def get_goal_pos(self):
-        return self._goals
-
 
 if __name__=='__main__':
     class arg_object:

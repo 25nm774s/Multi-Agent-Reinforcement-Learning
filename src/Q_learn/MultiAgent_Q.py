@@ -16,7 +16,7 @@ from utils.render import Render
 from .Agent_Q import Agent
 from .QTable import QTableType
 
-from Enviroments.Grid import PositionType
+from Enviroments.Grid import PosType
 
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
@@ -71,7 +71,7 @@ class MultiAgent_Q:
         # saverクラスで保存されたデータを使ってグラフを作るクラス
         self.plot_results = PlotResults(self.save_dir)
 
-    def save_checkpoint(self, episode:int, goal_position:tuple[PositionType,...]|list[PositionType]):
+    def save_checkpoint(self, episode:int, goal_position:tuple[PosType,...]|list[PosType]):
         """
         保持している各AgentのQテーブルと学習状態をチェックポイントファイルに保存する.
         IOHandlerクラスを使用して保存処理を行う.
@@ -111,7 +111,7 @@ class MultiAgent_Q:
             file_path = os.path.join(model_dir, f'agent_{agent.agent_id}_model.pth') # ファイル名を変更
             io_handler.save(q_table_data, file_path) # IOHandlerを使用
 
-    def load_checkpoint(self)->list[PositionType]:
+    def load_checkpoint(self)->list[PosType]:
         """
         ファイルから各AgentのQテーブルと学習状態を読み込み、対応するAgentに設定する.
         IOHandlerクラスを使用して読み込み処理を行う.
@@ -119,7 +119,7 @@ class MultiAgent_Q:
         print("チェックポイント読み込み中...")
         io_handler = IOHandler()
         checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
-        goal_pos:list[PositionType] = [] # 読み込まれた、または新規のゴール位置を格納
+        goal_pos:list[PosType] = [] # 読み込まれた、または新規のゴール位置を格納
 
         all_checkpoints_found = True # 全てのエージェントのチェックポイントが見つかったかを示すフラグ
         loaded_episode = 0 # 読み込まれたエピソード数

@@ -1,5 +1,4 @@
 from typing import Tuple, List, Any
-import numpy as np
 from abc import ABC, abstractmethod
 
 # --- Type Aliases ---

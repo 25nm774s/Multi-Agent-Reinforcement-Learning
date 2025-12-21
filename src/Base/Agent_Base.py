@@ -47,7 +47,7 @@ class AgentBase(ABC):
         self.epsilon = max(MIN_EPSILON, self.epsilon)
         
     @abstractmethod
-    def get_all_q_values(self, agent_id: int, global_state: Tuple[PositionType, ...]) -> Any:
+    def get_all_q_values(self, global_state: Tuple[PositionType, ...]) -> Any:
         pass
 
     @abstractmethod
@@ -55,7 +55,7 @@ class AgentBase(ABC):
         pass
 
     @abstractmethod
-    def learn(self, agent_id: int, total_step: int | None = None, experience: Any = None) -> float | None:
+    def learn(self, total_step: int | None = None) -> float | None:
         pass
 
     @abstractmethod

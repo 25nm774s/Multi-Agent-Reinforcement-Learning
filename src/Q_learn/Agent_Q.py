@@ -118,7 +118,7 @@ class Agent(AgentBase):
             "done": done
         }
         
-    def learn(self, _) -> float:
+    def learn(self, total_step=None) -> float:
         """
         単一の経験に基づいてQテーブルを更新するプロセスをAgentが管理する.
         学習ロジックは LearningStrategy オブジェクトに委譲される.

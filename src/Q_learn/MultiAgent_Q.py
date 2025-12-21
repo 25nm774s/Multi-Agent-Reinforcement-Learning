@@ -362,7 +362,7 @@ class MultiAgent_Q:
                 # 各エージェントに対して学習を実行
                 for i, agent in enumerate(self.agents):
                     agent.observe(current_states, int(actions[i]), float(reward), next_observation, bool(done))
-                    loss = agent.learn(i,total_step)
+                    loss = agent.learn()
                     step_losses.append(loss)
 
                 current_states = next_observation # 状態を更新

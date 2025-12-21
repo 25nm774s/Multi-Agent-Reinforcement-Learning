@@ -10,6 +10,7 @@ from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
 from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
 
 PositionType = Tuple[int, int]
+QState = Tuple[int, ...]
 
 from Base.Agent_Base import AgentBase
 
@@ -96,7 +97,7 @@ class Agent(AgentBase):
             int: 選択された行動 (0:UP, 1:DOWN, 2:LEFT, 3:RIGHT, 4:STAY).
         """
         # global_state をQStateに変換 (部分観測適用)
-        q_state = self._get_observation(global_state)
+        q_state:QState = self._get_observation(global_state)
 
         # QStateをNN入力形式に変換 (フラット化してPyTorchテンソルに)
         flat_q_state = np.array(q_state).flatten()
@@ -104,14 +105,14 @@ class Agent(AgentBase):
         # ε-greedyに基づいて行動を選択
         return self.nn_greedy_actor(q_state_tensor)
 
-    def get_all_q_values(self, global_state: tuple) -> torch.Tensor:
+    def get_all_q_values(self, global_state: Tuple[PositionType,...]) -> torch.Tensor:
         """
         現在の全体状態における、指定されたエージェントの各行動に対するQ値を取得する。
         `nn_greedy_actor` と同様に状態の前処理を行い、QNetからQ値を取得する。
 
         Args:
 
-            global_state (tuple): 環境の現在の全体状態 (ゴール位置と全エージェント位置のタプル).
+            global_state (Tuple[Tuple[int, int]]): 環境の現在の全体状態 (ゴール位置と全エージェント位置のタプル).
 
         Returns:
             torch.Tensor: 各行動に対するQ値のテンソル (形状: (output_size,)).
@@ -161,7 +162,7 @@ class Agent(AgentBase):
             # 最大Q値に対応する行動のインデックスを取得
             return qs.argmax().item()
 
-    def _get_observation(self, global_state:Tuple[PositionType,...]):
+    def _get_observation(self, global_state:Tuple[PositionType,...])->QState:
         """
         部分観測に対応するために、ストラテジーを流用した。
         

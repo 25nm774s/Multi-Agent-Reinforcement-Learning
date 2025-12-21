@@ -5,7 +5,7 @@ from typing import Tuple, Any
 from utils.replay_buffer import ReplayBuffer
 from utils.StateProcesser import StateProcessor
 from DQN.dqn import DQNModel
-from Base.StateRepresentationStrategy import StateRepresentationStrategy
+from Strategy.StateRepresentationStrategy import StateRepresentationStrategy
 from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
 from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
 

@@ -1,6 +1,5 @@
 from typing import Any, List, Tuple
-from Base.StateRepresentationStrategy import StateRepresentationStrategy, PositionType, QState
-from Base.CooperativeActionSelection import QTableActionSelectionStrategy
+from Strategy.StateRepresentationStrategy import StateRepresentationStrategy, PositionType, QState
 
 class CooperativeStateRepresentation(StateRepresentationStrategy):
     """

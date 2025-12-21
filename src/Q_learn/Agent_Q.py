@@ -1,6 +1,6 @@
 from typing import Any, Tuple, List
 
-from Base.StateRepresentationStrategy import StateRepresentationStrategy
+from Strategy.StateRepresentationStrategy import StateRepresentationStrategy
 
 from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
 from Strategy.SelfishStateRepresentation import SelfishStateRepresentation

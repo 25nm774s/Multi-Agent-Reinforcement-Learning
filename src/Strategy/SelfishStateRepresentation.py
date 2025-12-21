@@ -1,5 +1,5 @@
 from typing import List, Tuple
-from Base.StateRepresentationStrategy import StateRepresentationStrategy, PositionType, QState
+from Strategy.StateRepresentationStrategy import StateRepresentationStrategy, PositionType, QState
 
 class SelfishStateRepresentation(StateRepresentationStrategy):
     """利唳的戦略の状態表現（自身のエージェントの位置 + すべての目標の位置）を生成する具体的な戦略。"""

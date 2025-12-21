@@ -1,13 +1,12 @@
 import sys
 import os
-from typing import Tuple
 
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
 
-from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
+from Environments.MultiAgentGridEnv import MultiAgentGridEnv
 from utils.Saver import Saver
 from utils.plot_results import PlotResults
 from .IO_Handler import IOHandler
@@ -16,7 +15,7 @@ from utils.render import Render
 from .Agent_Q import Agent
 from .QTable import QTableType
 
-from Enviroments.Grid import PosType
+from Base.Constant import GlobalState, PosType
 
 class MultiAgent_Q:
     def __init__(self, args, agents:list[Agent]): # Expects a list of Agent instances
@@ -161,34 +160,6 @@ class MultiAgent_Q:
             # 新規の場合のゴール位置サンプリングは__init__で行われるため、ここでは特別な処理は不要
             return [] # 空のリストを返すことで、__init__で新規サンプリングを促す
 
-    # def load_checkpoint_mentetyuu(self)->tuple[int, list[PositionType]]:
-    #     print("チェックポイント読み込み中...")
-    #     io_handler = IOHandler()
-    #     checkpoint_dir = os.path.join(self.save_dir, ".checkpoints")
-    #     load_data:list[dict] = []
-    #     goal_pos:list[PositionType] = [] # 読み込まれた、または新規のゴール位置を格納
-    #     loaded_episode:int = int(0) # 読み込まれたエピソード数
-
-    #     for agent in self.agents:
-    #         file_path = os.path.join(checkpoint_dir, f'agent_{agent.agent_id}_checkpoint.pth') # ファイル名を変更
-    #         data = io_handler.load(file_path)
-    #         if not data:
-    #             loaded_episode:int = int(0)
-    #             goal_pos:list[PositionType] = []
-    #             return loaded_episode, goal_pos # ないとき初期値をリターン
-
-    #         load_data.append(data) # IOHandlerを使用
-
-    #     for agent,data in zip(self.agents,load_data):
-    #         qtable: QTableType = data.get('state_dict', {}) # 存在しないキーの場合に備えてgetを使用
-    #         agent.set_Qtable(qtable)
-        
-    #     # エージェント0についてエピソードを取得
-    #     loaded_episode:int = int(load_data[0]['episode'])
-    #     goal_pos:list[PositionType] = list(load_data[0]['goal_position'])
-
-    #     return loaded_episode, goal_pos
-
     def load_model(self):
         """
         ファイルから各AgentのQテーブルを読み込み、対応するAgentに設定する (推論用など).
@@ -260,11 +231,6 @@ class MultiAgent_Q:
             return
 
         # 学習開始メッセージ
-        # IQL/CQLの表示はAgentクラスの実装に依存するが、ここではMultiAgent_QがQ学習を orchestrate していることを示す
-        # if self.mask: # Remove this if condition
-        #     # Note: The mask logic might need to be handled within the Agent's learn method
-        #     print(f"{GREEN}IQL/CQL (Q学習ベース) で学習中{RESET}\n")
-        # else:
         print(f"{GREEN}Q学習で学習中{RESET}\n")
         print(f"ゴール位置: {self.env.get_goal_positions().values()}")
 
@@ -317,15 +283,13 @@ class MultiAgent_Q:
             # これによりエージェントが再配置される
             # --------------------------------------------
             # The reset method in the updated MultiAgentGridEnv now returns observation, info
-            current_states:Tuple[Tuple[int, int], ...] = self.env.reset()
+            current_states:GlobalState = self.env.reset()
             #print("current_states:",current_states)
 
             done = False
             step_count = 0
             episode_reward:float = 0.0
             step_losses:list[float] = [] # 各ステップでのエージェントごとの損失
-
-            #self.logger.insert_episode(episode,done,episode_reward,0.0)
 
             # ---------------------------
             # 1エピソードのステップループ
@@ -352,12 +316,6 @@ class MultiAgent_Q:
                 # The step method in the updated MultiAgentGridEnv now returns observation, reward, done, info
                 next_observation, reward, done, info = self.env.step(actions)
 
-                # オーバーヘッドが凄まじいため、いったん削除
-                # if episode in [9,10,11,99,100,101,999,1000,1001,9999,10000,10001,19999,20000,20001,29999,30000,30001]:
-                #     ob = self.env.get_all_object()
-                #     object_data = {"name": ob.keys(), "cs": current_states, "ns": next_observation}
-                #     agents_data = {"id": self.env.get_agent_positions().keys(), "action": actions, "reward": [reward]*self.agents_number}
-                #     self.logger.insert_step(episode,step_count,object_data,agents_data)
                 # Q学習は経験ごとに逐次更新
                 # 各エージェントに対して学習を実行
                 for i, agent in enumerate(self.agents):
@@ -376,7 +334,6 @@ class MultiAgent_Q:
 
             # ログにスコアを記録
             self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, done)
-            #self.logger.end_episode(episode,done,episode_reward,episode_loss)
 
             episode_losses.append(episode_loss) # 100エピソードまで貯め続ける
             episode_rewards.append(episode_reward)
@@ -384,15 +341,6 @@ class MultiAgent_Q:
             done_counts.append(done)
             total_step += episode_step
 
-        #self.saver.save_remaining_episode_data() <- 2000-2000が生成される原因になる。この半端なエピドートは捨てることで解決を図る。
         self.saver.save_visited_coordinates()
-        # self.logger.flush_buffer()
         self.save_model()
         print(f"---------学習終了 (全 {total_episodes} エピソード完了)----------")
-
-    # def log_disp(self):
-    #     episode_data = self.logger.get_episode_data()
-    #     episode_data = episode_data[::5]
-    #     # detail_show_list = [1,2,3,4,5,180,181,182,195,196,197,198,199,200] # 詳細を見るエピソードを指定
-    #     for data in episode_data:
-    #         print(f"{GREEN}Episode: {data[0]:-4}, done: {bool(data[1])}, reward: {data[2]:.4}, loss: {data[3]:.4}{RESET}")

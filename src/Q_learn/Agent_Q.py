@@ -8,7 +8,8 @@ from Base.Agent_Base import AgentBase
 
 from .strategys.SelfishStrategy import SelfishStrategy
 from .strategys.CooperativeStrategy import CooperativeStrategy
-from .QTable import QTable, QTableType
+from .QTable import QTable
+from Base.Constant import GlobalState, QTableType, QState
 
 # 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
 QState = Tuple[int,...]
@@ -34,7 +35,7 @@ class Agent(AgentBase):
         """
         super().__init__(agent_id, args)
 
-        self.observe_store = {}
+        self.observe_store:dict = {}
 
         self._state_representation_strategy = self._get_strategy(args.mask)
 
@@ -74,20 +75,27 @@ class Agent(AgentBase):
         return action_selection_strategy
 
     #def _get_q_state(self, global_state: Tuple[Tuple[int, int], ...]) -> QState:
-    def _get_q_state(self, global_state: Tuple[PositionType, ...]) -> QState:
+    def _get_q_state(self, global_state: GlobalState) -> QState:
         """
         環境の全体状態から、このエージェントにとってのQテーブル用の状態表現を抽出・生成する.
         現在の config (mask, observation_mode) に応じて、異なる状態表現を生成する.
         """
         # global_state の構造: ((g1_x, g1_y), ..., (a1_x, a1_y), ..., (aN_x, aN_y))
-        return self._state_representation_strategy.get_q_state_representation(
+        r = self._state_representation_strategy.get_q_state_representation(
             global_state,
             self.neighbor_distance
         )
+        return self._flatten_state(r)
+
+    def _flatten_state(self, state: GlobalState) -> QState:
+        """
+        ((x, y), (x, y)) -> (x, y, x, y) にフラット化する
+        """
+        # 座標タプルを一つずつ展開して平坦なリストにし、最後にタプル化
+        return tuple(val for pos in state for val in pos)
 
 
-    #def get_action(self, global_state: Tuple[Tuple[int, int], ...]) -> int:
-    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
+    def get_action(self, global_state: GlobalState) -> int:
         """
         現在の全体状態に基づいて、エージェントの行動を決定する.
         行動選択ロジックは ActionSelectionStrategy オブジェクトに委譲される.
@@ -109,7 +117,7 @@ class Agent(AgentBase):
             self.epsilon       # ε値
         )
 
-    def observe(self, global_state: Tuple[Tuple[int,int],...], action: int, reward: float, next_global_state: Tuple[Tuple[int,int],...], done: bool) -> None:
+    def observe(self, global_state: GlobalState, action: int, reward: float, next_global_state: GlobalState, done: bool) -> None:
         self.observe_store = {
             "global_state": global_state,
             "action": action,
@@ -129,11 +137,11 @@ class Agent(AgentBase):
             float: 更新に使用されたTD誤差の絶対値 (LearningStrategyから返される).
         """
         # 現在および次のエージェント固有の状態表現を取得 (ストラテジーに委譲)
-        global_state = self.observe_store['global_state']
-        next_global_state = self.observe_store['next_global_state']
-        action = self.observe_store['action']
-        reward = self.observe_store['reward']
-        done = self.observe_store['done']
+        global_state: GlobalState       = self.observe_store['global_state']
+        next_global_state: GlobalState  = self.observe_store['next_global_state']
+        action: int                     = self.observe_store['action']
+        reward: float                   = self.observe_store['reward']
+        done: bool                      = self.observe_store['done']
 
         current_q_state = self._get_q_state(global_state)
         next_q_state = self._get_q_state(next_global_state)

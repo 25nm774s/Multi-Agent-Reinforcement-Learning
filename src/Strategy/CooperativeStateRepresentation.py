@@ -1,9 +1,10 @@
-from typing import Any, List, Tuple
-from Strategy.StateRepresentationStrategy import StateRepresentationStrategy, PositionType, QState
+from typing import List, Tuple
+from Strategy.StateRepresentationStrategy import StateRepresentationStrategy
+from Base.Constant import GlobalState
 
 class CooperativeStateRepresentation(StateRepresentationStrategy):
     """
-    協調戦略の状態表現（すべての目標位置 + 他エージェント位置）を生成する具体的な戦略。
+    協調戦略の状態表現（すべての目標位置 + 近傍の他エージェント位置）を生成する具体的な戦略。
     """
     UNOBSERVED_POSITION = (-1, -1)
 
@@ -13,28 +14,28 @@ class CooperativeStateRepresentation(StateRepresentationStrategy):
         self.agent_id = agent_id
         self.total_agents = total_agents
 
-    def get_q_state_representation(self, global_state: Tuple[PositionType, ...], neighbor_distance: int) -> QState:
-        goal_positions = global_state[:self.goals_num]
-        agent_positions = global_state[self.goals_num:]
-        agent_position = agent_positions[self.agent_id]
+    def get_q_state_representation(self, global_state: GlobalState, neighbor_distance: int = 2) -> GlobalState:
+        # 1. 自分の位置を取得
+        my_pos_idx = self.goals_num + self.agent_id
+        my_pos = global_state[my_pos_idx]
 
-        flat_state_list: List[int] = []
+        # 2. ゴール情報はそのままコピー
+        new_state: List[Tuple[int, int]] = list(global_state[:self.goals_num])
 
-        # ゴールはそのまま
-        for p in goal_positions:
-            flat_state_list.extend(p)
+        # 3. エージェント情報の処理
+        for i in range(self.total_agents):
+            current_idx = self.goals_num + i
+            other_pos = global_state[current_idx]
 
-        for i, pos in enumerate(agent_positions):
             if i == self.agent_id:
-                flat_state_list.extend(pos)
-                continue    # 自身を除く
-
-            d = max(abs(pos[0] - agent_position[0]), abs(pos[1] - agent_position[1]))
-
-            if d <= neighbor_distance:
-                flat_state_list.extend(pos)
+                # 自分の位置はそのまま追加
+                new_state.append(other_pos)
             else:
-                flat_state_list.extend(self.UNOBSERVED_POSITION)
+                # 他人の場合、距離を計算
+                d = max(abs(other_pos[0] - my_pos[0]), abs(other_pos[1] - my_pos[1]))
+                if d <= neighbor_distance:
+                    new_state.append(other_pos)
+                else:
+                    new_state.append(self.UNOBSERVED_POSITION)
 
-        return tuple(flat_state_list)
-        
+        return tuple(new_state)

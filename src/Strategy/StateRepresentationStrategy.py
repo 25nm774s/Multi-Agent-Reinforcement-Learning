@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
 
-PositionType = Tuple[int, int]
-QState = Tuple[int, ...]
+from Base.Constant import GlobalState
 
 class StateRepresentationStrategy(ABC):
     """Abstract Base Class for State Representation Strategies."""
 
+    UNOBSERVED_POSITION = (-1, -1)
+
     @abstractmethod
-    def get_q_state_representation(self, global_state: Tuple[PositionType, ...], neighbor_distance: int) -> QState:
+    def get_q_state_representation(self, global_state: GlobalState, neighbor_distance: int) -> GlobalState:
         """
         この戦略のQテーブル状態表現を、グローバル環境状態から生成します。
 

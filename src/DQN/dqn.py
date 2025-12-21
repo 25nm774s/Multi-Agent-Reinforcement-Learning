@@ -334,6 +334,12 @@ class DQNModel:
 
     # get_weightsは「状態(dict)」だけを返すようにすると管理が楽です
     def get_weights(self) -> tuple[dict, dict, dict]:
+        """
+        モデルの重みを返す
+
+        :return: 学習モデル, ターゲットネットワーク重み, オプティマイザーの状態
+        :rtype: tuple[dict[Any, Any], dict[Any, Any], dict[Any, Any]]
+        """
         return self.qnet.state_dict(), self.qnet_target.state_dict(), self.optimizer.state_dict()
 
     # インスタンスを差し替えるのではなく、中身(state_dict)を流し込む

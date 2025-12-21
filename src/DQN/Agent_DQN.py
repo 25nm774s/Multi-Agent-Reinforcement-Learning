@@ -176,20 +176,6 @@ class Agent(AgentBase):
         else:
             self.epsilon = MIN_EPSILON
 
-    def decay_epsilon_power(self, step: int):
-        """
-        ステップ数に基づき、探索率εを指数的に減衰させる関数。
-        Args:
-            step (int): 現在のステップ数（またはエピソード数）。
-        """
-        lambda_ = 0.0001
-        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
-        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
-        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
-
-        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
-
     def observe(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
         """
         環境からの単一ステップの経験 (全体状態, 行動, 報酬, 次の全体状態, 完了フラグ) をリプレイバッファに追加する。

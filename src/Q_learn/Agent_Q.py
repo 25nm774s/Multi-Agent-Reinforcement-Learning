@@ -36,39 +36,6 @@ class Agent(AgentBase):
 
         self.observe_store = {}
 
-        # マスク値に基づいて戦略をインスタンス化
-        # 戦略に必要な初期化引数を渡す
-        # if args.mask == 0:
-        #     # mask==0: 協調モード (他のエージェントを考慮する)
-        #     self._action_selection_strategy: ActionSelectionStrategy = CooperativeActionSelection(
-        #         grid_size=self.grid_size,
-        #         goals_num=self.goals_num,
-        #         agent_id=self.agent_id,
-        #         total_agents=self.total_agents
-        #     )
-        #     self._learning_strategy: LearningStrategy = CooperativeQLearning(
-        #         grid_size=self.grid_size,
-        #         goals_num=self.goals_num,
-        #         agent_id=self.agent_id,
-        #         total_agents=self.total_agents
-        #     )
-        #     print(f"Agent {self.agent_id}: Using Cooperative Strategies (mask=0)")
-        # else:
-        #     # mask==1: 利己的モード（他のエージェントを無視する）
-        #     self._action_selection_strategy: ActionSelectionStrategy = SelfishActionSelection(
-        #          grid_size=self.grid_size,
-        #          goals_num=self.goals_num,
-        #          agent_id=self.agent_id,
-        #          total_agents=self.total_agents
-        #     )
-        #     self._learning_strategy: LearningStrategy = SelfishQLearning(
-        #          grid_size=self.grid_size,
-        #          goals_num=self.goals_num,
-        #          agent_id=self.agent_id,
-        #          total_agents=self.total_agents
-        #     )
-        #     print(f"Agent {self.agent_id}: Using Selfish Strategies (mask=1)")
-
         self._state_representation_strategy = self._get_strategy(args.mask)
 
         # 現環境全く同じなので代表してSelfishStrategyを使用
@@ -151,8 +118,7 @@ class Agent(AgentBase):
             "done": done
         }
         
-    #def learn(self, global_state: Tuple[Tuple[int, int], ...], action: int, reward: float, next_global_state: Tuple[Tuple[int, int], ...], done: bool) -> float:
-    def learn(self, i, total_step) -> float:
+    def learn(self, _) -> float:
         """
         単一の経験に基づいてQテーブルを更新するプロセスをAgentが管理する.
         学習ロジックは LearningStrategy オブジェクトに委譲される.
@@ -206,6 +172,6 @@ class Agent(AgentBase):
         """
         return self.q_table.get_q_table_size()
 
-    def get_all_q_values(self, agent_id: int, global_state: Tuple[PositionType,...]) -> list[float]:
+    def get_all_q_values(self, global_state: Tuple[PositionType,...]) -> list[float]:
         qs = self._get_q_state(global_state)
         return self.q_table.get_q_values(qs)

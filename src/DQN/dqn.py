@@ -262,45 +262,6 @@ class DQNModel:
         # Return TD errors only if use_per is True (Step 3)
         return scalar_loss, abs_td_errors if self.use_per else None
 
-
-    def _perform_knowledge_distillation_update(self, agent_states_batch: torch.Tensor, action_batch: torch.Tensor) -> Tuple[float, None]:
-        """
-        学習済みモデルを真の価値関数として改めて学習する特殊な学習ロジックを実行する。
-        （知識蒸留や模倣学習に相当）PERには対応しない。
-
-        Args:
-            agent_states_batch (torch.Tensor): 現在のエージェントの状態バッチ (形状: (batch_size, agent_state_dim)).
-            action_batch (torch.Tensor): バッチ内の各サンプルでエージェントが取った行動のバッチ (形状: (batch_size,)).
-
-        Returns:
-            Tuple[float, None]:
-                - 計算された損失の平均値 (学習が行われた場合).
-                - TD誤差は計算されないため None.
-        """
-        # メインネットワークの予測Q値 (特定エージェントの状態バッチを使用)
-        predicted_q: torch.Tensor = self.qnet(agent_states_batch) # 形状: (batch_size, action_size)
-
-        # ターゲットネットワークを「真の価値関数」として利用
-        true_qs_batch: torch.Tensor = self.qnet_target(agent_states_batch) # 形状: (batch_size, action_size)
-        batch_indices: torch.Tensor = torch.arange(self.batch_size, device=agent_states_batch.device)
-        true_q: torch.Tensor = true_qs_batch[batch_indices, action_batch].detach()
-
-        # 損失の計算と最適化 (IS重みは使用しない)
-        loss, _ = self.huber_loss(predicted_q, true_q, is_weights=None) # TD誤差は不要なので無視
-
-        self._optimize_network(loss)
-
-        # スカラー損失の計算 (学習の進捗確認用)
-        scalar_loss: float = loss.item() # 平均損失を返す
-
-        # 知識蒸留モードでは通常ターゲットネットワークの同期は行わない？
-        # if episode_num % self.target_update_frequency == 0:
-        #    self.sync_qnet() # 知識蒸留の目的に応じて同期するか検討が必要
-
-        # TD誤差は計算されないため None を返す
-        return scalar_loss, None
-
-
     # Modify update to accept IS weights and sampled indices, and return TD errors conditionally (Step 4)
     def update(self, i: int, global_states_batch: torch.Tensor, actions_batch: torch.Tensor, rewards_batch: torch.Tensor, next_global_states_batch: torch.Tensor, dones_batch: torch.Tensor, total_step: int, is_weights_batch: Optional[torch.Tensor] = None, sampled_indices: Optional[List[int]] = None) -> Tuple[float | None, torch.Tensor | None]:
         """

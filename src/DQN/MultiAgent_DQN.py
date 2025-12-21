@@ -1,14 +1,15 @@
 import sys
 import os
 
-from Enviroments.MultiAgentGridEnv import MultiAgentGridEnv
+from Environments.MultiAgentGridEnv import MultiAgentGridEnv
 
 from utils.plot_results import PlotResults
 from utils.Saver import Saver
 
 from .Agent_DQN import Agent
 from .IO_Handler import Model_IO
-# from .dqn import QNet
+
+from Base.Constant import GlobalState
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -144,7 +145,7 @@ class MultiAgent_DQN:
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
-            current_global_state = self.env.reset(initial_agent_positions=iap)
+            current_global_state:GlobalState = self.env.reset(initial_agent_positions=iap)
 
             done = False # エピソード完了フラグ
             step_count:int = 0 # 現在のエピソードのステップ数
@@ -157,7 +158,7 @@ class MultiAgent_DQN:
             # ---------------------------
             while not done and step_count < self.max_ts:
                 # 各エージェントの行動を選択
-                actions = []
+                actions:list[int] = []
                 for agent in self.agents:
                     # エージェントにε減衰を適用 (全ステップ数に基づき減衰)
                     agent.decay_epsilon_power(total_step)

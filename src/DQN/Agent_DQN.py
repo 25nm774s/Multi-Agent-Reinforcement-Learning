@@ -9,8 +9,7 @@ from Strategy.StateRepresentationStrategy import StateRepresentationStrategy
 from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
 from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
 
-PositionType = Tuple[int, int]
-QState = Tuple[int, ...]
+from Base.Constant import GlobalState, PosType
 
 from Base.Agent_Base import AgentBase
 
@@ -85,7 +84,7 @@ class Agent(AgentBase):
             print(f"Agent {self.agent_id} (DQN): Using Selfish State Representation (mask=1)")
         return state_representation_strategy
 
-    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
+    def get_action(self, global_state: GlobalState) -> int:
         """
         現在の全体状態に基づいて、エージェントの行動を決定する (ε-greedy).
 
@@ -96,16 +95,16 @@ class Agent(AgentBase):
         Returns:
             int: 選択された行動 (0:UP, 1:DOWN, 2:LEFT, 3:RIGHT, 4:STAY).
         """
-        # global_state をQStateに変換 (部分観測適用)
-        q_state:QState = self._get_observation(global_state)
+        # 部分観測適用
+        gs:GlobalState = self._get_observation(global_state)
 
         # QStateをNN入力形式に変換 (フラット化してPyTorchテンソルに)
-        flat_q_state = np.array(q_state).flatten()
-        q_state_tensor = torch.tensor(flat_q_state, dtype=torch.float32) # 1次元のテンソルに変換
+        flat_q_state: np.ndarray = np.array(gs).flatten()
+        q_state_tensor: torch.Tensor = torch.tensor(flat_q_state, dtype=torch.float32) # 1次元のテンソルに変換
         # ε-greedyに基づいて行動を選択
         return self.nn_greedy_actor(q_state_tensor)
 
-    def get_all_q_values(self, global_state: Tuple[PositionType,...]) -> torch.Tensor:
+    def get_all_q_values(self, global_state: GlobalState) -> torch.Tensor:
         """
         現在の全体状態における、指定されたエージェントの各行動に対するQ値を取得する。
         `nn_greedy_actor` と同様に状態の前処理を行い、QNetからQ値を取得する。
@@ -162,7 +161,7 @@ class Agent(AgentBase):
             # 最大Q値に対応する行動のインデックスを取得
             return qs.argmax().item()
 
-    def _get_observation(self, global_state:Tuple[PositionType,...])->QState:
+    def _get_observation(self, global_state:GlobalState)->GlobalState:
         """
         部分観測に対応するために、ストラテジーを流用した。
         
@@ -177,7 +176,7 @@ class Agent(AgentBase):
         else:
             self.epsilon = MIN_EPSILON
 
-    def observe(self, global_state: tuple, action: int, reward: float, next_global_state: tuple, done: bool) -> None:
+    def observe(self, global_state: GlobalState, action: int, reward: float, next_global_state: GlobalState, done: bool) -> None:
         """
         環境からの単一ステップの経験 (全体状態, 行動, 報酬, 次の全体状態, 完了フラグ) をリプレイバッファに追加する。
 

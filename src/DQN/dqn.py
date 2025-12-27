@@ -69,6 +69,91 @@ class AgentNetwork(nn.Module):
         x = self.fc3(x)
         return x
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class MixingNetwork(nn.Module):
+    """
+    QMIXで使用されるMixing Network.
+    各エージェントのQ値とグローバル状態を入力として受け取り、チーム全体のQ_totを出力する.
+    """
+    def __init__(self, n_agents: int, state_dim: int, hidden_dim: int = 32):
+        """
+        MixingNetwork クラスのコンストラクタ.
+
+        Args:
+            n_agents (int): エージェントの数.
+            state_dim (int): グローバル状態の次元.
+            hidden_dim (int): 隠れ層の次元 (HyperNetwork内部で使用).
+        """
+        super().__init__()
+        self.n_agents = n_agents
+        self.state_dim = state_dim
+        self.hidden_dim = hidden_dim
+
+        # HyperNetwork for weights W1 (state_dim -> n_agents * hidden_dim)
+        self.hyper_w1 = nn.Linear(state_dim, self.n_agents * hidden_dim)
+        # HyperNetwork for biases B1 (state_dim -> hidden_dim)
+        self.hyper_b1 = nn.Linear(state_dim, hidden_dim)
+
+        # HyperNetwork for weights W2 (state_dim -> hidden_dim * 1)
+        self.hyper_w2 = nn.Linear(state_dim, hidden_dim * 1)
+        # HyperNetwork for biases B2 (state_dim -> 1)
+        self.hyper_b2 = nn.Linear(state_dim, 1)
+
+        # Hidden layer for the mixing network itself (shared for all batches)
+        self.mix_hidden = nn.Linear(self.n_agents, hidden_dim)
+
+    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+        """
+        順伝播処理.
+
+        Args:
+            agent_q_values (torch.Tensor): 各エージェントのQ値のテンソル (形状: (batch_size, n_agents, 1)).
+            global_state (torch.Tensor): グローバル状態のテンソル (形状: (batch_size, state_dim)).
+
+        Returns:
+            torch.Tensor: チーム全体のQ値 (形状: (batch_size, 1)).
+        """
+        batch_size = agent_q_values.size(0)
+
+        # hyper_w1とhyper_b1からW1とB1を生成
+        # W1: (batch_size, state_dim) -> (batch_size, n_agents * hidden_dim)
+        # W1を(batch_size, n_agents, hidden_dim)に再成形し、agent_q_valuesとの行列乗算を行う
+        w1 = self.hyper_w1(global_state)
+        w1 = w1.view(batch_size, self.n_agents, self.hidden_dim)
+
+        # 単調性制約を適用: 重みが非負であることを保証
+        w1 = torch.abs(w1) # torch.exp(w1)も使用可能
+
+        # B1: (batch_size, state_dim) -> (batch_size, hidden_dim)
+        b1 = self.hyper_b1(global_state)
+        b1 = b1.view(batch_size, 1, self.hidden_dim) # Reshape for broadcasting
+
+        # 混合ネットワークの最初の層の出力を計算する
+        # (batch_size, n_agents, 1) @ (batch_size, n_agents, hidden_dim) -> (batch_size, 1, hidden_dim)
+        hidden = F.elu(torch.bmm(agent_q_values.transpose(1,2), w1) + b1)
+
+        # hyper_w2 および hyper_b2 から W2 および B2 を生成
+        # W2: (batch_size, state_dim) -> (batch_size, hidden_dim * 1)
+        # Reshape W2 to (batch_size, hidden_dim, 1)
+        w2 = self.hyper_w2(global_state)
+        w2 = w2.view(batch_size, self.hidden_dim, 1)
+
+        # 単調性制約を適用
+        w2 = torch.abs(w2) # Or torch.exp(w2)
+
+        # B2: (batch_size, state_dim) -> (batch_size, 1)
+        b2 = self.hyper_b2(global_state)
+        b2 = b2.view(batch_size, 1, 1) # Reshape for broadcasting
+
+        # 第2層の出力を計算 (Q_tot)
+        # (batch_size, 1, hidden_dim) @ (batch_size, hidden_dim, 1) -> (batch_size, 1, 1)
+        Q_tot = torch.bmm(hidden, w2) + b2
+
+        return Q_tot.view(batch_size, 1) # Reshape to (batch_size, 1)
+
 class DQNModel:
     """
     DQN (Deep Q-Network) の学習ロジックを管理するクラス.

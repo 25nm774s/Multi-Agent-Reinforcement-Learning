@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, List
 
-class QNet(nn.Module):
+class AgentNetwork(nn.Module):
     """
     DQNで使用されるQネットワークモデル.
     状態を入力として受け取り、各行動に対するQ値を出力する.
@@ -89,8 +89,8 @@ class DQNModel:
             raise ValueError("StateProcessor instance must be provided to DQNModel.")
         self.state_processor = state_processor
 
-        self.qnet_target: QNet = QNet(grid_size,self.action_size).to(self.device)
-        self.qnet: QNet = QNet(grid_size,self.action_size).to(self.device)
+        self.qnet_target: AgentNetwork = AgentNetwork(grid_size,self.action_size).to(self.device)
+        self.qnet: AgentNetwork = AgentNetwork(grid_size,self.action_size).to(self.device)
 
         # オプティマイザの初期化
         if optimizer_type == 'Adam':

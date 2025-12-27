@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import unittest
 
-from src.DQN.dqn import QNet, DQNModel
+from src.DQN.dqn import AgentNetwork, DQNModel
 from src.utils.StateProcesser import StateProcessor
 # NOTE: QNet and DQNModel classes are expected to be defined in a previous cell.
 # If not, please ensure they are available in the current execution environment.
@@ -242,7 +242,7 @@ class DQNModelTest(unittest.TestCase):
         # print("set_target_state successfully updated QNetTarget weights.")
 
         # Optimizerの重みを変更 (内部状態は複雑なので、load_state_dictがエラーなく実行されるかを確認)
-        optimizer_test = optim.Adam(QNet(self.grid_size, self.action_size).to(self.device).parameters(), lr=0.01)
+        optimizer_test = optim.Adam(AgentNetwork(self.grid_size, self.action_size).to(self.device).parameters(), lr=0.01)
         new_optimizer_state = optimizer_test.state_dict()
         self.dqn_model_no_per.set_optimizer_state(new_optimizer_state)
 

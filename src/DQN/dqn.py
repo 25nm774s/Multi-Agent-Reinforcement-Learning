@@ -4,40 +4,65 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, List
 
+import torch
+import torch.optim as optim
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Optional, Tuple, List
+
 class AgentNetwork(nn.Module):
     """
     DQNで使用されるQネットワークモデル.
     状態を入力として受け取り、各行動に対するQ値を出力する.
     """
-    def __init__(self, grid_size: int, output_size: int):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
         """
-        QNet クラスのコンストラクタ.
+        AgentNetwork クラスのコンストラクタ.
 
         Args:
             input_size (int): Qネットワークへの入力サイズ (状態空間の次元).
             output_size (int): Qネットワークの出力サイズ (行動空間の次元).
+            total_agents (int): 全エージェント数 (パラメータ共有のためのAgent IDワンホットエンコーディングに使用)
         """
         super().__init__()
 
         self.grid_size = grid_size
         self.num_channels = 3
-        input_size = self.num_channels * self.grid_size**2
+        self.total_agents = total_agents # Add total_agents to instance variables
 
-        self.fc1 = nn.Linear(input_size, 128)
+        # 状態入力の次元 (グリッドマップのフラット化されたサイズ)
+        state_input_size = self.num_channels * self.grid_size**2
+
+        # Agent ID埋め込み層は削除し、ワンホットエンコーディングを使用するため不要
+
+        # 状態入力とエージェントワンホットベクトルを結合した後の最終的な入力サイズ
+        # Agent IDはワンホットベクトルとして扱われるため、そのサイズは total_agents となる
+        combined_input_size = state_input_size + self.total_agents
+
+        self.fc1 = nn.Linear(combined_input_size, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, output_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
         """
         順伝播処理.
 
         Args:
-            x (torch.Tensor): 入力状態のテンソル (形状: (batch_size, input_size)).
+            x (torch.Tensor): 入力状態のテンソル (形状: (batch_size, num_channels, grid_size, grid_size)).
+            agent_ids (torch.Tensor): エージェントIDのテンソル (形状: (batch_size,)).
 
         Returns:
             torch.Tensor: 各行動に対するQ値のテンソル (形状: (batch_size, output_size)).
         """
+        # 状態をフラット化
         x = x.flatten(start_dim=1)
+
+        # Agent IDをワンホットベクトルに変換
+        # agent_ids は (batch_size,) 形状の整数IDを想定
+        agent_id_one_hot = F.one_hot(agent_ids, num_classes=self.total_agents).float() # (batch_size, total_agents)
+
+        # 状態とエージェントワンホットベクトルを結合
+        x = torch.cat((x, agent_id_one_hot), dim=1)
 
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))

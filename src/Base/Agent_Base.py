@@ -11,7 +11,7 @@ PositionType = Tuple[int, int]
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
 
-class AgentBase(ABC):
+class BaseMasterAgent(ABC):
     """
     Q学習エージェントとDQNエージェントに共通のインターフェースを定義する抽象基底クラス.
     """

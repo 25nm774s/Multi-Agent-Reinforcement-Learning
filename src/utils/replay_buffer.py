@@ -113,7 +113,6 @@ class SumTree:
         """
         return self.tree[0]
 
-
 class ReplayBuffer:
     def __init__(self, buffer_size: int, batch_size: int, device: torch.device, alpha: float = 0.6, use_per: bool = False):
         self.buffer_size: int = buffer_size
@@ -123,17 +122,27 @@ class ReplayBuffer:
         self.use_per: bool = use_per
         self._max_priority = 1.0
 
+        # `sample`メソッド内でdonesを適切に形成できるように`__init__`にn_agentsを追加
+        self.n_agents: Optional[int] = None # 最初のadd()呼び出し時に正しく設定
+
         if self.use_per:
-            self.experiences: List[Tuple[Any, int, float, Any, bool]] = [None] * buffer_size#type:ignore
+            # 経験値の型ヒントを修正し、完了済み項目用のList[bool]を含めるようにした
+            self.experiences: List[Tuple[Any, int, float, Any, List[bool]]] = [None] * buffer_size#type:ignore
             self.tree = SumTree(capacity=buffer_size)
             self.current_idx = 0
             self.size = 0
         else:
-            self.buffer: deque[Tuple[Any, int, float, Any, bool]] = deque(maxlen=buffer_size)
+            # 経験値の型ヒントを修正
+            self.buffer: deque[Tuple[Any, int, float, Any, List[bool]]] = deque(maxlen=buffer_size)
             self.priorities: deque[float] = deque(maxlen=buffer_size)
 
-    def add(self, global_state: Any, action: int, reward: float, next_global_state: Any, done: bool) -> None:
-        data: Tuple[Any, int, float, Any, bool] = (global_state, action, reward, next_global_state, done)
+    # `add`メソッドを修正し、`dones: List[bool]`を受け入れるようにした
+    def add(self, global_state: Any, action: int, reward: float, next_global_state: Any, dones: List[bool]) -> None:
+        # まだ設定されていない場合、最初の `dones` リストから n_agents を推測
+        if self.n_agents is None and dones:
+            self.n_agents = len(dones)
+
+        data: Tuple[Any, int, float, Any, List[bool]] = (global_state, action, reward, next_global_state, dones)
         if self.use_per:
             self.experiences[self.current_idx] = data
             self.tree.add(self._max_priority, self.current_idx)
@@ -150,6 +159,7 @@ class ReplayBuffer:
         else:
             return len(self.buffer)
 
+    # `sample`メソッドを修正し、`dones_batch`をList[bool]のテンソルとして抽出して返すように
     def sample(self, beta: float) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
         buffer_len = len(self)
         if buffer_len < self.batch_size:
@@ -157,9 +167,9 @@ class ReplayBuffer:
 
         if self.use_per:
             sampled_indices: List[int] = [] # Original indices in self.experiences
-            sampled_priorities_from_tree: List[float] = [] # These are the raw priorities from the tree
+            sampled_priorities_from_tree: List[float] = [] # ツリーからの生の優先順位
 
-            min_priority = 1e-6 # To avoid log(0) and division by zero
+            min_priority = 1e-6 #  0除算を避けるため
 
             segment = self.tree.total_priority / self.batch_size
 
@@ -225,7 +235,12 @@ class ReplayBuffer:
             actions_np: np.ndarray = np.array([x[1] for x in filtered_experiences], dtype=np.int64)
             reward_np: np.ndarray = np.array([x[2] for x in filtered_experiences], dtype=np.float32)
             next_global_states_np: np.ndarray = np.array([np.concatenate([np.asarray(coord) for coord in x[3]]).astype(np.float32) for x in filtered_experiences])
-            done_np: np.ndarray = np.array([x[4] for x in filtered_experiences], dtype=np.float32)
+            # 変更点: 各経験について `dones` をブール値のリストとして抽出し、numpy配列に変換
+            # これ以前に self.n_agents が設定されていることを確認するか、最初の要素から推測する
+            if self.n_agents is None:
+                # 最初のサンプリングされた経験の`dones`リストからn_agentsを推定する
+                self.n_agents = len(filtered_experiences[0][4])
+            dones_np: np.ndarray = np.array([x[4] for x in filtered_experiences], dtype=np.float32).reshape(self.batch_size, self.n_agents)
 
         except Exception as e:
             print(f"Error converting sampled data to numpy arrays: {e}")
@@ -235,18 +250,18 @@ class ReplayBuffer:
         actions_tensor: torch.Tensor = torch.tensor(actions_np, dtype=torch.int64, device=self.device)
         reward_tensor: torch.Tensor = torch.tensor(reward_np, dtype=torch.float32, device=self.device)
         next_global_states_tensor: torch.Tensor = torch.tensor(next_global_states_np, dtype=torch.float32, device=self.device)
-        done_tensor: torch.Tensor = torch.tensor(done_np, dtype=torch.float32, device=self.device)
+        # Modified: dones_tensor now holds individual agent done flags
+        dones_tensor: torch.Tensor = torch.tensor(dones_np, dtype=torch.float32, device=self.device)
 
-        return global_states_tensor, actions_tensor, reward_tensor, next_global_states_tensor, done_tensor, is_weights_tensor, sampled_original_indices if self.use_per else None
+        return global_states_tensor, actions_tensor, reward_tensor, next_global_states_tensor, dones_tensor, is_weights_tensor, sampled_original_indices if self.use_per else None
 
     def update_priorities(self, tree_indices: List[int], td_errors: np.ndarray) -> None:
         """
-        Updates the priorities of sampled experiences in the SumTree based on their TD errors.
+        サンプリングされた経験の優先順位を、TD誤差に基づいてSumTree内で更新する.
 
         Args:
-            tree_indices (List[int]): A list of tree_indices (leaf node indices in SumTree)
-                                      for the experiences whose priorities are to be updated.
-            td_errors (np.ndarray): An array of TD errors corresponding to the sampled experiences.
+            tree_indices (List[int]): 優先度を更新する経験に対応する tree_indices のリスト（SumTree内の葉ノードインデックス）
+            td_errors (np.ndarray): サンプリングされた経験に対応する TD エラーの配列。
         """
         if not self.use_per:
             return

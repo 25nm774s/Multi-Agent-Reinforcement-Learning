@@ -16,7 +16,7 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 # Modify MultiAgent_DQN.run to pass total_episode_num to learn_from_experience
-class MultiAgent_DQN:
+class MARLTrainer:
     """
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。

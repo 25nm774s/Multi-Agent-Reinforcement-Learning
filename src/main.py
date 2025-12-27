@@ -163,11 +163,11 @@ if __name__ == '__main__':
             
 
     def dqn_process():
-        from DQN.MultiAgent_DQN import MultiAgent_DQN
+        from DQN.MultiAgent_DQN import MARLTrainer
         from DQN.Agent_DQN import Agent
         agents:list = [Agent(id, config,config.use_per) for id in range(config.agents_number)]
 
-        simulation = MultiAgent_DQN(config,agents)
+        simulation = MARLTrainer(config,agents)
 
         simulation.train()
 

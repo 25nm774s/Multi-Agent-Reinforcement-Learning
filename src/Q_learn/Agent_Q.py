@@ -4,7 +4,7 @@ from Strategy.StateRepresentationStrategy import StateRepresentationStrategy
 
 from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentation
 from Strategy.SelfishStateRepresentation import SelfishStateRepresentation
-from Base.Agent_Base import AgentBase
+from Base.Agent_Base import BaseMasterAgent
 
 from .strategys.SelfishStrategy import SelfishStrategy
 from .strategys.CooperativeStrategy import CooperativeStrategy
@@ -18,7 +18,7 @@ PositionType = Tuple[int,int]
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
 
-class Agent(AgentBase):
+class Agent(BaseMasterAgent):
     """
     エージェント個別のロジックを管理するクラス.
     QTableインスタンスを持ち、行動選択、ε-greedy、ε減衰、学習プロセスを担う.

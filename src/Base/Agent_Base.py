@@ -1,68 +1,166 @@
-import torch
-from typing import Tuple, List, Any
 from abc import ABC, abstractmethod
+import torch
+from typing import List, Optional, Tuple
 
-# --- Type Aliases ---
-# 例: (goal1_x, goal1_y, ..., goalG_x, goalG_y, agent_i_x, agent_i_y, ..., agent_N_x, agent_N_y)
-PositionType = Tuple[int, int]
-# QTableType はQTableクラスの実際の戻り値型と一致させる
+# すべて相対インポート
+from ..utils.StateProcesser import StateProcessor
+from ..DQN.dqn import AgentNetwork
+from .Constant import GlobalState
 
-# --- Global Constants ---
-MAX_EPSILON = 1.0
-MIN_EPSILON = 0.05
-
-class AgentBase(ABC):
+class BaseMasterAgent(ABC):
     """
-    Q学習エージェントとDQNエージェントに共通のインターフェースを定義する抽象基底クラス.
+    抽象基底クラス BaseMasterAgent.
+    状態処理、Q値計算、生存マスク適用などの共通ロジックをカプセル化し、
+    IQLMasterAgent および QMIXMasterAgent の基盤を提供します。
     """
-    def __init__(self, agent_id: int, args):
-        self.agent_id:int           = agent_id
-        self.grid_size:int          = args.grid_size
-        self.goals_num:int          = args.goals_number
-        self.action_size:int        = 5 # UP, DOWN, LEFT, RIGHT, STAY
-        self.total_agents:int       = args.agents_number
-        self.batch_size: int        = args.batch_size
-        self.epsilon_decay: float   = args.epsilon_decay
-        self.mask:bool              = args.mask
-        self.neighbor_distance:int  = args.neighbor_distance
-        self.epsilon: float         = args.epsilon if hasattr(args, 'epsilon') else MAX_EPSILON
-        self.device: torch.device   = torch.device(args.device)
-
-    @abstractmethod
-    def get_action(self, global_state: Tuple[PositionType, ...]) -> int:
-        pass
-    
-    def decay_epsilon_power(self, step: int):
+    def __init__(self,
+                 n_agents: int,
+                 action_size: int,
+                 grid_size: int,
+                 goals_num: int,
+                 device: torch.device,
+                 state_processor: StateProcessor,
+                 agent_network: AgentNetwork):
         """
-        ステップ数に基づき、探索率εを指数的に減衰させる関数。
+        BaseMasterAgent のコンストラクタ.
+
         Args:
-            step (int): 現在のステップ数（またはエピソード数）。
+            n_agents (int): 環境内のエージェント数.
+            action_size (int): エージェントのアクション空間のサイズ.
+            grid_size (int): グリッド環境のサイズ.
+            goals_num (int): 環境内のゴール数.
+            device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
+            state_processor (StateProcessor): 状態変換に使用するStateProcessorのインスタンス.
+            agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
         """
-        lambda_ = 0.0001
-        # 指数減衰式: ε_t = ε_start * (decay_rate)^t
-        # self.epsilon = MAX_EPSILON * (self.epsilon_decay ** (step*lambda_))
-        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+        self.n_agents = n_agents
+        self.action_size = action_size
+        self.grid_size = grid_size
+        self.goals_num = goals_num
+        self.device = device
+        self.state_processor = state_processor
+        self.agent_network = agent_network
 
-        # 最小値（例: 0.01）を下回らないようにすることが多いが、ここではシンプルな式のみを返します。
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
-        
+        # AgentNetworkクラスでnum_channelsを定義済みの前提
+        self.num_channels = self.agent_network.num_channels
+
+        # ターゲットAgentNetworkを初期化し、メインネットワークの重みをコピー
+        # AgentNetworkのコンストラクタは (grid_size, output_size, total_agents) を期待
+        self.agent_network_target = AgentNetwork(grid_size, action_size, n_agents).to(device)
+        self.agent_network_target.load_state_dict(self.agent_network.state_dict())
+        self.agent_network_target.eval() # ターゲットネットワークは推論モードに設定
+
+    def _get_agent_q_values(
+        self,
+        agent_network_instance: AgentNetwork,
+        obs_batch: torch.Tensor,
+        agent_ids_batch: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        与えられたAgentNetworkインスタンス（メインまたはターゲット）から、
+        バッチ内の全エージェントの全アクションに対するQ値を計算します。
+
+        Args:
+            agent_network_instance (AgentNetwork): Q値を計算するAgentNetworkのインスタンス.
+            obs_batch (torch.Tensor): バッチ処理された状態 (形状: (batch_size, num_channels, grid_size, grid_size)).
+            agent_ids_batch (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size, n_agents)).
+
+        Returns:
+            torch.Tensor: 各エージェントの各アクションに対するQ値 (形状: (batch_size, n_agents, action_size)).
+        """
+        batch_size = obs_batch.size(0)
+        n_agents = agent_ids_batch.size(1)
+
+        # AgentNetworkが期待する入力形式 (B*N, C, G, G) と (B*N,) に整形
+        # 観測を各エージェント用に複製
+        repeated_obs_batch = obs_batch.unsqueeze(1).repeat(1, n_agents, 1, 1, 1)
+        repeated_obs_batch = repeated_obs_batch.view(
+            batch_size * n_agents, self.num_channels, self.grid_size, self.grid_size
+        )
+
+        # エージェントIDをフラット化
+        flat_agent_ids = agent_ids_batch.view(-1)
+
+        # AgentNetworkからQ値を計算
+        # agent_network_instance((B*N, C, G, G), (B*N,)) -> (B*N, A)
+        q_values_flat = agent_network_instance(repeated_obs_batch, flat_agent_ids)
+
+        # 結果を元の形状 (B, N, A) に戻す
+        q_values_reshaped = q_values_flat.view(batch_size, n_agents, self.action_size)
+
+        return q_values_reshaped
+
     @abstractmethod
-    def get_all_q_values(self, global_state: Tuple[PositionType, ...]) -> Any:
+    def get_actions(self, global_state: GlobalState, epsilon: float) -> List[int]:
+        """
+        与えられたグローバル状態とイプシロンに基づいて、各エージェントのアクションを選択します。
+        具体的な実装はサブクラスで提供されます。
+        """
         pass
 
     @abstractmethod
-    def observe(self, global_state: Tuple[PositionType, ...], action: int, reward: float, next_global_state: Tuple[PositionType, ...], done: bool) -> None:
+    def evaluate_q(
+        self,
+        obs_batch: torch.Tensor,
+        actions_batch: torch.Tensor, # (batch_size, n_agents)
+        rewards_batch: torch.Tensor, # (batch_size,)
+        next_obs_batch: torch.Tensor,
+        dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags
+        is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """
+        リプレイバッファからサンプリングされたバッチデータを使用して、Q値を評価し、
+        損失とTD誤差を計算します。具体的な実装はサブクラスで提供されます。
+        """
         pass
 
-    @abstractmethod
-    def learn(self, total_step: int | None = None) -> float | None:
-        pass
+    def sync_target_network(self) -> None:
+        """
+        ターゲットAgentNetworkをメインAgentNetworkと同期します。
+        メインネットワークの重みをターゲットネットワークにコピーします。
+        """
+        self.agent_network_target.load_state_dict(self.agent_network.state_dict())
+        self.agent_network_target.eval() # ターゲットネットワークは常に推論モード
 
-    @abstractmethod
-    def set_weights(self, weights: Any) -> None:
-        pass
+    def _huber_loss(
+        self,
+        q: torch.Tensor,
+        target: torch.Tensor,
+        is_weights: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Huber Loss を計算する. PERを使用する場合は重要度サンプリング重みを適用する.
+        TD誤差も計算して返す.
 
-    @abstractmethod
-    def get_weights(self) -> Any:
-        pass
+        Args:
+            q (torch.Tensor): 予測されたQ値のテンソル (形状: (batch_size,)).
+            target (torch.Tensor): ターゲットQ値のテンソル (形状: (batch_size,)).
+            is_weights (Optional[torch.Tensor]): 重要度サンプリング重みのテンソル (形状: (batch_size,)).
 
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - 計算されたHuber Loss (スカラー).
+                - 計算されたTD誤差 (絶対値) (形状: (batch_size,)).
+        """
+        # TD誤差の計算
+        td_errors: torch.Tensor = target - q
+        abs_td_errors: torch.Tensor = torch.abs(td_errors)
+
+        # Huber lossの実装
+        HUBER_LOSS_DELTA = 1.0
+        cond: torch.Tensor = abs_td_errors < HUBER_LOSS_DELTA
+        L2: torch.Tensor = 0.5 * torch.square(td_errors)
+        L1: torch.Tensor = HUBER_LOSS_DELTA * (abs_td_errors - 0.5 * HUBER_LOSS_DELTA)
+        loss_per_sample: torch.Tensor = torch.where(cond, L2, L1) # 形状: (batch_size,)
+
+        # PERを使用する場合、損失に重要度サンプリング重みを適用
+        if is_weights is not None:
+            # is_weightsの形状が(batch_size, 1)または(batch_size,)であることを確認
+            # 必要であればbroadcastする
+            weighted_loss = loss_per_sample * is_weights.squeeze(-1) if is_weights.ndim > 1 else loss_per_sample * is_weights
+            final_loss = torch.mean(weighted_loss)
+        else:
+            final_loss = torch.mean(loss_per_sample)
+
+        # 計算された損失とTD誤差の絶対値を返す
+        return final_loss, abs_td_errors.detach()

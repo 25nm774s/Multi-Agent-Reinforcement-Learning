@@ -11,12 +11,12 @@ from Strategy.CooperativeStateRepresentation import CooperativeStateRepresentati
 
 from Base.Constant import GlobalState, PosType
 
-from Base.Agent_Base import AgentBase
+from Base.Agent_Base import BaseMasterAgent
 
 MAX_EPSILON = 1.0
 MIN_EPSILON = 0.05
 
-class Agent(AgentBase):
+class Agent(BaseMasterAgent):
     """
     DQN エージェントクラス.
 

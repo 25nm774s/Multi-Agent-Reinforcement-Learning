@@ -107,7 +107,7 @@ class MARLTrainer:
 
         # Optimizer initialization
         optim_params = self.master_agent.get_optimizer_params()
-        
+
         if args.optimizer == 'Adam':
             self.optimizer: optim.Optimizer = optim.Adam(optim_params, lr=args.learning_rate)
         elif args.optimizer == 'RMSProp':
@@ -160,7 +160,7 @@ class MARLTrainer:
         self.epsilon = max(MIN_EPSILON, self.epsilon)
 
     def result_save(self):
-        self.plot_results.draw_heatmap(self.grid_size)
+        self.plot_results.draw_heatmap()
         self.plot_results.draw()
 
     def train(self):
@@ -193,31 +193,6 @@ class MARLTrainer:
 
             # 50エピソードごとに集計結果を出力
             CONSOLE_LOG_FREQ = 50
-            if (episode % CONSOLE_LOG_FREQ == 0) and (episode!=self.start_episode):
-                print() # 改行して進捗表示をクリア
-
-                # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
-                avg_loss   = sum(episode_losses) / len(episode_losses)      # 期間内の平均損失
-                avg_reward = sum(episode_rewards) / len(episode_rewards)    # 期間内の平均報酬
-                avg_step   = sum(episode_steps) / len(episode_steps)        # 期間内の平均ステップ数
-                done_rate  = sum(done_counts) / len(done_counts)            # 達成率
-
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
-                if self.use_per:
-                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}, beta: {GREEN}{self.beta:.3f}{RESET}")
-                else:
-                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}")
-
-                episode_losses = [] # 100エピソードごとに損失リストもリセット
-                episode_rewards = []
-                episode_steps  = []
-                done_counts = []
-
-            if episode % 50 == 0:
-                self.save_checkpoint(episode)
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
@@ -305,6 +280,32 @@ class MARLTrainer:
             # ---------------------------
             # エピソード終了後の処理
             # ---------------------------
+
+            if (episode % CONSOLE_LOG_FREQ == 0) and (episode!=self.start_episode):
+                print() # 改行して進捗表示をクリア
+
+                # エピソードごとの平均損失、平均ステップ、平均報酬を計算し、表示に追加
+                avg_loss   = sum(episode_losses) / len(episode_losses)      # 期間内の平均損失
+                avg_reward = sum(episode_rewards) / len(episode_rewards)    # 期間内の平均報酬
+                avg_step   = sum(episode_steps) / len(episode_steps)        # 期間内の平均ステップ数
+                done_rate  = sum(done_counts) / len(done_counts)            # 達成率
+
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.3f}{RESET}") # 達成率も出力 .3f で小数点以下2桁表示
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
+                if self.use_per:
+                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}, beta: {GREEN}{self.beta:.3f}{RESET}")
+                else:
+                    print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}")
+
+                episode_losses = [] # 100エピソードごとに損失リストもリセット
+                episode_rewards = []
+                episode_steps  = []
+                done_counts = []
+
+            if episode % 50 == 0:
+                self.save_checkpoint(episode)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント
             if episode_done:

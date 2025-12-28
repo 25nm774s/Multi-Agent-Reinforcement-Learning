@@ -188,32 +188,9 @@ class ReplayBuffer:
             # 重要度サンプリングの重みを計算する
             # 1. 正規化係数として、SumTreeからすべてのアクティブな生の優先度を取得する
             # この計算には、buffer_sizeだけでなく、バッファ内の実際の要素数を把握する必要がある。
-            all_active_raw_priorities_values = []
-            for j in range(buffer_len):
-                # SumTreeは内部ポインタをリプレイバッファの経験インデックスにマッピングするためdata_idx_mapを保持する。
-                # バッファ内の各実際の経験に対する優先度を調べる必要がある。
-                # 簡易的なテスト方法として、現在「アクティブ」なリーフノードに直接アクセスする方法がある。
-                # ただしSumTreeのdata_idx_mapが循環バッファ構造であるため、これはやや複雑になる。
-                # より堅牢な方法: self.experiences を巡回し、`data_idx_map` を使用して木から優先度を取得する。
-                # 現時点では、SumTree が `buffer_len` までの既存経験の優先度を正しく保持していると仮定する。
-                # これは、SumTree の葉ノードがインデックス `capacity - 1` から `capacity - 1 + buffer_len - 1` までがアクティブであることを意味する。
-                # 修正点: SumTreeのtotal_priorityは既に全優先度の合計値である。
-                # 正規化のためのP(i)計算には個々の優先度が必要。
-                
-                # SumTreeのdata_idx_mapは、各葉ノードの`self.experiences`内のインデックスを格納します。
-                # したがって、優先度を取得するには、`data_idx`（`self.experiences`から）を対応する`tree_idx`にマッピングする必要があります。
-                # これは複雑です。一般的な簡略化手法として、正規化に「サンプリングされた優先度の合計」を使用する方法、
-                # またはツリー内の最大優先度を動的に追跡する方法があります。この簡易テストでは簡素化のため、サンプリングされた優先度を用いた正規化に固執しましょう。
-                # あるいは、ツリー内の最大優先度を正規化係数と見なすことも検討できます。
-                
-                # 現時点では、`sampled_priorities_from_tree`からの実際の優先度を用いてP(i)を計算し、その後is_weightsを算出する。
-                pass # The current PER implementation uses sum_adjusted_all_active_priorities. Let's get actual priorities from tree directly.
+            # 有効な全経験のプライオリティを正確に取得する方法は複雑
+            # SumTree の内部構造を利用し、実際にバッファに存在する経験のプライオリティを直接取得することで、この課題に対応。
 
-            # ツリー内の全優先度の合計は self.tree.total_priority である。必要なのは (p_i^alpha) の和である。
-            # テストのため、正規化係数は現時点で最大優先度または動的合計で近似する。
-            # `cc90a67f` の `ReplayBuffer` 実装では既に `all_active_raw_priorities` を動的に計算している。
-            
-            # Replicating the logic from `cc90a67f`:
             all_active_raw_priorities = np.array([self.tree.tree[self.tree.capacity - 1 + j] for j in range(buffer_len)])
             adjusted_all_active_priorities = (all_active_raw_priorities + min_priority)**self.alpha
             sum_adjusted_all_active_priorities = adjusted_all_active_priorities.sum()

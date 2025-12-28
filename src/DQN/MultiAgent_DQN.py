@@ -106,11 +106,8 @@ class MARLTrainer:
         self.replay_buffer = shared_replay_buffer
 
         # Optimizer initialization
-        optim_params = list(self.master_agent.agent_network.parameters())
-        if mode == 'QMIX':
-            # If QMIX, add mixing_network parameters to optimizer
-            optim_params.extend(list(self.master_agent.mixing_network.parameters()))
-
+        optim_params = self.master_agent.get_optimizer_params()
+        
         if args.optimizer == 'Adam':
             self.optimizer: optim.Optimizer = optim.Adam(optim_params, lr=args.learning_rate)
         elif args.optimizer == 'RMSProp':

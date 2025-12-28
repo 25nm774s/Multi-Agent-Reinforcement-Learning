@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import numpy as np
 from typing import List, Optional, Tuple
 
@@ -31,6 +32,12 @@ class IQLMasterAgent(BaseMasterAgent):
             agent_network=agent_network
         )
         self.gamma = gamma
+
+    def get_optimizer_params(self) -> List[nn.Parameter]:
+        """
+        IQLMasterAgent の場合は、agent_network のパラメータのみを返します。
+        """
+        return list(self.agent_network.parameters())
 
     def get_actions(self, global_state: GlobalState, epsilon: float) -> List[int]:
         """

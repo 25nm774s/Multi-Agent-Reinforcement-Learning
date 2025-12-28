@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+import torch.nn as nn # オプティマイザーを設定するため。
 from typing import List, Optional, Tuple
 
 from utils.StateProcesser import StateProcessor
@@ -174,3 +175,10 @@ class BaseMasterAgent(ABC):
 
         # 計算された損失とTD誤差の絶対値を返す
         return final_loss, abs_td_errors.detach()
+
+    @abstractmethod
+    def get_optimizer_params(self) -> List[nn.Parameter]:
+        """
+        オプティマイザが更新すべきネットワークパラメータのリストを返します。
+        """
+        pass

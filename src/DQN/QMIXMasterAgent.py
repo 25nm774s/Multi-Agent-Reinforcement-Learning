@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import numpy as np
 from typing import List, Optional, Tuple
 
@@ -40,6 +41,14 @@ class QMIXMasterAgent(BaseMasterAgent):
         self.mixing_network_target = MixingNetwork(n_agents, mixing_network_state_dim).to(device)
         self.mixing_network_target.load_state_dict(self.mixing_network.state_dict())
         self.mixing_network_target.eval() # ターゲットネットワークは推論モード
+
+    def get_optimizer_params(self) -> List[nn.Parameter]:
+        """
+        QMIXMasterAgent の場合は、agent_network と mixing_network の両方のパラメータを返します。
+        """
+        params = list(self.agent_network.parameters())
+        params.extend(list(self.mixing_network.parameters()))
+        return params
 
     def get_actions(self, global_state: GlobalState, epsilon: float) -> List[int]:
         """

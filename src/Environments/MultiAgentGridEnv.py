@@ -31,6 +31,7 @@ class MultiAgentGridEnv:
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)
         self.collision_resolver = CollisionResolver(self._grid)
+        self.action_space_size = self.collision_resolver.action_space_size
 
         self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]

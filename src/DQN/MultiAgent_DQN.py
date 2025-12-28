@@ -78,8 +78,7 @@ class MARLTrainer:
         if mode == 'IQL':
             self.master_agent = IQLMasterAgent(
                 n_agents=args.agents_number,
-                # action_size=self.env.action_space_size,
-                action_size=5,
+                action_size=self.env.action_space_size,
                 grid_size=args.grid_size,
                 goals_num=args.goals_number,
                 device=args.device,
@@ -90,8 +89,7 @@ class MARLTrainer:
         elif mode == 'QMIX':
             self.master_agent = QMIXMasterAgent(
                 n_agents=args.agents_number,
-                # action_size=self.env.action_space_size,
-                action_size=5,
+                action_size=self.env.action_space_size,
                 grid_size=args.grid_size,
                 goals_num=args.goals_number,
                 device=args.device,
@@ -144,10 +142,6 @@ class MARLTrainer:
         self.plot_results = PlotResults(self.save_dir)
 
         self.load_checkpoint(None)
-
-        print("grid_size:",shared_state_processor.grid_size)
-        print(self.master_agent.grid_size,self.grid_size)
-
 
     def decay_epsilon_power(self, step: int):
         """

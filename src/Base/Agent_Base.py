@@ -2,9 +2,8 @@ from abc import ABC, abstractmethod
 import torch
 from typing import List, Optional, Tuple
 
-# すべて相対インポート
-from ..utils.StateProcesser import StateProcessor
-from ..DQN.dqn import AgentNetwork
+from utils.StateProcesser import StateProcessor
+from DQN.dqn import AgentNetwork
 from .Constant import GlobalState
 
 class BaseMasterAgent(ABC):
@@ -53,37 +52,48 @@ class BaseMasterAgent(ABC):
     def _get_agent_q_values(
         self,
         agent_network_instance: AgentNetwork,
-        obs_batch: torch.Tensor,
-        agent_ids_batch: torch.Tensor
+        raw_global_state_batch: torch.Tensor, # This is the raw flattened global state batch (B, total_features)
+        agent_ids_batch_for_q_values: torch.Tensor # (B, N) agent_ids for batch processing
     ) -> torch.Tensor:
         """
         与えられたAgentNetworkインスタンス（メインまたはターゲット）から、
         バッチ内の全エージェントの全アクションに対するQ値を計算します。
+        内部でStateProcessorを使用して生の状態をグリッド表現に変換します。
 
         Args:
             agent_network_instance (AgentNetwork): Q値を計算するAgentNetworkのインスタンス.
-            obs_batch (torch.Tensor): バッチ処理された状態 (形状: (batch_size, num_channels, grid_size, grid_size)).
-            agent_ids_batch (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size, n_agents)).
+            raw_global_state_batch (torch.Tensor): リプレイバッファから取得した生の状態のバッチ (形状: (batch_size, total_flat_features)).
+            agent_ids_batch_for_q_values (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size, n_agents)).
 
         Returns:
             torch.Tensor: 各エージェントの各アクションに対するQ値 (形状: (batch_size, n_agents, action_size)).
         """
-        batch_size = obs_batch.size(0)
-        n_agents = agent_ids_batch.size(1)
+        batch_size = raw_global_state_batch.size(0)
+        n_agents = self.n_agents # Use self.n_agents
 
-        # AgentNetworkが期待する入力形式 (B*N, C, G, G) と (B*N,) に整形
-        # 観測を各エージェント用に複製
-        repeated_obs_batch = obs_batch.unsqueeze(1).repeat(1, n_agents, 1, 1, 1)
-        repeated_obs_batch = repeated_obs_batch.view(
+        # StateProcessorを通して各エージェントの観測を生成 (B*N, C, G, G)
+        transformed_obs_list = []
+        for agent_idx in range(n_agents):
+            # Each call to transform_state_batch processes the entire raw_global_state_batch
+            # for a specific agent_idx
+            transformed_obs_for_agent = self.state_processor.transform_state_batch(
+                agent_idx, raw_global_state_batch
+            ) # (batch_size, num_channels, grid_size, grid_size)
+            transformed_obs_list.append(transformed_obs_for_agent)
+
+        # Stack them to get (n_agents, batch_size, num_channels, grid_size, grid_size)
+        stacked_transformed_obs = torch.stack(transformed_obs_list, dim=0)
+        # Reshape to (batch_size * n_agents, num_channels, grid_size, grid_size) for AgentNetwork
+        reshaped_transformed_obs = stacked_transformed_obs.permute(1, 0, 2, 3, 4).reshape(
             batch_size * n_agents, self.num_channels, self.grid_size, self.grid_size
         )
 
-        # エージェントIDをフラット化
-        flat_agent_ids = agent_ids_batch.view(-1)
+        # Agent IDs for the network (B*N,)
+        flat_agent_ids = agent_ids_batch_for_q_values.flatten()
 
         # AgentNetworkからQ値を計算
         # agent_network_instance((B*N, C, G, G), (B*N,)) -> (B*N, A)
-        q_values_flat = agent_network_instance(repeated_obs_batch, flat_agent_ids)
+        q_values_flat = agent_network_instance(reshaped_transformed_obs, flat_agent_ids)
 
         # 結果を元の形状 (B, N, A) に戻す
         q_values_reshaped = q_values_flat.view(batch_size, n_agents, self.action_size)
@@ -101,10 +111,10 @@ class BaseMasterAgent(ABC):
     @abstractmethod
     def evaluate_q(
         self,
-        obs_batch: torch.Tensor,
+        global_states_batch_raw: torch.Tensor, # Raw flattened global state (B, total_features)
         actions_batch: torch.Tensor, # (batch_size, n_agents)
         rewards_batch: torch.Tensor, # (batch_size,)
-        next_obs_batch: torch.Tensor,
+        next_global_states_batch_raw: torch.Tensor, # Raw flattened next global state (B, total_features)
         dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags
         is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:

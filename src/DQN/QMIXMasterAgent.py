@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from typing import List, Optional, Tuple
 
-from ..Base.Agent_Base import AgentNetwork, GlobalState, BaseMasterAgent, StateProcessor
+from Base.Agent_Base import AgentNetwork, GlobalState, BaseMasterAgent, StateProcessor
 
 from utils.StateProcesser import StateProcessor
 from .dqn import MixingNetwork

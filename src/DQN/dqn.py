@@ -4,12 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, List
 
-import torch
-import torch.optim as optim
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional, Tuple, List
-
 class AgentNetwork(nn.Module):
     """
     DQNで使用されるQネットワークモデル.
@@ -68,10 +62,6 @@ class AgentNetwork(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 class MixingNetwork(nn.Module):
     """
@@ -180,6 +170,9 @@ class DQNModel:
             use_per (bool, optional): Prioritized Experience Replay を使用するかどうか. Defaults to False. 
             state_processor (StateProcessor, optional): StateProcessor のインスタンス. None の場合はエラー.
         """
+        print("DQNModelが持っていたロジックは、MARLTrainerとMasterAgentサブクラスの責務として再構築されます。")
+        print("現在このクラスは不使用。")
+
         self.grid_size = grid_size
         self.gamma: float = gamma
         self.batch_size: int = batch_size
@@ -423,4 +416,3 @@ class DQNModel:
 
     def set_optimizer_state(self, state_dict: dict):
         self.optimizer.load_state_dict(state_dict)
-

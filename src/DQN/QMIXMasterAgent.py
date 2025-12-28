@@ -26,7 +26,7 @@ class QMIXMasterAgent(BaseMasterAgent):
             n_agents=n_agents,
             action_size=action_size,
             grid_size=grid_size,
-            goals_num=goals_num,
+            goals_number=goals_num,
             device=device,
             state_processor=state_processor,
             agent_network=agent_network

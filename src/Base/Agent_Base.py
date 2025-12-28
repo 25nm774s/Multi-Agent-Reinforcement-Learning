@@ -16,7 +16,7 @@ class BaseMasterAgent(ABC):
                  n_agents: int,
                  action_size: int,
                  grid_size: int,
-                 goals_num: int,
+                 goals_number: int,
                  device: torch.device,
                  state_processor: StateProcessor,
                  agent_network: AgentNetwork):
@@ -27,7 +27,7 @@ class BaseMasterAgent(ABC):
             n_agents (int): 環境内のエージェント数.
             action_size (int): エージェントのアクション空間のサイズ.
             grid_size (int): グリッド環境のサイズ.
-            goals_num (int): 環境内のゴール数.
+            goals_number (int): 環境内のゴール数.
             device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
             state_processor (StateProcessor): 状態変換に使用するStateProcessorのインスタンス.
             agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
@@ -35,7 +35,7 @@ class BaseMasterAgent(ABC):
         self.n_agents = n_agents
         self.action_size = action_size
         self.grid_size = grid_size
-        self.goals_num = goals_num
+        self.goals_num = goals_number
         self.device = device
         self.state_processor = state_processor
         self.agent_network = agent_network

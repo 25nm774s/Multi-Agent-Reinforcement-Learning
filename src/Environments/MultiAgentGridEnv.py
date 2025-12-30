@@ -4,7 +4,37 @@ from typing import Tuple, List, Dict
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
 
-from Base.Constant import PosType, GlobalState
+# from Base.Constant import PosType, GlobalState
+PosType = Tuple[int, int]
+GlobalState = Dict[str,PosType]
+Observation = Dict[str,PosType]
+
+# gs = {'@0':p0, '@1':p1, 'g0':p2, 'g1':p3}, p=(x,y)
+# gs = {'agent': {'@0':p0, '@1':p1, '@2':p2, '@3':p3'},
+#       'goals': {'g0':p4, 'g1':p5},
+#       'walls': {'w0':p6, 'w1':p7}
+# }
+# pos_type = Dict[str,int]
+# class ob_data_type:
+#   def __init__(self):
+#       self.name = []
+#       self.type = []
+#       self.pos = []
+#       
+#   def add(self,name, obj_type, pos:dict[str,int]):
+#       
+#           
+#           
+#       
+#       
+# grid_objects:Dict[str,obdata] = {
+#   'a0': {'name':'@0', 'type':'agent', 'pos':{'x':2,'y':3}},
+#   'a1': {'name':'@1', 'type':'agent', 'pos':{'x':3,'y':0}},
+#   'g0': {'name':'G0', 'type':'agent', 'pos':{'x':3,'y':0}},
+# }
+# gs = grid_objects
+# }
+# go['']
 # GridRenderer クラスは以前のセルで定義され、利用可能であることを想定しています。
 # もし利用できない場合は、MultiAgentGridEnv.__init__ 内の警告で通知されます。
 
@@ -12,7 +42,7 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, fixrd_goals:Tuple[PosType,...]|List[PosType]=[]):
+    def __init__(self, args, grid:Grid):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -29,12 +59,12 @@ class MultiAgentGridEnv:
         self.reward_mode: int = args.reward_mode
 
         # 新しい Grid クラスを使用した内部状態管理
-        self._grid: Grid = Grid(self.grid_size)
+        self._grid: Grid = grid
         self.collision_resolver = CollisionResolver(self._grid)
         self.action_space_size = self.collision_resolver.action_space_size
 
-        self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
-        self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
+        # self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)] トレーナーに移動予定
+        # self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
         # 報酬計算のための内部状態
         self._goals_reached_status: list[bool] = [False] * self.goals_number # 密な報酬モード3用
@@ -51,14 +81,13 @@ class MultiAgentGridEnv:
             self._grid.add_object(self._goal_ids[i], goal)
 
 
-    def reset(self, initial_agent_positions: list[PosType] = [], placement_mode: str = 'random') -> GlobalState:
+    def reset(self, initial_agent_positions: list[PosType] = []) -> Observation:
         """
         新しいエピソードのために環境をリセットします。
 
         Args:
             initial_agent_positions (list[PositionType], optional): エージェントの明示的な開始位置のリスト。
-                None の場合、placement_mode が使用されます。デフォルトは 'random'。
-            placement_mode (str): initial_agent_positions が None の場合のエージェント配置モード ('random' または 'near_goals')。デフォルトは 'random'。
+                None の場合、ランダム配置。
 
         Returns:
             object: 環境の初期観測。
@@ -85,28 +114,9 @@ class MultiAgentGridEnv:
                     raise ValueError(f"エージェント初期位置 {pos} がゴール位置と重複しています。")
 
         else:
-            if placement_mode == 'random':
-                # ゴールに占有されていない一意なランダム位置を生成します
-                #agent_positions = self._generate_unique_positions(
-                #    self.agents_number, existing_positions, self.grid_size
-                #) <<-Gridにランダム座標の生成を移行したため
-                agent_positions = self._grid.sample(self.agents_number)
-                #print(agent_positions,"\tMAGE.reset():agent_positions")
-            elif placement_mode == 'near_goals':
-                # ゴール近傍にエージェントを配置するロジックを実装します
-                try:
-                    agent_positions = self._place_agents_near_goals_logic() # 内部ロジック
-                    # 生成された near_goals 位置がゴールと重複していないかチェックします
-                    if any(pos in existing_positions for pos in agent_positions):
-                        raise ValueError("生成された near_goals 位置がゴール位置と重複しています。")
-                except (RuntimeError, ValueError) as e: # ロジックからの特定のエラーを捕捉
-                    print(f"ゴール近傍にエージェントを配置できませんでした: {e}")
-                    print("このエピソードではランダム配置にフォールバックします。")
-                    agent_positions:list[PosType] = self._generate_unique_positions(
-                        self.agents_number, existing_positions, self.grid_size
-                    )
-            else:
-                raise ValueError(f"未知の配置モード: {placement_mode}")
+            # ゴールに占有されていない一意なランダム位置を生成します
+            agent_positions = self._grid.sample(self.agents_number)
+            #print(agent_positions,"\tMAGE.reset():agent_positions")
 
         # グリッドにエージェントを追加します
         for i, pos in enumerate(agent_positions):
@@ -160,7 +170,7 @@ class MultiAgentGridEnv:
         next_observation = self._get_observation()
 
         # 7. 情報辞書 (オプション)
-        info:Dict = {}
+        info:Dict = {"global_state":self._get_global_state()}
 
         return next_observation, reward, done, info
 
@@ -213,45 +223,7 @@ class MultiAgentGridEnv:
         positions = random.sample(available_positions, num_positions)
         return positions
 
-
-    def _place_agents_near_goals_logic(self) -> list[PosType]:
-        """
-        ゴール近傍にエージェントを配置する内部ロジック。
-
-        Returns:
-            list[PositionType]: 生成されたエージェント位置のリスト。
-
-        Raises:
-            RuntimeError: ゴール位置がグリッドに設定されていない場合。
-            ValueError: ゴール近傍に十分な一意な位置がない場合。
-        """
-        goal_positions = list(self.get_goal_positions().values())
-        if not goal_positions or len(goal_positions) != self.goals_number:
-            # _setup_fixed_goals が正しく呼び出されていれば、これは理想的には起こりません。
-            raise RuntimeError("ゴール位置がグリッドに正しく設定されていません。")
-
-        near_positions = set()
-        radius = 2 # ゴール周辺の探索半径
-
-        for goal_pos in goal_positions:
-            for dx in range(-radius, radius + 1):
-                for dy in range(-radius, radius + 1):
-                    if dx == 0 and dy == 0: continue
-                    nx, ny = goal_pos[0] + dx, goal_pos[1] + dy
-                    pos = (nx, ny)
-                    # グリッド境界チェックと、位置がゴールでないことを確認します
-                    if self._grid.is_valid_position(pos) and pos not in goal_positions:
-                        near_positions.add(pos)
-
-        near_positions_list = list(near_positions)
-
-        if len(near_positions_list) < self.agents_number:
-            raise ValueError(f"{self.agents_number} 個のエージェントに対して、ゴール近傍に十分な一意な位置 ({len(near_positions_list)}) がありません。")
-
-        return random.sample(near_positions_list, self.agents_number)
-
-
-    def _get_observation(self) -> GlobalState:
+    def _get_observation(self) -> Observation:
         """
         エージェントの観測を生成します。
         ここではグローバル状態 (全位置のタプル: ゴール、次にエージェント) を返します。
@@ -263,8 +235,18 @@ class MultiAgentGridEnv:
         # 全てのオブジェクト位置のタプルを、オブジェクトIDタイプ (ゴール、次にエージェント) でソートして返します
         goal_positions = [self._grid.get_object_position(goal_id) for goal_id in self._goal_ids]
         agent_positions = [self._grid.get_object_position(agent_id) for agent_id in self._agent_ids]
-        return tuple(tuple(goal_positions) + tuple(agent_positions))
+        # return tuple(tuple(goal_positions) + tuple(agent_positions))
+        res:Dict[str,PosType] = {}
+        for id in ['g0','g1']: res[id] = self._grid.get_object_position(id)
+        def cal_pos(p0:PosType,p1:PosType,d:int):
+            if (abs(p0[0]-p1[0])+abs(p0[1]-p1[1])) < d:
+                return p0,p1
+            else:
+                return (-1,-1),(-1,-1)
+        for id in ['@0','@1','@2']:
+            
 
+    def _get_global_state(self): return self._grid.get_all_object_positions()
 
     def get_goal_positions(self) -> dict[str, PosType]:
         """現在のゴール位置を取得するヘルパーメソッド。"""

@@ -1,8 +1,6 @@
+from src.Environments.Grid import Grid
+from src.Environments.CollisionResolver import CollisionResolver
 import unittest
-
-# Assume the Grid and CollisionResolver class definitions
-from src.Enviroments.CollisionResolver import CollisionResolver
-from src.Enviroments.Grid import Grid
 
 class TestCollisionResolver(unittest.TestCase):
     """

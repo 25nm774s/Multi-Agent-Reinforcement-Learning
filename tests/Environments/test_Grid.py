@@ -1,8 +1,6 @@
 import unittest
 
-# Assume the Grid class definition from the previous cell is available.
-# from your_module import Grid, PositionType # If Grid was in a separate file
-from src.Enviroments.Grid import Grid
+from src.Environments.Grid import Grid
 
 class TestGrid(unittest.TestCase):
     """

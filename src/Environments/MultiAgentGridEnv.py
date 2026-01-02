@@ -4,45 +4,19 @@ from typing import Tuple, List, Dict
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
 
-# from Base.Constant import PosType, GlobalState
-PosType = Tuple[int, int]
-GlobalState = Dict[str,PosType]
-Observation = Dict[str,PosType]
+from Base.Constant import PosType#, GlobalState
 
-# gs = {'@0':p0, '@1':p1, 'g0':p2, 'g1':p3}, p=(x,y)
-# gs = {'agent': {'@0':p0, '@1':p1, '@2':p2, '@3':p3'},
-#       'goals': {'g0':p4, 'g1':p5},
-#       'walls': {'w0':p6, 'w1':p7}
-# }
-# pos_type = Dict[str,int]
-# class ob_data_type:
-#   def __init__(self):
-#       self.name = []
-#       self.type = []
-#       self.pos = []
-#       
-#   def add(self,name, obj_type, pos:dict[str,int]):
-#       
-#           
-#           
-#       
-#       
-# grid_objects:Dict[str,obdata] = {
-#   'a0': {'name':'@0', 'type':'agent', 'pos':{'x':2,'y':3}},
-#   'a1': {'name':'@1', 'type':'agent', 'pos':{'x':3,'y':0}},
-#   'g0': {'name':'G0', 'type':'agent', 'pos':{'x':3,'y':0}},
-# }
-# gs = grid_objects
-# }
-# go['']
-# GridRenderer クラスは以前のセルで定義され、利用可能であることを想定しています。
-# もし利用できない場合は、MultiAgentGridEnv.__init__ 内の警告で通知されます。
+GlobalState = Dict[str,PosType]
 
 class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, args, grid:Grid):
+    def __init__(self, 
+                 args, 
+                 grid:Grid, 
+                 fixrd_goals=[],
+                 distance_fn=(lambda p,q: int(abs(p[0] - q[0]) + abs(p[1] - q[1])))):
         """
         MultiAgentGridEnv を初期化します。
 
@@ -57,15 +31,17 @@ class MultiAgentGridEnv:
         self.agents_number: int = args.agents_number
         self.goals_number: int = args.goals_number
         self.reward_mode: int = args.reward_mode
+        self.neighbor_distance: float = args.neighbor_distance
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = grid
         self.collision_resolver = CollisionResolver(self._grid)
         self.action_space_size = self.collision_resolver.action_space_size
 
-        # self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)] トレーナーに移動予定
-        # self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
+        self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
+        self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
+        self.distance_fn = distance_fn
         # 報酬計算のための内部状態
         self._goals_reached_status: list[bool] = [False] * self.goals_number # 密な報酬モード3用
         self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
@@ -81,7 +57,7 @@ class MultiAgentGridEnv:
             self._grid.add_object(self._goal_ids[i], goal)
 
 
-    def reset(self, initial_agent_positions: list[PosType] = []) -> Observation:
+    def reset(self, initial_agent_positions: list[PosType] = []) -> Dict:
         """
         新しいエピソードのために環境をリセットします。
 
@@ -133,7 +109,7 @@ class MultiAgentGridEnv:
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
 
-    def step(self, actions: List[int])->Tuple[GlobalState,float,bool,Dict]:
+    def step(self, actions: List[int])->Tuple[Dict,Dict,Dict,Dict]:
         """
         各エージェントのアクションを受け取り、環境を更新します。
 
@@ -143,8 +119,8 @@ class MultiAgentGridEnv:
         Returns:
             tuple: (observation, reward, done, info)
                 observation (object): ステップ後の環境の観測。
-                reward (float): ステップ後に受け取った報酬。
-                done (bool): エピソードが終了したかどうか。
+                reward (dict): ステップ後に受け取った報酬。
+                done (dict): エピソードが終了したかどうか。
                 info (dict): 追加情報 (例: デバッグ情報)。
         """
         if len(actions) != self.agents_number:
@@ -170,9 +146,17 @@ class MultiAgentGridEnv:
         next_observation = self._get_observation()
 
         # 7. 情報辞書 (オプション)
-        info:Dict = {"global_state":self._get_global_state()}
+        info:Dict = {"global_state":self._get_global_state(), "total_reward":sum(reward.values())}
+        done_dict = {}
+        is_all_done = True
+        for aid in self._agent_ids:
+            done_dict[aid] = done
+        else:
+            is_all_done=False
 
-        return next_observation, reward, done, info
+        if is_all_done: done_dict['__all__']=True
+
+        return next_observation, reward, done_dict, info
 
 
     # --- ヘルパーメソッド (内部ロジック) ---
@@ -223,30 +207,45 @@ class MultiAgentGridEnv:
         positions = random.sample(available_positions, num_positions)
         return positions
 
-    def _get_observation(self) -> Observation:
+    def _get_observation(self) -> dict:
         """
-        エージェントの観測を生成します。
-        ここではグローバル状態 (全位置のタプル: ゴール、次にエージェント) を返します。
-        エージェントごとの部分観測に拡張することも可能です。
+        各エージェントごとの部分観測を生成します。
+        - 自分の位置
+        - 全ゴールの位置（ID順に固定）
+        - 他エージェントの位置（近傍以外は -1, -1）
+        """
+        observations = {}
+        
+        # 1. 全ゴールの位置を事前にリスト化（ID順を保証）
+        all_goal_positions = [
+            self._grid.get_object_position(goal_id) for goal_id in self._goal_ids
+        ]
 
-        Returns:
-            object: 観測。
-        """
-        # 全てのオブジェクト位置のタプルを、オブジェクトIDタイプ (ゴール、次にエージェント) でソートして返します
-        goal_positions = [self._grid.get_object_position(goal_id) for goal_id in self._goal_ids]
-        agent_positions = [self._grid.get_object_position(agent_id) for agent_id in self._agent_ids]
-        # return tuple(tuple(goal_positions) + tuple(agent_positions))
-        res:Dict[str,PosType] = {}
-        for id in ['g0','g1']: res[id] = self._grid.get_object_position(id)
-        def cal_pos(p0:PosType,p1:PosType,d:int):
-            if (abs(p0[0]-p1[0])+abs(p0[1]-p1[1])) < d:
-                return p0,p1
-            else:
-                return (-1,-1),(-1,-1)
-        for id in ['@0','@1','@2']:
+        for id in (self._agent_ids):
+            my_pos = self._grid.get_object_position(id)
             
+            # 2. 他のエージェントの情報を収集（自分以外）
+            others_info = {}
+            for other_id in self._agent_ids:
+                if id == other_id: continue
+                
+                other_pos = self._grid.get_object_position(other_id)
+                # 距離関数で判定（マンハッタン距離など）
+                if self.distance_fn(my_pos, other_pos) <= self.neighbor_distance:
+                    others_info[other_id] = other_pos
+                else:
+                    others_info[other_id] = (-1, -1)
+            
+            # 3. エージェントごとの観測辞書を構築
+            observations[id] = {
+                'self': my_pos,                  # エージェントの位置
+                'all_goals': all_goal_positions, # 全エージェントで共通のリスト
+                'others': others_info            # 他のエージェントの位置
+            }
+            
+        return observations
 
-    def _get_global_state(self): return self._grid.get_all_object_positions()
+    def _get_global_state(self)->GlobalState: return self._grid.get_all_object_positions()
 
     def get_goal_positions(self) -> dict[str, PosType]:
         """現在のゴール位置を取得するヘルパーメソッド。"""
@@ -348,7 +347,7 @@ class MultiAgentGridEnv:
 
         return float(total_distance)
 
-    def _calculate_reward(self,done_mode) -> float:
+    def _calculate_reward(self,done_mode) -> Dict[str,float]:
         """
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
@@ -420,7 +419,10 @@ class MultiAgentGridEnv:
             print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")
             reward = 0.0
 
-        return reward
+        res:Dict[str,float] = {}
+        for id in self._agent_ids: 
+            res[id] = reward
+        return res
 
     def _check_done_condition(self,done_mode) -> bool:
         """
@@ -440,10 +442,10 @@ class MultiAgentGridEnv:
             return all(goal in current_agents_pos_set for goal in goal_positions)
         elif done_mode == 1:
             # Rule 2: いずれかのゴールがエージェントによって占有されているか
-             return any(goal in current_agents_pos_set for goal in goal_positions)
+            return any(goal in current_agents_pos_set for goal in goal_positions)
         elif done_mode == 2:
             # Rule 3: 全てのエージェントがいずれかのゴール位置にいるか
-             return all(agent_pos in goal_positions_set for agent_pos in agent_positions)
+            return all(agent_pos in goal_positions_set for agent_pos in agent_positions)
         else:
             print(f"Warning: 未知の完了条件モード: {done_mode}。常に False を返します。")
             return False
@@ -451,17 +453,3 @@ class MultiAgentGridEnv:
     def get_all_object(self):
         r = self._grid.get_all_object_positions()
         return r
-
-if __name__=='__main__':
-    class arg_object:
-        def __init__(self) -> None:
-            self.grid_size=10# (int) 
-            self.agents_number=2# (int) 
-            self.goals_number=2# (int) 
-            self.reward_mode=9# (int) 
-            self.render_mode=False# (int) 
-            self.window_width=400# (int) 
-            self.window_height=600# (int) 
-            self.pause_duration=1.0# (float)
-
-    arg = arg_object()

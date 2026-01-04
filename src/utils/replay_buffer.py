@@ -3,7 +3,9 @@ import random
 import torch
 from collections import deque
 import numpy as np
-from typing import Tuple, List, Any, Optional
+from typing import Tuple, List, Any, Dict,Optional
+
+from Base.Constant import ExperienceType
 
 class SumTree:
     """
@@ -114,7 +116,7 @@ class SumTree:
         return self.tree[0]
 
 class ReplayBuffer:
-    def __init__(self, buffer_size: int, batch_size: int, device: torch.device, alpha: float = 0.6, use_per: bool = False, goals_num: int = 0):
+    def __init__(self, buffer_size: int, batch_size: int, device: torch.device, alpha: float = 0.6, use_per: bool = False, goals_number: int = 0, goal_ids: List[str] = [], agent_ids: List[str] = []):
         self.buffer_size: int = buffer_size
         self.batch_size: int = batch_size
         self.device: torch.device = device
@@ -122,28 +124,26 @@ class ReplayBuffer:
         self.use_per: bool = use_per
         self._max_priority = 1.0
 
-        # Added n_agents to `__init__` so `dones` can be properly shaped in `sample` method
-        self.n_agents: Optional[int] = None # Will be set during first add() call
-        self.goals_num = goals_num
+        self.goals_num = goals_number
+        self.n_agents: int = len(agent_ids)
+        self._goal_ids: List[str] = goal_ids
+        self._agent_ids: List[str] = agent_ids
+
+        # Update type hints to store observation dictionaries directly
+        # ExperienceType = Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]]
 
         if self.use_per:
-            # Modified type hint for experiences to include List[bool] for dones
-            self.experiences: List[Tuple[Any, List[int], float, Any, List[bool]]] = [None] * buffer_size#type:ignore
+            self.experiences: List[Optional[ExperienceType]] = [None] * buffer_size
             self.tree = SumTree(capacity=buffer_size)
             self.current_idx = 0
             self.size = 0
         else:
-            # Modified type hint for buffer to include List[bool] for dones
-            self.buffer: deque[Tuple[Any, List[int], float, Any, List[bool]]] = deque(maxlen=buffer_size)
+            self.buffer: deque[ExperienceType] = deque(maxlen=buffer_size)
             self.priorities: deque[float] = deque(maxlen=buffer_size)
 
-    # Modified `add` method to accept `dones: List[bool]`
-    def add(self, global_state: Any, actions: List[int], reward: float, next_global_state: Any, dones: List[bool]) -> None:
-        # Infer n_agents from the first `dones` list if not yet set
-        if self.n_agents is None and actions:
-            self.n_agents = len(actions)
-
-        data: Tuple[Any, List[int], float, Any, List[bool]] = (global_state, actions, reward, next_global_state, dones)
+    # Update `add` method signature to accept Dict[str, Dict[str, Any]]
+    def add(self, global_state: Dict[str, Dict[str, Any]], actions: List[int], reward: float, next_global_state: Dict[str, Dict[str, Any]], dones: List[bool]) -> None:
+        data: Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]] = (global_state, actions, reward, next_global_state, dones)
         if self.use_per:
             self.experiences[self.current_idx] = data
             self.tree.add(self._max_priority, self.current_idx)
@@ -152,7 +152,7 @@ class ReplayBuffer:
             self.size = min(self.size + 1, self.buffer_size)
         else:
             self.buffer.append(data)
-            self.priorities.append(0.0)
+            self.priorities.append(0.0) # Not used for uniform, but keeping for consistency
 
     def __len__(self) -> int:
         if self.use_per:
@@ -160,8 +160,10 @@ class ReplayBuffer:
         else:
             return len(self.buffer)
 
-    # Modified `sample` method to extract and return `dones_batch` as a tensor of List[bool]
-    def sample(self, beta: float) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
+    # Remove _flatten_global_state_dict method
+
+    # Modify `sample` method to remove calls to _flatten_global_state_dict
+    def sample(self, beta: float) -> Optional[Tuple[List[Dict[str, Dict[str, Any]]], torch.Tensor, torch.Tensor, List[Dict[str, Dict[str, Any]]], torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
         buffer_len = len(self)
         if buffer_len < self.batch_size:
             return None
@@ -184,12 +186,6 @@ class ReplayBuffer:
                 sampled_tree_indices.append(tree_idx)
                 sampled_indices.append(data_idx)#type:ignore
                 sampled_priorities_from_tree.append(priority) # Store the raw priority from the tree
-
-            # 重要度サンプリングの重みを計算する
-            # 1. 正規化係数として、SumTreeからすべてのアクティブな生の優先度を取得する
-            # この計算には、buffer_sizeだけでなく、バッファ内の実際の要素数を把握する必要がある。
-            # 有効な全経験のプライオリティを正確に取得する方法は複雑
-            # SumTree の内部構造を利用し、実際にバッファに存在する経験のプライオリティを直接取得することで、この課題に対応。
 
             all_active_raw_priorities = np.array([self.tree.tree[self.tree.capacity - 1 + j] for j in range(buffer_len)])
             adjusted_all_active_priorities = (all_active_raw_priorities + min_priority)**self.alpha
@@ -219,45 +215,40 @@ class ReplayBuffer:
             sampled_original_indices = None # Not applicable for uniform sampling
 
         try:
-            # Safely handle potential None values in sampled_experiences
-            # Filter out None experiences if any, though with proper buffer management, there shouldn't be
             filtered_experiences = [exp for exp in sampled_experiences if exp is not None]
 
             if not filtered_experiences:
                 print("Warning: Sampled experiences list is empty after filtering None. Returning None.")
                 return None
 
-            # global_state (item[0]) is a tuple of tuples. We need to flatten it.
-            global_states_np: np.ndarray = np.array([np.concatenate([np.asarray(coord) for coord in x[0]]).astype(np.float32) for x in filtered_experiences])
-            # actions_np: now a 2D array (batch_size, n_agents)
+            # global_state (item[0]) and next_global_state (item[3]) are now Dict[str, Dict[str, Any]]
+            # They are returned as a list of dictionaries directly
+            global_states_batch_list: List[Dict[str, Dict[str, Any]]] = [x[0] for x in filtered_experiences]
             actions_np: np.ndarray = np.array([x[1] for x in filtered_experiences], dtype=np.int64)
             reward_np: np.ndarray = np.array([x[2] for x in filtered_experiences], dtype=np.float32)
-            next_global_states_np: np.ndarray = np.array([np.concatenate([np.asarray(coord) for coord in x[3]]).astype(np.float32) for x in filtered_experiences])
-
-            if self.n_agents is None:
-                self.n_agents = len(filtered_experiences[0][4]) # Infer n_agents from the first sample's dones list
+            next_global_states_batch_list: List[Dict[str, Dict[str, Any]]] = [x[3] for x in filtered_experiences]
 
             dones_np: np.ndarray = np.array([x[4] for x in filtered_experiences], dtype=np.float32).reshape(self.batch_size, self.n_agents)
 
         except Exception as e:
-            print(f"Error converting sampled data to numpy arrays: {e}")
+            print(f"Error converting sampled data to numpy arrays or lists of dicts: {e}")
             return None
 
-        global_states_tensor: torch.Tensor = torch.tensor(global_states_np, dtype=torch.float32, device=self.device)
+        # global_states_batch_list and next_global_states_batch_list are now lists of dicts
         actions_tensor: torch.Tensor = torch.tensor(actions_np, dtype=torch.int64, device=self.device)
         reward_tensor: torch.Tensor = torch.tensor(reward_np, dtype=torch.float32, device=self.device)
-        next_global_states_tensor: torch.Tensor = torch.tensor(next_global_states_np, dtype=torch.float32, device=self.device)
         dones_tensor: torch.Tensor = torch.tensor(dones_np, dtype=torch.float32, device=self.device)
 
-        return global_states_tensor, actions_tensor, reward_tensor, next_global_states_tensor, dones_tensor, is_weights_tensor, sampled_original_indices
+        return global_states_batch_list, actions_tensor, reward_tensor, next_global_states_batch_list, dones_tensor, is_weights_tensor, sampled_original_indices
 
     def update_priorities(self, tree_indices: List[int], td_errors: np.ndarray) -> None:
         """
-        サンプリングされた経験の優先順位を、TD誤差に基づいてSumTree内で更新する.
+        Updates the priorities of sampled experiences in the SumTree based on their TD errors.
 
         Args:
-            tree_indices (List[int]): 優先度を更新する経験に対応する tree_indices のリスト（SumTree内の葉ノードインデックス）
-            td_errors (np.ndarray): サンプリングされた経験に対応するTD誤差の配列。
+            tree_indices (List[int]): A list of tree_indices (leaf node indices in SumTree)
+                                      for the experiences whose priorities are to be updated.
+            td_errors (np.ndarray): An array of TD errors corresponding to the sampled experiences.
         """
         if not self.use_per:
             return

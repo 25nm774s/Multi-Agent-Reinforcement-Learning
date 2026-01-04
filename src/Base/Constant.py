@@ -7,6 +7,10 @@ PosType = Tuple[int,int]
 GlobalState = Dict[str,PosType]
 """共通の状態表現s"""
 
+ExperienceType = \
+    Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]]
+"""経験のデータ型"""
+
 #####################################
 # Qテーブル内部の座標表現形式
 QState = Tuple[int, ...]

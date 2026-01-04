@@ -1,7 +1,7 @@
 import sys
 import os
 import torch.optim as optim
-from typing import List, Tuple, Optional, Any
+from typing import List, Dict, Any
 
 from Environments.MultiAgentGridEnv import MultiAgentGridEnv
 
@@ -36,7 +36,7 @@ class MARLTrainer:
         Args:
             args: 実行設定を含むオブジェクト.
                   (reward_mode, render_mode, episode_number, max_timestep,
-                   agents_number, goals_num, grid_size, load_model, mask,
+                   agents_number, goals_number, grid_size, load_model, mask,
                    save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
             mode (str): 学習モード ('IQL' または 'QMIX').
             shared_agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
@@ -59,11 +59,12 @@ class MARLTrainer:
         self.goals_number = args.goals_number
         self.grid_size = args.grid_size
         self.update_frequency = 4 # 学習の頻度
-        self.target_update_frequency = args.target_update_frequency # From args
+        self.target_update_frequency = args.target_update_frequency
 
         self.save_agent_states = args.save_agent_states
 
         self.start_episode = 1
+        self.total_step = 0
 
         # Epsilon decay parameters
         self.epsilon = 1.0
@@ -74,28 +75,39 @@ class MARLTrainer:
         self.beta_anneal_steps = args.beta_anneal_steps
         self.use_per = args.use_per
 
+        # These are already defined in self.env but Trainer should also know them for ReplayBuffer setup
+        self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
+        self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
+
+        # Debug print to confirm goals_number
+        print(f"[DEBUG] MARLTrainer initialized with goals_number: {self.goals_number}")
+
         # MasterAgentのインスタンス化
         if mode == 'IQL':
             self.master_agent = IQLMasterAgent(
                 n_agents=args.agents_number,
                 action_size=self.env.action_space_size,
                 grid_size=args.grid_size,
-                goals_num=args.goals_number,
+                goals_number=args.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
                 agent_network=shared_agent_network,
-                gamma=args.gamma
+                gamma=args.gamma,
+                agent_ids=self._agent_ids,
+                goal_ids=self._goal_ids
             )
         elif mode == 'QMIX':
             self.master_agent = QMIXMasterAgent(
                 n_agents=args.agents_number,
                 action_size=self.env.action_space_size,
                 grid_size=args.grid_size,
-                goals_num=args.goals_number,
+                goals_number=args.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
                 agent_network=shared_agent_network,
-                gamma=args.gamma
+                gamma=args.gamma,
+                agent_ids=self._agent_ids,
+                goal_ids=self._goal_ids
             )
         else:
             raise ValueError(f"Unknown mode: {mode}. Must be 'IQL' or 'QMIX'.")
@@ -118,12 +130,10 @@ class MARLTrainer:
         folder_name = f"{mode}"
 
         # 観測範囲に基づいた識別子を追加
-        if args.neighbor_distance == 0:
-            folder_name += "_Selfish"
-        elif args.neighbor_distance >= args.grid_size:
-            folder_name += "_FullObs"
+        if args.neighbor_distance >= args.grid_size:
+            folder_name += "_全観測"
         else:
-            folder_name += f"_PartialObs[{args.neighbor_distance}]"
+            folder_name += f"_観測[{args.neighbor_distance}]"
 
         folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
 
@@ -143,7 +153,8 @@ class MARLTrainer:
 
         self.load_checkpoint(None)
 
-    def decay_epsilon_power(self, step: int):
+
+    def decay_epsilon_power(self):
         """
         ステップ数に基づき、探索率εを指数的に減衰させる関数。
         Args:
@@ -164,14 +175,14 @@ class MARLTrainer:
         """
         # 事前条件チェック: エージェント数はゴール数以下である必要がある
         if self.agents_number > self.goals_number:
-            print('goals_num >= agents_num に設定してください.\n')
+            print('goals_number >= agents_number に設定してください.\n')
             sys.exit()
 
         # 学習開始メッセージ
         print(f"{GREEN}MARLTrainer{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})") + "\n")
         print(f"goals: {self.env.get_goal_positions().values()}")
 
-        total_step = 0 # 環境との全インタラクションステップ数の累積
+        total_step = self.total_step # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
         episode_rewards: list[float] = []   # エピソードごとの報酬を格納
         episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
@@ -186,15 +197,15 @@ class MARLTrainer:
             print(f'{GREEN if done_counts and done_counts[-1] else ""}■{RESET}', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
             # 50エピソードごとに集計結果を出力
-            CONSOLE_LOG_FREQ = 50
+            CONSOLE_LOG_FREQ = 20
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
-            current_global_state:GlobalState = self.env.reset(initial_agent_positions=iap)
+            # reset() は部分観測を返します。
+            current_partial_observations: Dict[str, Dict[str, Any]] = self.env.reset(initial_agent_positions=iap)
+            # 真のグローバル状態はログ目的で別途取得
+            true_current_global_state: GlobalState = self.env._get_global_state() # For logging and potential future use where full global state is needed
 
-            # individual_dones will track if an agent has completed its task or dropped out
-            # This is the `dones` List[bool] that gets passed to ReplayBuffer.add
-            individual_dones: List[bool] = [False] * self.agents_number # Initialize individual done flags for all agents
             episode_done = False # Overall episode done flag, returned by env.step
             step_count:int = 0 # 現在のエピソードのステップ数
             episode_reward:float = 0.0 # 現在のエピソードの累積報酬
@@ -206,30 +217,31 @@ class MARLTrainer:
             # ---------------------------
             while not episode_done and step_count < self.max_ts:
                 # Epsilon decay
-                self.decay_epsilon_power(total_step)
+                self.decay_epsilon_power()
 
-                # 各エージェントの行動を選択
-                actions: List[int] = self.master_agent.get_actions(current_global_state, self.epsilon)
+                # 各エージェントの行動を選択 - master_agentは観測辞書を期待します
+                actions: List[int] = self.master_agent.get_actions(current_partial_observations, self.epsilon)
 
                 # エージェントの状態を保存（オプション）
                 if self.save_agent_states:
-                    agent_positions_in_global_state = current_global_state[self.goals_number:]
-                    for i, agent_pos in enumerate(agent_positions_in_global_state):
-                        self.saver.log_agent_states(i, agent_pos[0], agent_pos[1])
+                    # true_current_global_state (Dict[str, PosType]) は 'agent_X' キーを含みます
+                    for agent_id_str in self._agent_ids:
+                        if agent_id_str in true_current_global_state:
+                            agent_pos = true_current_global_state[agent_id_str]
+                            self.saver.log_agent_states(agent_id_str, agent_pos[0], agent_pos[1])
 
                 # 環境にステップを与えて状態を更新し、結果を取得
-                next_global_state, reward, episode_done, info = self.env.step(actions)
+                # next_partial_observations は部分観測の辞書 (Dict[str, Dict[str, Any]])
+                next_partial_observations, reward_dict_per_agent, done_dict, info = self.env.step(actions)
 
-                # `dones_for_experience` should be the individual done flags for each agent at this step.
-                # For now, if the episode is done, all agents are considered done for this experience.
-                # In a more complex environment, info could contain individual agent done status.
-                dones_for_experience = [episode_done] * self.agents_number # Assuming all agents done if episode is done
+                # `dones_for_experience` は、このステップでの各エージェントの個別の完了フラグである必要があります。
+                dones_for_experience: List[bool] = [done_dict[f'agent_{i}'] for i in range(self.agents_number)]
 
-                # Store experience in replay buffer
-                self.replay_buffer.add(current_global_state, actions, reward, next_global_state, dones_for_experience)
+                # Store experience in replay buffer - use the observation dictionaries directly
+                self.replay_buffer.add(current_partial_observations, actions, sum(reward_dict_per_agent.values()), next_partial_observations, dones_for_experience)
 
                 # Each step accumulates total reward
-                episode_reward += reward
+                episode_reward += sum(reward_dict_per_agent.values()) # reward_dict_per_agentはDict[str, float]です。
 
                 # Perform learning at update_frequency
                 if total_step % self.update_frequency == 0 and len(self.replay_buffer) >= self.replay_buffer.batch_size:
@@ -237,12 +249,14 @@ class MARLTrainer:
                     sample_output = self.replay_buffer.sample(beta=self.beta)
 
                     if sample_output is not None:
-                        global_states_batch_raw, actions_batch, rewards_batch, next_global_states_batch_raw, dones_batch, is_weights_batch, sampled_indices = sample_output
+                        # replay_buffer.sample now returns lists of observation dictionaries
+                        obs_dicts_batch, actions_batch, rewards_batch, next_obs_dicts_batch, dones_batch, is_weights_batch, sampled_indices = sample_output
 
                         # Calculate loss using MasterAgent
+                        # master_agent.evaluate_q expects lists of observation dictionaries
                         loss, abs_td_errors = self.master_agent.evaluate_q(
-                            global_states_batch_raw, actions_batch, rewards_batch,
-                            next_global_states_batch_raw, dones_batch, is_weights_batch
+                            obs_dicts_batch, actions_batch, rewards_batch,
+                            next_obs_dicts_batch, dones_batch, is_weights_batch
                         )
 
                         # Backward pass and optimize
@@ -252,29 +266,38 @@ class MARLTrainer:
 
                         # Update priorities in ReplayBuffer if PER is used
                         if self.use_per and sampled_indices is not None and abs_td_errors is not None:
-                            # abs_td_errors from evaluate_q is (batch_size,) for the sample's total TD error
+                            # evaluate_qからのabs_td_errorsは、サンプルの合計TD誤差に対する(batch_size,)です。
                             self.replay_buffer.update_priorities(sampled_indices, abs_td_errors.detach().cpu().numpy())
 
                         step_losses.append(loss.item())
 
                     # Sync target network periodically
-                    if total_step > 0 and total_step % self.target_update_frequency == 0: # Use self.target_update_frequency
+                    if total_step > 0 and total_step % self.target_update_frequency == 0: # self.target_update_frequencyを使用
                         self.master_agent.sync_target_network()
 
                     # PER: Beta annealing
-                    if self.use_per: # PER: Beta annealing only if use_per is True
-                        # Ensure beta doesn't exceed 1.0
-                        beta_increment_per_learning_step = (1.0 - self.args.beta) / self.beta_anneal_steps # Use initial beta from args to calculate increment
+                    if self.use_per: # PERがTrueの場合のみベータアニーリング
+                        # ベータが1.0を超えないようにします
+                        beta_increment_per_learning_step = (1.0 - self.args.beta) / self.beta_anneal_steps # 初期ベータ値から増分を計算
                         self.beta = min(1.0, self.beta + beta_increment_per_learning_step)
 
-                current_global_state = next_global_state
+                current_partial_observations = next_partial_observations # 次のステップのために現在の観測を更新
+                true_current_global_state = info['global_state'] # ログのために真のグローバル状態も更新
                 step_count += 1
                 total_step += 1
+
+                if done_dict['__all__']: # もしエピソードが成功したら
+                    episode_done = True
+                    # print(f"DEBUG: Episode {episode} finished successfully at step: {step_count}")
+                elif step_count == self.max_ts: # もし最大ステップ数に達したら
+                    # print(f"DEBUG: Episode {episode} timed out at step: {step_count}")
+                    pass
 
             # ---------------------------
             # エピソード終了後の処理
             # ---------------------------
 
+            # ログ表示
             if (episode % CONSOLE_LOG_FREQ == 0) and (episode!=self.start_episode):
                 print() # 改行して進捗表示をクリア
 
@@ -286,7 +309,7 @@ class MARLTrainer:
 
                 print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
                 print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.3f}{RESET}") # 達成率も出力 .3f で小数点以下2桁表示
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
                 print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
                 if self.use_per:
                     print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}, beta: {GREEN}{self.beta:.3f}{RESET}")
@@ -299,10 +322,10 @@ class MARLTrainer:
                 done_counts = []
 
             if episode % 50 == 0:
-                self.save_checkpoint(episode)
+                self.save_checkpoint(episode, total_step)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント
-            if episode_done:
+            if done_dict['__all__']:
                 episode_steps.append(step_count)
 
             # エピソードの平均損失を計算
@@ -310,13 +333,13 @@ class MARLTrainer:
             episode_step:int = step_count
 
             # Saverでエピソードごとのスコアをログに記録
-            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, episode_done)
+            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, done_dict['__all__'])
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             episode_losses.append(episode_loss)
             episode_rewards.append(episode_reward)
             episode_steps.append(episode_step)
-            done_counts.append(episode_done)
+            done_counts.append(1 if done_dict['__all__'] else 0)
 
         self.saver.save_remaining_episode_data()
         self.saver.save_visited_coordinates()
@@ -384,29 +407,34 @@ class MARLTrainer:
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
 
             # エージェントの初期位置を設定
-            current_global_state = self.env.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)])
+            current_partial_observations = self.env.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)])
+            current_global_state_for_logging = self.env._get_global_state() # Reset後の真のグローバル状態を取得
+
             episode_done = False
             step_count = 0
             ep_reward = 0.0
 
             while not episode_done and step_count < max_simulation_timestep:
                 print(f"\nステップ {step_count}:")
-                print(f"  現在の全体状態: {current_global_state}")
+                print(f"  現在の全体状態: {current_global_state_for_logging}")
 
                 # Get actions from master_agent (epsilon=0 for greedy actions)
-                actions = self.master_agent.get_actions(current_global_state, epsilon=0.0)
+                actions = self.master_agent.get_actions(current_partial_observations, epsilon=0.0)
 
                 # Display Q-values (This part requires MasterAgent to expose a way to get all Q-values, or replicate logic)
                 # For now, let's just display the chosen actions
                 print(f"  選択された行動: {actions}")
 
                 # 環境にステップを与えて状態を更新し、結果を取得
-                next_global_state, reward, episode_done, _ = self.env.step(actions)
-                ep_reward += reward
+                next_partial_observations, reward_dict_per_agent, done_dict, info = self.env.step(actions)
+                current_partial_observations = next_partial_observations # 次の真のグローバル状態に更新
+                current_global_state_for_logging = info['global_state'] # ログのためにグローバル状態も更新
 
-                print(f"  報酬: {reward:.2f}, 完了: {episode_done}")
+                ep_reward += sum(reward_dict_per_agent.values())
+                episode_done = done_dict['__all__']
 
-                current_global_state = next_global_state
+                print(f"  報酬: {sum(reward_dict_per_agent.values()):.2f}, 完了: {episode_done}")
+
                 step_count += 1
 
                 if episode_done:
@@ -458,6 +486,7 @@ class MARLTrainer:
 
             # Update start_episode and epsilon/beta
             self.start_episode = agent_net_checkpoint_data['epoch'] + 1
+            self.total_step = agent_net_checkpoint_data['step'] + 1
             self.epsilon = agent_net_checkpoint_data['epsilon']
             # The beta value for PER annealing might need to be explicitly saved/loaded if it's dynamic.
             # For simplicity, we are not loading beta here. It will reset to args.beta and anneal from there.
@@ -473,7 +502,7 @@ class MARLTrainer:
 
         print(f"エピソード{self.start_episode}から再開")
 
-    def save_checkpoint(self, episode:int):
+    def save_checkpoint(self, episode:int, total_step: int):
         model_io = Model_IO()
         model_dir = os.path.join(self.save_dir, "checkpoints")
         if not os.path.exists(model_dir): os.makedirs(model_dir)
@@ -487,8 +516,9 @@ class MARLTrainer:
             self.master_agent.agent_network_target.state_dict(),
             self.optimizer.state_dict(),
             episode,
-            epsilon=self.epsilon
-            # beta=self.beta # Optionally save beta as well
+            total_step,
+            epsilon=self.epsilon,
+            beta=self.beta # Optionally save beta as well
         )
         model_io.save_checkpoint(
             agent_net_file_path_episode,
@@ -496,8 +526,9 @@ class MARLTrainer:
             self.master_agent.agent_network_target.state_dict(),
             self.optimizer.state_dict(),
             episode,
-            epsilon=self.epsilon
-            # beta=self.beta
+            total_step,
+            epsilon=self.epsilon,
+            beta=self.beta
         )
 
         # If QMIX, save MixingNetwork checkpoint (latest and episode-specific)
@@ -510,8 +541,9 @@ class MARLTrainer:
                 self.master_agent.mixing_network_target.state_dict(),
                 None, # Optimizer state already saved with agent_network, or needs separate handling for mixing network optimizer
                 episode,
-                epsilon=self.epsilon
-                # beta=self.beta
+                total_step,
+                epsilon=self.epsilon,
+                beta=self.beta
             )
             model_io.save_checkpoint(
                 mixing_net_file_path_episode,
@@ -519,7 +551,7 @@ class MARLTrainer:
                 self.master_agent.mixing_network_target.state_dict(),
                 None,
                 episode,
-                epsilon=self.epsilon
-                # beta=self.beta
+                total_step,
+                epsilon=self.epsilon,
+                beta=self.beta
             )
-

@@ -147,13 +147,10 @@ class MultiAgentGridEnv:
         # 7. 情報辞書 (オプション)
         info:Dict = {"global_state":self._get_global_state(), "total_reward":sum(reward.values())}
         done_dict = {}
-        is_all_done = True
         for aid in self._agent_ids:
             done_dict[aid] = done
-        else:
-            is_all_done=False
 
-        if is_all_done: done_dict['__all__']=True
+        done_dict['__all__'] = done # 全体の完了状態を直接設定
 
         return next_observation, reward, done_dict, info
 
@@ -384,7 +381,7 @@ class MultiAgentGridEnv:
                     reward +=  1.0 # 距離が減った報酬
                 else:
                     reward += -1.0 # "止"または距離が増えた
-                
+
             # else: 初期状態またはエージェントが配置されていない場合、距離変化報酬なし
 
             # 2. 個別ゴール到達に対する段階報酬
@@ -407,7 +404,7 @@ class MultiAgentGridEnv:
             # 3. 完了報酬
             if done:
                 reward += 100.0 # 終了時の追加報酬 (調整可能)
-            
+
             # 時間経過の罰則
             reward += -1.0
 
@@ -440,7 +437,7 @@ class MultiAgentGridEnv:
             # Rule 1: 全てのゴールがエージェントによって占有されているか
             return all(goal in current_agents_pos_set for goal in goal_positions)
         elif done_mode == 1:
-            # Rule 2: いずれかのゴールがエージェントによって占有されているか
+            # Rule 2: いずれかのゴールが少なくとも1つのエージェントによって占有されているか
             return any(goal in current_agents_pos_set for goal in goal_positions)
         elif done_mode == 2:
             # Rule 3: 全てのエージェントがいずれかのゴール位置にいるか

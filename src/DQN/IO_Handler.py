@@ -6,7 +6,7 @@ class Model_IO:
     def load(self, file_path) -> dict:
         try: return torch.load(file_path, weights_only=True)
         except Exception as e: raise ValueError(f"Error loading model: {e}")
-    def save_checkpoint(self, file_path, model_state, target_state, optimizer_state, epoch, epsilon): torch.save({'model_state': model_state, 'target_state': target_state, 'optimizer_state': optimizer_state, 'epoch': epoch, 'epsilon': epsilon}, file_path)
+    def save_checkpoint(self, file_path, model_state, target_state, optimizer_state, epoch, step, epsilon, beta): torch.save({'model_state': model_state, 'target_state': target_state, 'optimizer_state': optimizer_state, 'epoch': epoch, 'step': step, 'epsilon': epsilon, 'beta': beta}, file_path)
     def load_checkpoint(self, file_path) -> dict:
         try: return torch.load(file_path, weights_only=False)
         except Exception as e: raise ValueError(f"Error loading checkpoint: {e}")

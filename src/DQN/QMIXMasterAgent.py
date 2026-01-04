@@ -1,11 +1,10 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
-from Base.Agent_Base import AgentNetwork, GlobalState, BaseMasterAgent, StateProcessor
+from Base.Agent_Base import AgentNetwork, BaseMasterAgent, StateProcessor
 
-from utils.StateProcesser import StateProcessor
 from .dqn import MixingNetwork
 
 class QMIXMasterAgent(BaseMasterAgent):
@@ -18,19 +17,23 @@ class QMIXMasterAgent(BaseMasterAgent):
                  n_agents: int,
                  action_size: int,
                  grid_size: int,
-                 goals_num: int,
+                 goals_number: int,
                  device: torch.device,
                  state_processor: StateProcessor,
                  agent_network: AgentNetwork,
-                 gamma: float): # Add gamma as a parameter
+                 gamma: float,
+                 agent_ids: List[str],
+                 goal_ids: List[str]):
         super().__init__(
             n_agents=n_agents,
             action_size=action_size,
             grid_size=grid_size,
-            goals_number=goals_num,
+            goals_number=goals_number,
             device=device,
             state_processor=state_processor,
-            agent_network=agent_network
+            agent_network=agent_network,
+            agent_ids=agent_ids,
+            goal_ids=goal_ids
         )
         self.gamma = gamma
 
@@ -50,29 +53,28 @@ class QMIXMasterAgent(BaseMasterAgent):
         params.extend(list(self.mixing_network.parameters()))
         return params
 
-    def get_actions(self, global_state: GlobalState, epsilon: float) -> List[int]:
+    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> List[int]:
         """
-        与えられたグローバル状態とイプシロンに基づいて、各エージェントのアクションを選択します。
+        与えられたグローバル状態（ローカル観測辞書）とイプシロンに基づいて、各エージェントのアクションを選択します。
         """
         self.agent_network.eval() # ネットワークを評価モードに設定
         with torch.no_grad():
-            # グローバル状態をバッチ次元を追加して StateProcessor に渡す
-            flat_global_state_np = np.array(global_state).flatten() # Ensure it's flattened
-            global_state_tensor = torch.tensor(flat_global_state_np, dtype=torch.float32, device=self.device).unsqueeze(0)
+            transformed_obs_list_for_all_agents = []
+            for agent_id in self._agent_ids:
+                single_agent_obs = obs_dict_for_current_step[agent_id]
+                # StateProcessor.transform_state_batchは単一エージェントの観測辞書を受け取る
+                transformed_obs = self.state_processor.transform_state_batch(single_agent_obs)
+                transformed_obs_list_for_all_agents.append(transformed_obs)
 
-            transformed_obs_list = []
-            for agent_idx in range(self.n_agents):
-                transformed_obs_for_agent = self.state_processor.transform_state_batch(
-                    agent_idx, global_state_tensor
-                ) # (1, num_channels, grid_size, grid_size)
-                transformed_obs_list.append(transformed_obs_for_agent)
+            # 全エージェントの変換済み観測をスタック: (N, C, G, G)
+            transformed_obs_for_all_agents = torch.stack(transformed_obs_list_for_all_agents, dim=0)
 
-            obs_for_all_agents = torch.cat(transformed_obs_list, dim=0) # (n_agents, C, G, G)
-
+            # エージェントIDバッチの作成 (N,)
+            # 各エージェントIDは一度だけ必要。unsqueeze(0)やrepeatは不要。
             agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
 
-            # AgentNetwork からQ値を計算 (n_agents, action_size)
-            q_values_all_agents = self.agent_network(obs_for_all_agents, agent_ids_for_all_agents)
+            # AgentNetwork からQ値を計算 (N, action_size)
+            q_values_all_agents = self.agent_network(transformed_obs_for_all_agents, agent_ids_for_all_agents)
 
             # ε-greedyポリシーを適用
             actions: List[int] = []
@@ -86,10 +88,10 @@ class QMIXMasterAgent(BaseMasterAgent):
 
     def evaluate_q(
         self,
-        global_states_batch_raw: torch.Tensor, # Raw flattened global state (B, total_features)
+        obs_dicts_batch: List[Dict[str, Dict[str, Any]]], # List of observation dictionaries
         actions_batch: torch.Tensor, # (batch_size, n_agents)
         rewards_batch: torch.Tensor, # (batch_size,) - This is a team reward
-        next_global_states_batch_raw: torch.Tensor, # Raw flattened next global state (B, total_features)
+        next_obs_dicts_batch: List[Dict[str, Dict[str, Any]]], # List of observation dictionaries
         dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags (0 if alive, 1 if dead)
         is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -101,14 +103,20 @@ class QMIXMasterAgent(BaseMasterAgent):
         self.agent_network_target.eval()
         self.mixing_network_target.eval()
 
-        batch_size = global_states_batch_raw.size(0)
+        batch_size = len(obs_dicts_batch)
+
+        # Process raw observation dictionaries into tensors for AgentNetwork and MixingNetwork
+        current_transformed_obs_batch, current_global_state_for_mixing = self._process_raw_observations_batch(obs_dicts_batch)
+        next_transformed_obs_batch, next_global_state_for_mixing = self._process_raw_observations_batch(next_obs_dicts_batch)
 
         # Agent IDs for batch processing
-        agent_ids_batch_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).unsqueeze(0).repeat(batch_size, 1) # (batch_size, n_agents)
+        # This needs to be (B*N,) for the _get_agent_q_values method
+        agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size) # (batch_size * n_agents,)
 
         # STEP 1: 各エージェントの全アクションQ値の算出 (メインネットワーク)
-        # (batch_size, n_agents, action_size)
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, global_states_batch_raw, agent_ids_batch_for_q_values)
+        # _get_agent_q_values expects (B*N, C, G, G) and (B*N,) agent_ids
+        # Returns (batch_size, n_agents, action_size)
+        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_transformed_obs_batch, agent_ids_for_q_values)
 
         # STEP 2: 選択されたアクションのQ値抽出 (メインネットワーク)
         # actions_batch (B, N) -> (B, N, 1) for gather
@@ -119,13 +127,15 @@ class QMIXMasterAgent(BaseMasterAgent):
         chosen_q_values_masked = chosen_q_values * (1 - dones_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
 
         # STEP 3: MixingNetwork への入力整形と Q_tot の算出 (メインネットワーク)
-        Q_tot = self.mixing_network(chosen_q_values_masked, global_states_batch_raw) # (batch_size, 1)
+        # current_global_state_for_mixing has shape (batch_size, state_dim)
+        Q_tot = self.mixing_network(chosen_q_values_masked, current_global_state_for_mixing) # (batch_size, 1)
 
         # ターゲットQ_totの計算 (ターゲットネットワーク)
         with torch.no_grad():
             # 次の状態の各エージェントのQ値 (ターゲットAgentNetwork)
-            # (batch_size, n_agents, action_size)
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_global_states_batch_raw, agent_ids_batch_for_q_values)
+            # _get_agent_q_values expects (B*N, C, G, G) and (B*N,) agent_ids
+            # Returns (batch_size, n_agents, action_size)
+            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_transformed_obs_batch, agent_ids_for_q_values)
 
             # 各エージェントの次の状態での最大Q値 (ターゲットAgentNetwork)
             # (batch_size, n_agents, 1)
@@ -135,7 +145,8 @@ class QMIXMasterAgent(BaseMasterAgent):
             next_max_q_values_target_masked = next_max_q_values_target * (1 - dones_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
 
             # ターゲットMixingNetwork を介して target_Q_tot_unmasked を算出
-            target_Q_tot_unmasked = self.mixing_network_target(next_max_q_values_target_masked, next_global_states_batch_raw) # (batch_size, 1)
+            # next_global_state_for_mixing has shape (batch_size, state_dim)
+            target_Q_tot_unmasked = self.mixing_network_target(next_max_q_values_target_masked, next_global_state_for_mixing) # (batch_size, 1)
 
             # Bellman方程式による最終的なターゲットQ_tot
             # rewards_batch (B,) -> (B, 1)

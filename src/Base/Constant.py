@@ -4,7 +4,7 @@ from typing import Tuple,List,Any,Dict
 PosType = Tuple[int,int]
 """共通の座標表現形式"""
 
-GlobalState = Tuple[PosType,...]
+GlobalState = Dict[str,PosType]
 """共通の状態表現s"""
 
 #####################################

@@ -14,7 +14,6 @@ class MultiAgentGridEnv:
     """
     def __init__(self, 
                  args, 
-                 grid:Grid, 
                  fixrd_goals=[],
                  distance_fn=(lambda p,q: int(abs(p[0] - q[0]) + abs(p[1] - q[1])))):
         """
@@ -34,7 +33,7 @@ class MultiAgentGridEnv:
         self.neighbor_distance: float = args.neighbor_distance
 
         # 新しい Grid クラスを使用した内部状態管理
-        self._grid: Grid = grid
+        self._grid: Grid = Grid(self.grid_size)
         self.collision_resolver = CollisionResolver(self._grid)
         self.action_space_size = self.collision_resolver.action_space_size
 

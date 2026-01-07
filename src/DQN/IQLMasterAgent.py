@@ -77,7 +77,7 @@ class IQLMasterAgent(BaseMasterAgent):
         self,
         obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
         actions_batch: torch.Tensor, # (batch_size, n_agents)
-        rewards_batch: torch.Tensor, # (batch_size,) - This is a team reward
+        rewards_batch: torch.Tensor, # (batch_size, n_agents) - Changed from (batch_size,)
         next_obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
         dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags
         is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
@@ -120,10 +120,8 @@ class IQLMasterAgent(BaseMasterAgent):
 
             # TD Target calculation for each agent
             # Target = R + gamma * max_Q(s', a') * (1 - done)
-            expanded_rewards_batch = rewards_batch.unsqueeze(1).repeat(1, self.n_agents) # (batch_size, n_agents)
-
-            # Use dones_batch as mask. 1 if done, 0 if not done. So (1 - dones_batch) becomes 0 if done, 1 if not done.
-            target_q_values_all_agents = expanded_rewards_batch + self.gamma * next_max_q_values * (1 - dones_batch)
+            # rewards_batch is now (batch_size, n_agents)
+            target_q_values_all_agents = rewards_batch + self.gamma * next_max_q_values * (1 - dones_batch)
 
         # Calculate Huber Loss for each agent independently
         # Flatten Q-values and targets for loss calculation
@@ -141,3 +139,4 @@ class IQLMasterAgent(BaseMasterAgent):
         abs_td_errors_per_sample = abs_td_errors_flat.view(batch_size, self.n_agents).mean(dim=1) # (batch_size,)
 
         return loss, abs_td_errors_per_sample.detach()
+

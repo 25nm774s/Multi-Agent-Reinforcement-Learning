@@ -1,5 +1,6 @@
 import random
-from typing import Tuple, List, Dict
+from typing import Tuple, Dict
+from itertools import product
 
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
@@ -259,106 +260,115 @@ class MultiAgentGridEnv:
         return agent_pos_dict
 
 
-    def _calculate_total_distance_to_goals_LEGACY(self) -> float:
+    # def _calculate_total_distance_to_goals_LEGACY(self) -> float:
+    #     """
+    #     各ゴールから最も近いエージェントまでのマンハッタン距離の合計を計算します。
+    #     """
+    #     # print("このメソッドの代わりに_calculate_total_distance_to_goalsを使うことを検討。")
+
+    #     goal_positions = list(self.get_goal_positions().values())
+    #     agent_positions = list(self.get_agent_positions().values())
+
+    #     if not agent_positions:
+    #         # エージェントが配置されていない場合 (リセット後には起こらないはず)、距離は無限大です。
+    #         # これは密な報酬で処理されない場合、問題を引き起こす可能性があります。
+    #         # agents_num > 0 で、エージェントがリセットで配置されることを想定しています。
+    #         # print("Warning: _calculate_total_distance_to_goals がエージェントなしで呼び出されました。") # デバッグが必要な場合は残す
+    #         return float('inf') # または非常に大きな数
+
+    #     total_distance = 0
+    #     for goal in goal_positions:
+    #         # min() を呼び出す前に agent_positions が空でないことを確認します
+    #         if agent_positions: # リセット時に agents_pos が空でないことを確認済みですが、念のため
+    #             min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agent_positions)
+    #             total_distance += min_dist
+    #         else:
+    #             # ゴールは存在するがエージェントがいない場合の処理 (到達不可能)
+    #             total_distance += self.grid_size * 2 # 最大距離などを加算 (適当な大きな値)
+
+    #     return float(total_distance)
+
+    def _calculate_total_distance_to_goals(self) -> Dict[str, float]:
         """
-        各ゴールから最も近いエージェントまでのマンハッタン距離の合計を計算します。
+        エージェントとゴールの最適なペアリングを行い、
+        エージェントIDをキーとしたマンハッタン距離の辞書を返します。
         """
-        # print("このメソッドの代わりに_calculate_total_distance_to_goalsを使うことを検討。")
-
-        goal_positions = list(self.get_goal_positions().values())
-        agent_positions = list(self.get_agent_positions().values())
-
-        if not agent_positions:
-            # エージェントが配置されていない場合 (リセット後には起こらないはず)、距離は無限大です。
-            # これは密な報酬で処理されない場合、問題を引き起こす可能性があります。
-            # agents_num > 0 で、エージェントがリセットで配置されることを想定しています。
-            # print("Warning: _calculate_total_distance_to_goals がエージェントなしで呼び出されました。") # デバッグが必要な場合は残す
-            return float('inf') # または非常に大きな数
-
-        total_distance = 0
-        for goal in goal_positions:
-            # min() を呼び出す前に agent_positions が空でないことを確認します
-            if agent_positions: # リセット時に agents_pos が空でないことを確認済みですが、念のため
-                min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agent_positions)
-                total_distance += min_dist
-            else:
-                # ゴールは存在するがエージェントがいない場合の処理 (到達不可能)
-                total_distance += self.grid_size * 2 # 最大距離などを加算 (適当な大きな値)
-
-        return float(total_distance)
-
-    def _calculate_total_distance_to_goals(self) -> float:
-        """
-        エージェントとゴールの最適なペアリング（近い順）を行い、
-        そのマンハッタン距離の合計を計算します。
-        """
-        # 計算量のチェック (100はかなり安全圏。必要に応じて400等に調整)
+        # 1. 計算量のチェック
         if self.agents_number * self.goals_number > 400:
-            raise Exception(f"\x1b[41m[警告] 計算量のオーバーヘッドが懸念されます。\x1b[49mペア数: {self.agents_number * self.goals_number}")
+            raise Exception(f"[警告] 計算量のオーバーヘッドが懸念されます。ペア数: {self.agents_number * self.goals_number}")
 
-        goal_positions = list(self.get_goal_positions().values())
-        agent_positions = list(self.get_agent_positions().values())
+        agent_positions = self.get_agent_positions()
+        goal_positions = self.get_goal_positions()
+
+        # 初期値として全エージェントを inf で埋めた辞書を作成
+        distances = {aid: float('inf') for aid in self._agent_ids}
 
         if not agent_positions or not goal_positions:
-            return float(self.grid_size * 2 * self.goals_number)
+            return distances
 
-        # 1. 全ペアの距離を計算
+        # 2. 全ペアの距離を計算（IDを保持したままリスト化）
+        # (dist, aid, gid) のタプルのリストを作る
         all_pairs = []
-        for a_idx, a_pos in enumerate(agent_positions):
-            for g_idx, g_pos in enumerate(goal_positions):
-                dist = abs(a_pos[0] - g_pos[0]) + abs(a_pos[1] - g_pos[1])
-                all_pairs.append((dist, a_idx, g_idx))
+        for (aid, a_pos), (gid, g_pos) in product(agent_positions.items(), goal_positions.items()):
+            dist = abs(a_pos[0] - g_pos[0]) + abs(a_pos[1] - g_pos[1])
+            all_pairs.append((dist, aid, gid))
 
-        # 2. 距離が近い順にソート
+        # 3. 距離が近い順にソート
         all_pairs.sort(key=lambda x: x[0])
 
-        # 3. 近いペアから順に確定
-        total_distance = 0.0
+        # 4. 近いペアから順に確定
         used_agents = set()
         used_goals = set()
-        matched_count = 0
+        limit = min(len(agent_positions), len(goal_positions))
 
-        for dist, a_idx, g_idx in all_pairs:
-            if a_idx not in used_agents and g_idx not in used_goals:
-                used_agents.add(a_idx)
-                used_goals.add(g_idx)
-                total_distance += dist
-                matched_count += 1
+        for dist, aid, gid in all_pairs:
+            if aid not in used_agents and gid not in used_goals:
+                distances[aid] = float(dist)
+                used_agents.add(aid)
+                used_goals.add(gid)
 
-                if matched_count == min(len(agent_positions), len(goal_positions)):
+                if len(used_agents) == limit:
                     break
 
-        return float(total_distance)
-
+        return distances    
+    
     def _calculate_reward(self,done_mode) -> Dict[str,float]:
         """
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
-        reward = 0.0
+        reward_dict: Dict[str, float] = {}
         done = self._check_done_condition(done_mode) # 報酬計算のために完了ステータスをチェック
 
         if self.reward_mode == 0:
             # モード 0: 完了条件を満たしていれば +100、それ以外 0
-            reward = 100.0 if done else 0.0
+            # reward_dict = 100.0 if done else 0.0
+            for aid in self._agent_ids:
+                reward_dict[aid] = 100.0 if done else 0.0
 
         elif self.reward_mode == 1:
-            # モード 2: ゴールまでの合計距離の負の値
-            current_total_distance = self._calculate_total_distance_to_goals_LEGACY()
-            reward = - current_total_distance
+            # モード 2: 完了条件を満たしていれば +100、それ以外 -0.1
+            for aid in self._agent_ids:
+                reward_dict[aid] = 100.0 if done else -0.1
 
         elif self.reward_mode == 2:
-            # モード 2: 近いペアから順に確定させていく（貪欲法）」ロジック
-            current_total_distance = self._calculate_total_distance_to_goals()
-            reward = - current_total_distance
+            # モード 2: 近いペアから順に確定させていくロジック
+            distances_dict = self._calculate_total_distance_to_goals()
+            
+            # グリッドの対角線距離（最長距離）などを基準にクリッピング
+            max_penalty = float(self.grid_size * 2) 
+            
+            for aid in self._agent_ids:
+                dist = distances_dict.get(aid, float('inf'))
+                # inf の場合は max_penalty を、それ以外は実際の距離を負にして採用
+                reward_dict[aid] = -min(dist, max_penalty)
 
         else:
             print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")
-            reward = 0.0
+            reward_dict = {}
+            for aid in self._agent_ids:
+                reward_dict[aid] = 0.0
 
-        res:Dict[str,float] = {}
-        for id in self._agent_ids:
-            res[id] = reward
-        return res
+        return reward_dict
 
     def _check_done_condition(self,done_mode) -> bool:
         """

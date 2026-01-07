@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src.Environments.MultiAgentGridEnv import MultiAgentGridEnv
 
@@ -133,7 +133,7 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
         self.args.grid_size = 5
         self.args.agents_number = 2
         self.args.goals_number = 2
-        self.args.reward_mode = 1
+        self.args.reward_mode = 2
         self.args.neighbor_distance = 3
 
         # Fixed goals to ensure goals are always present in the grid
@@ -160,7 +160,7 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
 
         _ = self.env.reset(initial_agent_positions=[(1,1),(2,2)]) # Reset with agents for a valid state
 
-        actions = [0, 0] # 全エージェントが「静止」または「上」などのダミーアクション
+        actions: dict[str, int] = {"agent_0": 0, "agent_1": 0} # 全エージェントが「静止」または「上」などのダミーアクション
         obs, rewards, done, info = self.env.step(actions)
 
         # 検証：第1戻り値(obs)が新仕様の辞書であること
@@ -176,7 +176,7 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
         """エージェント数とアクション数が合わない場合に正しくエラーが出るか"""
         self.env.reset()
         with self.assertRaises(ValueError):
-            self.env.step([0]) # エージェントは2人なのにアクションが1つ
+            self.env.step({"agent_0": 0}) # エージェントは2人なのにアクションが1つ
 
     def test_step_returns_individual_rewards(self):
         """step() がエージェントごとの報酬辞書を返すかテスト"""
@@ -185,7 +185,7 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
         # 期待される個別報酬をモックで設定
         self.env._calculate_reward = MagicMock(return_value={'agent_0': 3.3, 'agent_1': -1.3})
 
-        actions = [1, 1]
+        actions: dict[str, int] = {"agent_0": 1, "agent_1": 1}
         obs, rewards, done, info = self.env.step(actions)
 
         # 1. 報酬が辞書であること
@@ -201,7 +201,7 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
         """IQLで報酬に重みを付けるシミュレーション"""
         self.env.reset(initial_agent_positions=[(1,1), (2,2)]) # Ensure agents are placed
 
-        _, rewards, _, _ = self.env.step([0, 0])
+        _, rewards, _, _ = self.env.step({"agent_0": 0, "agent_1": 0})
 
         # エージェントごとに異なる重み（重要度）をかけるケース
         weights = {'agent_0': 1.0, 'agent_1': 0.5}
@@ -223,3 +223,193 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
         self.assertEqual(a0_goals, a1_goals)
         self.assertEqual(a0_goals[0], self.fixed_test_goals[0]) # Use fixed goals from setUp
         self.assertEqual(a0_goals[1], self.fixed_test_goals[1]) # Use fixed goals from setUp
+
+class TestMultiAgentGridEnv(unittest.TestCase):
+    def setUp(self):
+        """テストごとの前準備"""
+        self.args = MagicMock()
+        self.args.grid_size = 5
+        self.args.agents_number = 2
+        self.args.goals_number = 2
+        self.args.reward_mode = 1
+        self.args.neighbor_distance = 1
+
+        with patch('src.Environments.Grid'), patch('src.Environments.CollisionResolver'):
+            self.env = MultiAgentGridEnv(self.args)
+
+    def test_calculate_distance_basic(self):
+        """キーがエージェントID（文字列）になっているか確認"""
+        self.env.get_agent_positions = MagicMock(return_value={"agent_0": (0, 0)})
+        self.env.get_goal_positions = MagicMock(return_value={"goal_0": (2, 3)})
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # キーが "agent_0" であることを確認
+        self.assertIn("agent_0", distances)
+        self.assertEqual(distances["agent_0"], 5)
+
+    def test_greedy_pairing_logic(self):
+        """IDをキーとしたペアリングの検証"""
+        self.env.get_agent_positions = MagicMock(return_value={
+            "agent_0": (0, 0), "agent_1": (1, 1)
+        })
+        self.env.get_goal_positions = MagicMock(return_value={
+            "goal_0": (0, 1), "goal_1": (10, 10)
+        })
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # インデックスではなくIDでアクセス
+        self.assertEqual(distances["agent_0"], 1)
+        self.assertEqual(distances["agent_1"], 18)
+
+    def test_more_agents_than_goals(self):
+        """エージェント数がゴール数より多い場合"""
+        self.env.get_agent_positions = MagicMock(return_value={
+            "agent_0": (0, 0), 
+            "agent_1": (5, 5)
+        })
+        self.env.get_goal_positions = MagicMock(return_value={
+            "goal_0": (0, 1)
+        })
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # 「ペアなし」も inf で含まれるため、長さはエージェント数と同じ 2 になる
+        self.assertEqual(len(distances), 2)
+        
+        # agent_0 は近いので 1.0
+        self.assertIn("agent_0", distances)
+        self.assertEqual(distances["agent_0"], 1.0)
+        
+        # agent_1 はペアなしなので inf
+        self.assertIn("agent_1", distances)
+        self.assertEqual(distances["agent_1"], float('inf'))
+
+    def test_calculation_overhead_warning(self):
+        """計算量上限を超えた場合に例外が発生するか"""
+        # 21 * 20 = 420 > 400
+        self.env.agents_number = 21
+        self.env.goals_number = 20
+        
+        with self.assertRaises(Exception) as cm:
+            self.env._calculate_total_distance_to_goals()
+        
+        self.assertIn("計算量のオーバーヘッド", str(cm.exception))
+
+    def test_no_agents(self):
+        """
+        エージェントの位置情報が取得できない場合でも、
+        定義されている全エージェントIDに対して inf を返すか
+        """
+        # get_agent_positions が空を返す状況をシミュレート
+        self.env.get_agent_positions = MagicMock(return_value={})
+        self.env.get_goal_positions = MagicMock(return_value={"goal_0": (1, 1)})
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # 期待値: 空の辞書 {} ではなく、全IDが含まれ、値が inf であること
+        expected = {aid: float('inf') for aid in self.env._agent_ids}
+        self.assertEqual(distances, expected)
+
+    def test_more_agents_than_goals_all_keys_exist(self):
+        """
+        エージェント数がゴール数より多い場合でも、
+        すべてのエージェントIDが辞書のキーに含まれているか
+        """
+        # エージェント2人、ゴール1つの設定
+        self.env.get_agent_positions = MagicMock(return_value={
+            "agent_0": (0, 0), 
+            "agent_1": (5, 5)
+        })
+        self.env.get_goal_positions = MagicMock(return_value={
+            "goal_0": (0, 1)
+        })
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # 1. すべてのエージェントIDがキーに存在するか確認
+        self.assertEqual(len(distances), 2)
+        self.assertIn("agent_0", distances)
+        self.assertIn("agent_1", distances)
+        
+        # 2. 近い方のエージェントには実際の距離、ペアなしには inf が入っているか
+        self.assertEqual(distances["agent_0"], 1.0)
+        self.assertEqual(distances["agent_1"], float('inf'))
+
+    def test_no_goals_all_inf(self):
+        """
+        ゴールが1つもない場合、すべてのエージェントの距離が inf になるか
+        """
+        self.env.get_agent_positions = MagicMock(return_value={
+            "agent_0": (0, 0), 
+            "agent_1": (1, 1)
+        })
+        self.env.get_goal_positions = MagicMock(return_value={}) # ゴールなし
+        
+        distances = self.env._calculate_total_distance_to_goals()
+        
+        # 全員分が inf で返ってくることを期待
+        self.assertEqual(distances["agent_0"], float('inf'))
+        self.assertEqual(distances["agent_1"], float('inf'))
+
+class TestRewardCalculation(unittest.TestCase):
+    def setUp(self):
+        # 環境の簡易セットアップ
+        self.args = MagicMock()
+        self.args.grid_size = 5
+        self.args.agents_number = 2
+        self.args.goals_number = 2
+        self.args.reward_mode = 1
+        self.args.neighbor_distance = 1
+        
+        # テスト対象クラスをインスタンス化（前のステップで修正した仕様を想定）
+        with patch('src.Environments.Grid'), patch('src.Environments.CollisionResolver'):
+            self.env = MultiAgentGridEnv(self.args)
+            self.env._agent_ids = ["agent_0", "agent_1"]
+
+    def test_reward_mode_0_done(self):
+        """モード0: 完了時に全員 +100"""
+        self.env.reward_mode = 0
+        self.env._check_done_condition = MagicMock(return_value=True)
+        
+        rewards = self.env._calculate_reward(done_mode="any")
+        
+        self.assertEqual(rewards["agent_0"], 100.0)
+        self.assertEqual(rewards["agent_1"], 100.0)
+
+    def test_reward_mode_1_not_done(self):
+        """モード1: 未完了時は全員 -0.1 (ステップペナルティ)"""
+        self.env.reward_mode = 1
+        self.env._check_done_condition = MagicMock(return_value=False)
+        
+        rewards = self.env._calculate_reward(done_mode="any")
+        
+        self.assertEqual(rewards["agent_0"], -0.1)
+        self.assertEqual(rewards["agent_1"], -0.1)
+
+    def test_reward_mode_2_distance_based(self):
+        """モード2: 距離に基づく負の報酬"""
+        self.env.reward_mode = 2
+        self.env._check_done_condition = MagicMock(return_value=False)
+        
+        # 前のメソッドをモックにして距離を返す
+        mock_distances = {"agent_0": 5.0, "agent_1": float('inf')}
+        self.env._calculate_total_distance_to_goals = MagicMock(return_value=mock_distances)
+        
+        rewards = self.env._calculate_reward(done_mode="any")
+        
+        # 距離 5.0 -> 報酬 -5.0
+        self.assertEqual(rewards["agent_0"], -5.0)
+        # 距離 inf -> 報酬 -gsize*2=10
+        self.assertEqual(rewards["agent_1"], -10.0)
+
+    def test_unknown_reward_mode(self):
+        """未知のモード: 警告を出しつつ 0.0 を返す"""
+        self.env.reward_mode = 999
+        self.env._check_done_condition = MagicMock(return_value=False)
+        
+        rewards = self.env._calculate_reward(done_mode="any")
+        
+        self.assertEqual(rewards["agent_0"], 0.0)
+        self.assertEqual(rewards["agent_1"], 0.0)

@@ -8,7 +8,7 @@ GlobalState = Dict[str,PosType]
 """共通の状態表現s"""
 
 ExperienceType = \
-    Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]]
+    Tuple[Dict[str, Dict[str, Any]], List[int], Dict[str, float], Dict[str, Dict[str, Any]], Dict[str, bool]]
 """経験のデータ型"""
 
 #####################################

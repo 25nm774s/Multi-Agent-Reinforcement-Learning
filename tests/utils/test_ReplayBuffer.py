@@ -23,12 +23,14 @@ class TestReplayBuffer(unittest.TestCase):
             'agent_0': {'self': (0,0), 'all_goals': [(1,1)], 'others': {'agent_1': (0,1)}},
             'agent_1': {'self': (0,1), 'all_goals': [(1,1)], 'others': {'agent_0': (0,0)}}}
         actions = [action_value] * self.n_agents
-        reward = reward_value
+        # rewards should be a Dict[str, float]
+        rewards_dict = {agent_id: reward_value for agent_id in self._agent_ids}
         next_global_state: Dict[str, Dict[str, Any]] = {
             'agent_0': {'self': (0,1), 'all_goals': [(1,1)], 'others': {'agent_1': (0,2)}},
             'agent_1': {'self': (0,2), 'all_goals': [(1,1)], 'others': {'agent_0': (0,1)}}}
-        dones = [done_value] * self.n_agents
-        return global_state, actions, reward, next_global_state, dones
+        # dones should be a Dict[str, bool]
+        dones_dict = {agent_id: done_value for agent_id in self._agent_ids}
+        return global_state, actions, rewards_dict, next_global_state, dones_dict
 
     def test_add_and_len_uniform(self):
         rb = ReplayBuffer(
@@ -43,7 +45,7 @@ class TestReplayBuffer(unittest.TestCase):
         self.assertEqual(len(rb), 0)
         for i in range(50):
             rb.add(*self._create_sample_experience()) # Call with Dict[str, Dict[str, Any]]
-        self.assertEqual(len(rb), 50);
+        self.assertEqual(len(rb), 50)
         for i in range(100):
             rb.add(*self._create_sample_experience()) # Call with Dict[str, Dict[str, Any]]
         self.assertEqual(len(rb), self.buffer_size) # Should cap at buffer_size
@@ -60,12 +62,14 @@ class TestReplayBuffer(unittest.TestCase):
             use_per=False
         )
         for i in range(self.buffer_size):
+            # Pass individual reward dicts
+            rewards = {agent_id: float(i) for agent_id in self._agent_ids}
             rb.add(*self._create_sample_experience(action_value=i%5, reward_value=float(i)))
 
         sample_output = rb.sample(beta=0.0) # beta is not used in uniform
         self.assertIsNotNone(sample_output)
 
-        (global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices) = sample_output# type:ignore
+        (global_states_batch, actions_batch, rewards_batch, next_global_states_batch, dones_batch, is_weights_batch, sampled_indices) = sample_output#type:ignore
 
         # Now expecting a list of observation dictionaries
         self.assertIsInstance(global_states_batch, list)
@@ -73,7 +77,8 @@ class TestReplayBuffer(unittest.TestCase):
         self.assertEqual(len(global_states_batch), self.batch_size)
 
         self.assertEqual(actions_batch.shape, (self.batch_size, self.n_agents)) # Actions should be (batch_size, n_agents)
-        self.assertEqual(rewards_batch.shape, (self.batch_size,))
+        # rewards_batch should now be (batch_size, n_agents)
+        self.assertEqual(rewards_batch.shape, (self.batch_size, self.n_agents))
 
         self.assertIsInstance(next_global_states_batch, list)
         self.assertIsInstance(next_global_states_batch[0], dict)
@@ -131,7 +136,8 @@ class TestReplayBuffer(unittest.TestCase):
         self.assertEqual(len(global_states_batch), self.batch_size)
 
         self.assertEqual(actions_batch.shape, (self.batch_size, self.n_agents))
-        self.assertEqual(rewards_batch.shape, (self.batch_size,))
+        # rewards_batch should now be (batch_size, n_agents)
+        self.assertEqual(rewards_batch.shape, (self.batch_size, self.n_agents))
 
         self.assertIsInstance(next_global_states_batch, list)
         self.assertIsInstance(next_global_states_batch[0], dict)

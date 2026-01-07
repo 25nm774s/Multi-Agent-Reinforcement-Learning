@@ -129,8 +129,7 @@ class ReplayBuffer:
         self._goal_ids: List[str] = goal_ids
         self._agent_ids: List[str] = agent_ids
 
-        # Update type hints to store observation dictionaries directly
-        # ExperienceType = Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]]
+        # ExperienceType = Tuple[Dict[str, Dict[str, Any]], List[int], Dict[str, float], Dict[str, Dict[str, Any]], Dict[str, bool]]
 
         if self.use_per:
             self.experiences: List[Optional[ExperienceType]] = [None] * buffer_size
@@ -141,9 +140,9 @@ class ReplayBuffer:
             self.buffer: deque[ExperienceType] = deque(maxlen=buffer_size)
             self.priorities: deque[float] = deque(maxlen=buffer_size)
 
-    # Update `add` method signature to accept Dict[str, Dict[str, Any]]
-    def add(self, global_state: Dict[str, Dict[str, Any]], actions: List[int], reward: float, next_global_state: Dict[str, Dict[str, Any]], dones: List[bool]) -> None:
-        data: Tuple[Dict[str, Dict[str, Any]], List[int], float, Dict[str, Dict[str, Any]], List[bool]] = (global_state, actions, reward, next_global_state, dones)
+
+    def add(self, global_state: Dict[str, Dict[str, Any]], actions: List[int], rewards: Dict[str, float], next_global_state: Dict[str, Dict[str, Any]], dones: Dict[str, bool]) -> None:
+        data: Tuple[Dict[str, Dict[str, Any]], List[int], Dict[str, float], Dict[str, Dict[str, Any]], Dict[str, bool]] = (global_state, actions, rewards, next_global_state, dones)
         if self.use_per:
             self.experiences[self.current_idx] = data
             self.tree.add(self._max_priority, self.current_idx)
@@ -160,9 +159,6 @@ class ReplayBuffer:
         else:
             return len(self.buffer)
 
-    # Remove _flatten_global_state_dict method
-
-    # Modify `sample` method to remove calls to _flatten_global_state_dict
     def sample(self, beta: float) -> Optional[Tuple[List[Dict[str, Dict[str, Any]]], torch.Tensor, torch.Tensor, List[Dict[str, Dict[str, Any]]], torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
         buffer_len = len(self)
         if buffer_len < self.batch_size:
@@ -173,7 +169,7 @@ class ReplayBuffer:
             sampled_priorities_from_tree: List[float] = [] # These are the raw priorities from the tree
             sampled_tree_indices: List[int] = [] # Tree indices for update_priorities
 
-            min_priority = 1e-6 # To avoid log(0) and division by zero
+            min_priority = 1e-6 # 0ではない小さな値
 
             segment = self.tree.total_priority / self.batch_size
 
@@ -224,22 +220,34 @@ class ReplayBuffer:
             # global_state (item[0]) and next_global_state (item[3]) are now Dict[str, Dict[str, Any]]
             # They are returned as a list of dictionaries directly
             global_states_batch_list: List[Dict[str, Dict[str, Any]]] = [x[0] for x in filtered_experiences]
-            actions_np: np.ndarray = np.array([x[1] for x in filtered_experiences], dtype=np.int64)
-            reward_np: np.ndarray = np.array([x[2] for x in filtered_experiences], dtype=np.float32)
             next_global_states_batch_list: List[Dict[str, Dict[str, Any]]] = [x[3] for x in filtered_experiences]
 
-            dones_np: np.ndarray = np.array([x[4] for x in filtered_experiences], dtype=np.float32).reshape(self.batch_size, self.n_agents)
+            # Actions batch is still List[int] -> (batch_size, n_agents) torch.Tensor
+            actions_np: np.ndarray = np.array([x[1] for x in filtered_experiences], dtype=np.int64)
+            actions_tensor: torch.Tensor = torch.tensor(actions_np, dtype=torch.int64, device=self.device)
+
+            # rewards: Dict[str, float] -> (batch_size, n_agents) torch.Tensor
+            rewards_batch_list_of_dicts: List[Dict[str, float]] = [x[2] for x in filtered_experiences]
+            rewards_tensor_elements = []
+            for reward_dict in rewards_batch_list_of_dicts:
+                # Ensure agent_ids are processed in a consistent order
+                rewards_tensor_elements.append([reward_dict[agent_id] for agent_id in self._agent_ids])
+            rewards_tensor: torch.Tensor = torch.tensor(rewards_tensor_elements, dtype=torch.float32, device=self.device) # (batch_size, n_agents)
+
+            # dones: Dict[str, bool] -> (batch_size, n_agents) torch.Tensor
+            dones_batch_list_of_dicts: List[Dict[str, bool]] = [x[4] for x in filtered_experiences]
+            dones_tensor_elements = []
+            for done_dict_agent in dones_batch_list_of_dicts:
+                # Ensure agent_ids are processed in a consistent order
+                dones_tensor_elements.append([float(done_dict_agent[agent_id]) for agent_id in self._agent_ids])
+            dones_tensor: torch.Tensor = torch.tensor(dones_tensor_elements, dtype=torch.float32, device=self.device) # (batch_size, n_agents)
+
 
         except Exception as e:
             print(f"Error converting sampled data to numpy arrays or lists of dicts: {e}")
             return None
 
-        # global_states_batch_list and next_global_states_batch_list are now lists of dicts
-        actions_tensor: torch.Tensor = torch.tensor(actions_np, dtype=torch.int64, device=self.device)
-        reward_tensor: torch.Tensor = torch.tensor(reward_np, dtype=torch.float32, device=self.device)
-        dones_tensor: torch.Tensor = torch.tensor(dones_np, dtype=torch.float32, device=self.device)
-
-        return global_states_batch_list, actions_tensor, reward_tensor, next_global_states_batch_list, dones_tensor, is_weights_tensor, sampled_original_indices
+        return global_states_batch_list, actions_tensor, rewards_tensor, next_global_states_batch_list, dones_tensor, is_weights_tensor, sampled_original_indices
 
     def update_priorities(self, tree_indices: List[int], td_errors: np.ndarray) -> None:
         """

@@ -90,7 +90,7 @@ class QMIXMasterAgent(BaseMasterAgent):
         self,
         obs_dicts_batch: List[Dict[str, Dict[str, Any]]], # List of observation dictionaries
         actions_batch: torch.Tensor, # (batch_size, n_agents)
-        rewards_batch: torch.Tensor, # (batch_size,) - This is a team reward
+        rewards_batch: torch.Tensor, # (batch_size, n_agents) - Changed from (batch_size,)
         next_obs_dicts_batch: List[Dict[str, Dict[str, Any]]], # List of observation dictionaries
         dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags (0 if alive, 1 if dead)
         is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
@@ -149,8 +149,9 @@ class QMIXMasterAgent(BaseMasterAgent):
             target_Q_tot_unmasked = self.mixing_network_target(next_max_q_values_target_masked, next_global_state_for_mixing) # (batch_size, 1)
 
             # Bellman方程式による最終的なターゲットQ_tot
-            # rewards_batch (B,) -> (B, 1)
-            target_Q_tot = rewards_batch.unsqueeze(-1) + self.gamma * target_Q_tot_unmasked # (batch_size, 1)
+            # rewards_batch (B, N) を (B, 1) のチーム報酬に合計
+            team_rewards_batch = rewards_batch.sum(dim=1, keepdim=True) # (batch_size, 1)
+            target_Q_tot = team_rewards_batch + self.gamma * target_Q_tot_unmasked # (batch_size, 1)
 
         # 損失の計算
         # _huber_lossは(batch_size,)を期待するので、squeeze(-1)で整形

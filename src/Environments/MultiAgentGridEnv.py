@@ -12,8 +12,8 @@ class MultiAgentGridEnv:
     """
     マルチエージェントグリッドワールドのための強化学習環境。
     """
-    def __init__(self, 
-                 args, 
+    def __init__(self,
+                 args,
                  fixrd_goals=[],
                  distance_fn=(lambda p,q: int(abs(p[0] - q[0]) + abs(p[1] - q[1])))):
         """
@@ -23,7 +23,7 @@ class MultiAgentGridEnv:
             args: 以下の属性を持つ設定オブジェクト：
                 grid_size (int)
                 agents_number (int)
-                goals_num (int)
+                goals_number (int)
                 reward_mode (int)
         """
         self.grid_size: int = args.grid_size
@@ -41,15 +41,12 @@ class MultiAgentGridEnv:
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
         self.distance_fn = distance_fn
-        # 報酬計算のための内部状態
-        self._goals_reached_status: list[bool] = [False] * self.goals_number # 密な報酬モード3用
-        self._prev_total_distance_to_goals: float = 0.0 # 密な報酬モード3用
 
         fixrd_goals_list=list(fixrd_goals)
         if len(fixrd_goals) < self.goals_number:
             sub = self.goals_number - len(fixrd_goals)# 不足するゴール数
             zahyo = self._grid.sample(sub)
-            for goal in zahyo: 
+            for goal in zahyo:
                 fixrd_goals_list.append(goal)
         # 環境初期化時に一度だけ固定ゴールを設定します
         for i, goal in enumerate(fixrd_goals_list):
@@ -98,13 +95,6 @@ class MultiAgentGridEnv:
             # エージェント位置がゴールと重複していないか、追加前にチェックします (明示的な場合は上で既に実施)
             self._grid.add_object(self._agent_ids[i], pos)
 
-
-        # 報酬計算のための内部状態変数をリセットします
-        self._goals_reached_status = [False] * self.goals_number
-        # エージェントが配置された**後に**初期距離を計算します
-        self._prev_total_distance_to_goals = self._calculate_total_distance_to_goals()
-
-
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
 
@@ -147,6 +137,7 @@ class MultiAgentGridEnv:
         # 7. 情報辞書 (オプション)
         info:Dict = {"global_state":self._get_global_state(), "total_reward":sum(reward.values())}
         done_dict = {}
+
         for aid in self._agent_ids:
             done_dict[aid] = done
 
@@ -211,7 +202,7 @@ class MultiAgentGridEnv:
         - 他エージェントの位置（近傍以外は -1, -1）
         """
         observations = {}
-        
+
         # 1. 全ゴールの位置を事前にリスト化（ID順を保証）
         all_goal_positions = [
             self._grid.get_object_position(goal_id) for goal_id in self._goal_ids
@@ -219,26 +210,26 @@ class MultiAgentGridEnv:
 
         for id in (self._agent_ids):
             my_pos = self._grid.get_object_position(id)
-            
+
             # 2. 他のエージェントの情報を収集（自分以外）
-            others_info = {}
+            others_info:Dict[str,PosType] = {}
             for other_id in self._agent_ids:
                 if id == other_id: continue
-                
+
                 other_pos = self._grid.get_object_position(other_id)
                 # 距離関数で判定（マンハッタン距離など）
                 if self.distance_fn(my_pos, other_pos) <= self.neighbor_distance:
                     others_info[other_id] = other_pos
                 else:
                     others_info[other_id] = (-1, -1)
-            
+
             # 3. エージェントごとの観測辞書を構築
             observations[id] = {
                 'self': my_pos,                  # エージェントの位置
                 'all_goals': all_goal_positions, # 全エージェントで共通のリスト
                 'others': others_info            # 他のエージェントの位置
             }
-            
+
         return observations
 
     def _get_global_state(self)->GlobalState: return self._grid.get_all_object_positions()
@@ -337,7 +328,7 @@ class MultiAgentGridEnv:
                 used_goals.add(g_idx)
                 total_distance += dist
                 matched_count += 1
-                
+
                 if matched_count == min(len(agent_positions), len(goal_positions)):
                     break
 
@@ -350,11 +341,6 @@ class MultiAgentGridEnv:
         reward = 0.0
         done = self._check_done_condition(done_mode) # 報酬計算のために完了ステータスをチェック
 
-        agent_positions = list(self.get_agent_positions().values())
-        current_agents_pos_set = set(agent_positions)
-        goal_positions = list(self.get_goal_positions().values())
-
-
         if self.reward_mode == 0:
             # モード 0: 完了条件を満たしていれば +100、それ以外 0
             reward = 100.0 if done else 0.0
@@ -363,60 +349,18 @@ class MultiAgentGridEnv:
             # モード 2: ゴールまでの合計距離の負の値
             current_total_distance = self._calculate_total_distance_to_goals_LEGACY()
             reward = - current_total_distance
-        
+
         elif self.reward_mode == 2:
             # モード 2: 近いペアから順に確定させていく（貪欲法）」ロジック
             current_total_distance = self._calculate_total_distance_to_goals()
             reward = - current_total_distance
-
-        elif self.reward_mode == 3: # うまくいくケースが見つからなかった。よって不採用
-            # モード 3: 密な報酬 (距離変化) + 段階報酬 + 完了報酬
-            current_total_distance = self._calculate_total_distance_to_goals()
-
-            # 1. 距離変化報酬
-            # _prev_total_distance_to_goals が初期化されているか (つまり、エージェントが配置されているか) チェックします
-            if self._prev_total_distance_to_goals != float('inf'):
-                distance_change = self._prev_total_distance_to_goals - current_total_distance # 距離が減ると正、増えると負
-                if distance_change > 0:
-                    reward +=  1.0 # 距離が減った報酬
-                else:
-                    reward += -1.0 # "止"または距離が増えた
-
-            # else: 初期状態またはエージェントが配置されていない場合、距離変化報酬なし
-
-            # 2. 個別ゴール到達に対する段階報酬
-            # goals_num がグリッド内の実際のゴール数と一致しているか確認します
-            if len(goal_positions) != self.goals_number:
-                print("Warning: goals_num とグリッド内の実際のゴール数に不一致があります。")
-                # ゴールが変更された場合、_goals_reached_status のリセットが必要になる可能性がありますが、
-                # 設計では固定ゴールとされています。
-
-            for goal_idx, goal in enumerate(goal_positions):
-                # goal_idx が _goals_reached_status の範囲内にあることを確認します
-                if goal_idx < len(self._goals_reached_status):
-                    if goal in current_agents_pos_set and not self._goals_reached_status[goal_idx]:
-                        reward += 30.0 # 新しいゴール到達に対する報酬 (調整可能)
-                        self._goals_reached_status[goal_idx] = True
-                else:
-                    print(f"Warning: ゴールインデックス {goal_idx} が _goals_reached_status の範囲外です。")
-
-
-            # 3. 完了報酬
-            if done:
-                reward += 100.0 # 終了時の追加報酬 (調整可能)
-
-            # 時間経過の罰則
-            reward += -1.0
-
-            # 次のステップのために現在の合計距離を更新します
-            self._prev_total_distance_to_goals = current_total_distance
 
         else:
             print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")
             reward = 0.0
 
         res:Dict[str,float] = {}
-        for id in self._agent_ids: 
+        for id in self._agent_ids:
             res[id] = reward
         return res
 

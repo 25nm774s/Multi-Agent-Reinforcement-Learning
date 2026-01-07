@@ -235,10 +235,11 @@ class MARLTrainer:
                 next_partial_observations, reward_dict_per_agent, done_dict, info = self.env.step(actions)
 
                 # `dones_for_experience` は、このステップでの各エージェントの個別の完了フラグである必要があります。
-                dones_for_experience: List[bool] = [done_dict[f'agent_{i}'] for i in range(self.agents_number)]
+                # 変更前: dones_for_experience: List[bool] = [done_dict[f'agent_{i}'] for i in range(self.agents_number)]
+                dones_for_experience: Dict[str, bool] = {agent_id: done_dict[agent_id] for agent_id in self._agent_ids}
 
                 # Store experience in replay buffer - use the observation dictionaries directly
-                self.replay_buffer.add(current_partial_observations, actions, sum(reward_dict_per_agent.values()), next_partial_observations, dones_for_experience)
+                self.replay_buffer.add(current_partial_observations, actions, reward_dict_per_agent, next_partial_observations, dones_for_experience)
 
                 # Each step accumulates total reward
                 episode_reward += sum(reward_dict_per_agent.values()) # reward_dict_per_agentはDict[str, float]です。

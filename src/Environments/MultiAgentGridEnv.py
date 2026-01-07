@@ -98,12 +98,12 @@ class MultiAgentGridEnv:
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
 
-    def step(self, actions: List[int])->Tuple[Dict,Dict,Dict,Dict]:
+    def step(self, actions: Dict[str, int])->Tuple[Dict,Dict,Dict,Dict]:
         """
         各エージェントのアクションを受け取り、環境を更新します。
 
         Args:
-            actions (list[int]): 各エージェントに対するアクションのリスト。
+            actions (Dict[str, int]): 各エージェントに対するアクションの辞書
 
         Returns:
             tuple: (observation, reward, done, info)
@@ -115,12 +115,9 @@ class MultiAgentGridEnv:
         if len(actions) != self.agents_number:
             raise ValueError(f"アクション数 ({len(actions)}) がエージェント数 ({self.agents_number}) と異なります。")
 
-        # エージェントIDとアクションの辞書を作成
-        agent_actions = {self._agent_ids[i]: actions[i] for i in range(self.agents_number)}
-
         # Grid クラスの衝突解決メソッドを呼び出し、位置を更新してもらう
         # このメソッド内で Grid インスタンスの_object_positionsが更新されます
-        self.collision_resolver.resolve_agent_movements(agent_actions)
+        self.collision_resolver.resolve_agent_movements(actions)
 
         # 4. 報酬を計算します
         # 報酬計算は Grid の更新後の位置に基づいて行います
@@ -139,12 +136,11 @@ class MultiAgentGridEnv:
         done_dict = {}
 
         for aid in self._agent_ids:
-            done_dict[aid] = done
+            done_dict[aid] = done # 全エージェントに同じ全体完了状態を割り当て
 
         done_dict['__all__'] = done # 全体の完了状態を直接設定
 
         return next_observation, reward, done_dict, info
-
 
     # --- ヘルパーメソッド (内部ロジック) ---
 

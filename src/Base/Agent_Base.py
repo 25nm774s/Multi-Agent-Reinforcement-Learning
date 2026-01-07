@@ -165,7 +165,7 @@ class BaseMasterAgent(ABC):
         return q_values_reshaped
 
     @abstractmethod
-    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> List[int]:
+    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> Dict[str, int]:
         """
         与えられたグローバル状態とイプシロンに基づいて、各エージェントのアクションを選択します。
         具体的な実装はサブクラスで提供されます。

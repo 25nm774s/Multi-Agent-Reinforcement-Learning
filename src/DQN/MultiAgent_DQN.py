@@ -80,7 +80,7 @@ class MARLTrainer:
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
         # Debug print to confirm goals_number
-        print(f"[DEBUG] MARLTrainer initialized with goals_number: {self.goals_number}")
+        # print(f"[DEBUG] MARLTrainer initialized with goals_number: {self.goals_number}")
 
         # MasterAgentのインスタンス化
         if mode == 'IQL':
@@ -148,11 +148,10 @@ class MARLTrainer:
 
         # 結果保存およびプロット関連クラスの初期化
         self.saver = Saver(self.save_dir,self.grid_size)
-        self.saver.CALCULATION_PERIOD = 50
+        self.saver.CALCULATION_PERIOD = 20
         self.plot_results = PlotResults(self.save_dir)
 
         self.load_checkpoint(None)
-
 
     def decay_epsilon_power(self):
         """
@@ -182,7 +181,7 @@ class MARLTrainer:
         print(f"{GREEN}MARLTrainer{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})") + "\n")
         print(f"goals: {self.env.get_goal_positions().values()}")
 
-        total_step = self.total_step # 環境との全インタラクションステップ数の累積
+        total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
         episode_rewards: list[float] = []   # エピソードごとの報酬を格納
         episode_steps  : list[int]   = []   # エピソードごとのステップ数を格納
@@ -220,7 +219,7 @@ class MARLTrainer:
                 self.decay_epsilon_power()
 
                 # 各エージェントの行動を選択 - master_agentは観測辞書を期待します
-                actions: List[int] = self.master_agent.get_actions(current_partial_observations, self.epsilon)
+                actions: Dict[str, int] = self.master_agent.get_actions(current_partial_observations, self.epsilon)
 
                 # エージェントの状態を保存（オプション）
                 if self.save_agent_states:
@@ -322,7 +321,7 @@ class MARLTrainer:
                 episode_steps  = []
                 done_counts = []
 
-            if episode % 50 == 0:
+            if episode % 200 == 0:
                 self.save_checkpoint(episode, total_step)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント

@@ -53,7 +53,7 @@ class QMIXMasterAgent(BaseMasterAgent):
         params.extend(list(self.mixing_network.parameters()))
         return params
 
-    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> List[int]:
+    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> Dict[str, int]:
         """
         与えられたグローバル状態（ローカル観測辞書）とイプシロンに基づいて、各エージェントのアクションを選択します。
         """
@@ -77,12 +77,13 @@ class QMIXMasterAgent(BaseMasterAgent):
             q_values_all_agents = self.agent_network(transformed_obs_for_all_agents, agent_ids_for_all_agents)
 
             # ε-greedyポリシーを適用
-            actions: List[int] = []
-            for i in range(self.n_agents):
+            actions: Dict[str, int] = {}
+            for i, aid in enumerate(self._agent_ids):
                 if np.random.rand() < epsilon:
-                    actions.append(np.random.randint(self.action_size))
+                    actions[aid] = np.random.randint(self.action_size)
                 else:
-                    actions.append(q_values_all_agents[i].argmax().item()) # 最大Q値のアクションを選択
+                    actions[aid] = q_values_all_agents[i].argmax().item()
+
         self.agent_network.train() # ネットワークを学習モードに戻す
         return actions
 

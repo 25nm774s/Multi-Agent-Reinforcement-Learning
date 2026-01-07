@@ -68,10 +68,16 @@ class TestQMIXMasterAgent(unittest.TestCase):
         with patch.object(self.qmix_master_agent.agent_network, 'forward', return_value=torch.tensor(
             [[1.0, 2.0, 3.0, 0.5, 1.5], [5.0, 4.0, 3.0, 2.0, 1.0]], dtype=torch.float32, device=self.device
         )) as mock_forward:
-            actions = self.qmix_master_agent.get_actions(obs_dict_for_current_step, epsilon)
+            actions: Dict[str, int] = self.qmix_master_agent.get_actions(obs_dict_for_current_step, epsilon)
 
-            self.assertEqual(actions[0], 2)
-            self.assertEqual(actions[1], 0)
+            self.assertTrue(actions is not None)
+            self.assertEqual(len(actions), self.n_agents)
+            self.assertIsInstance(actions, Dict)
+            # self.assertEqual(actions[0], 2)
+            # self.assertEqual(actions[1], 0)
+            self.assertEqual(actions['agent_0'], 2)
+            self.assertEqual(actions['agent_1'], 0)
+
             self.assertTrue(mock_forward.called)
             self.assertTrue(self.qmix_master_agent.agent_network.training) # Should be set back to train mode
 
@@ -80,10 +86,11 @@ class TestQMIXMasterAgent(unittest.TestCase):
         epsilon = 1.0
 
         with patch.object(self.qmix_master_agent.agent_network, 'forward') as mock_forward:
-            actions = self.qmix_master_agent.get_actions(obs_dict_for_current_step, epsilon)
+            actions: Dict[str, int] = self.qmix_master_agent.get_actions(obs_dict_for_current_step, epsilon)
 
-            for action in actions:
-                self.assertTrue(0 <= action < self.action_size)
+            for aid in self.agent_ids:
+                self.assertTrue(0 <= actions[aid] < self.action_size)
+
             self.assertTrue(mock_forward.called)
             self.assertTrue(self.qmix_master_agent.agent_network.training)
 

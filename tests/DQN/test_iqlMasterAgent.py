@@ -68,14 +68,26 @@ class TestIQLMasterAgent(unittest.TestCase):
         obs_dict_for_current_step = self._create_dummy_obs_dict()
         epsilon = 0.0
 
+        # Mock agent_network's forward pass to return predictable Q-values
+        # (n_agents, action_size)
         with patch.object(self.iql_master_agent.agent_network, 'forward', return_value=torch.tensor(
             [[1.0, 2.0, 3.0, 0.5, 1.5], [5.0, 4.0, 3.0, 2.0, 1.0]], dtype=torch.float32, device=self.device
         )) as mock_forward:
-            actions = self.iql_master_agent.get_actions(obs_dict_for_current_step, epsilon)
+            actions: Dict[str, int] = self.iql_master_agent.get_actions(obs_dict_for_current_step, epsilon)
 
-            self.assertEqual(actions[0], 2)
-            self.assertEqual(actions[1], 0)
+            self.assertEqual(len(actions), self.n_agents)
+            self.assertIsInstance(actions, dict)
+
+            # Verify actions are chosen greedily (argmax)
+            # self.assertEqual(actions[0], 2) # Argmax of [1.0, 2.0, 3.0, 0.5, 1.5] is 2
+            # self.assertEqual(actions[1], 0) # Argmax of [5.0, 4.0, 3.0, 2.0, 1.0] is 0
+
+            self.assertEqual(actions[self.agent_ids[0]], 2)
+            self.assertEqual(actions[self.agent_ids[1]], 0)
+
+            # Ensure forward was called correctly
             self.assertTrue(mock_forward.called)
+            # Ensure eval/train modes are set correctly
             self.assertTrue(self.iql_master_agent.agent_network.training)
 
     def test_get_actions_exploratory(
@@ -86,10 +98,17 @@ class TestIQLMasterAgent(unittest.TestCase):
         epsilon = 1.0
 
         with patch.object(self.iql_master_agent.agent_network, 'forward') as mock_forward:
-            actions = self.iql_master_agent.get_actions(obs_dict_for_current_step, epsilon)
+            actions: Dict[str, int] = self.iql_master_agent.get_actions(obs_dict_for_current_step, epsilon)
 
-            for action in actions:
-                self.assertTrue(0 <= action < self.action_size)
+            self.assertEqual(len(actions), self.n_agents)
+            self.assertIsInstance(actions, dict)
+            # Verify actions are random
+            # for action in actions:
+            #     self.assertTrue(0 <= action < self.action_size)
+            for aid in self.agent_ids:
+                self.assertTrue(0 <= actions[aid] < self.action_size)
+
+            # When epsilon is 1, forward pass still happens to determine action space, but actual choice is random.
             self.assertTrue(mock_forward.called)
             self.assertTrue(self.iql_master_agent.agent_network.training)
 
@@ -101,10 +120,13 @@ class TestIQLMasterAgent(unittest.TestCase):
         obs_dicts_batch = [self._create_dummy_obs_dict() for _ in range(batch_size)]
         next_obs_dicts_batch = [self._create_dummy_obs_dict() for _ in range(batch_size)]
 
+        # Dummy actions (B, n_agents)
         actions_batch = torch.tensor([[0, 1], [2, 3], [4, 0], [1, 2]], dtype=torch.long, device=self.device)
+        # rewards_batch should now be (batch_size, n_agents)
         rewards_batch = torch.randn(batch_size, self.n_agents, device=self.device) # Individual rewards
 
-        dones_batch = torch.tensor([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=torch.float32, device=self.device) # Individual done flags
+        # Individual done flags (B, n_agents)
+        dones_batch = torch.tensor([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=torch.float32, device=self.device)
 
         is_weights_batch = torch.ones(batch_size, device=self.device) # No IS weights for simplicity
 
@@ -140,7 +162,7 @@ class TestIQLMasterAgent(unittest.TestCase):
                 self.assertIsInstance(loss, torch.Tensor)
                 self.assertIsInstance(abs_td_errors, torch.Tensor)
                 self.assertEqual(loss.shape, torch.Size(())) # Scalar loss
-                self.assertEqual(abs_td_errors.shape, (batch_size,)) # type:ignore Mean TD error per sample
+                self.assertEqual(abs_td_errors.shape, (batch_size,)) #type:ignore Mean TD error per sample
 
                 # Verify mocks were called correctly
                 self.assertEqual(mock_process_obs_batch.call_count, 2)
@@ -155,7 +177,7 @@ class TestIQLMasterAgent(unittest.TestCase):
                 self.assertFalse(torch.isnan(loss))
                 self.assertFalse(torch.isinf(loss))
 
-                # Test with PER weights
+                # Test with PER weights (should apply to loss)
                 is_weights_batch_per = torch.rand(batch_size, device=self.device)
                 mock_process_obs_batch.side_effect = [
                     (mock_transformed_obs_current, mock_global_state_for_mixing_current),
@@ -171,7 +193,7 @@ class TestIQLMasterAgent(unittest.TestCase):
 
     def test_sync_target_network(self):
         # Modify main network weights
-        self.iql_master_agent.agent_network.fc1.weight.data.fill_(0.5)
+        self.iql_master_agent.agent_network.fc1.weight.data.fill_(0.5) # Corrected reference
 
         # Before sync, target weights should be different (initial state)
         self.assertFalse(torch.equal(

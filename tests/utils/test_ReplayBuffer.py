@@ -22,7 +22,8 @@ class TestReplayBuffer(unittest.TestCase):
         global_state: Dict[str, Dict[str, Any]] = {
             'agent_0': {'self': (0,0), 'all_goals': [(1,1)], 'others': {'agent_1': (0,1)}},
             'agent_1': {'self': (0,1), 'all_goals': [(1,1)], 'others': {'agent_0': (0,0)}}}
-        actions = [action_value] * self.n_agents
+        # Actions should now be a Dict[str, int]
+        actions = {agent_id: action_value for agent_id in self._agent_ids}
         # rewards should be a Dict[str, float]
         rewards_dict = {agent_id: reward_value for agent_id in self._agent_ids}
         next_global_state: Dict[str, Dict[str, Any]] = {

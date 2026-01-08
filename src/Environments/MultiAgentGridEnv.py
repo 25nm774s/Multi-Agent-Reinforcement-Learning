@@ -130,7 +130,7 @@ class MultiAgentGridEnv:
         reward = self._calculate_reward(done_mode=done_mode)
 
         # 5. 終了条件をチェックします
-        done = self._check_done_condition(done_mode=done_mode)
+        dones = self._check_done_condition(done_mode=done_mode)
 
         # 6. 次の観測を取得します
         # Grid が既に更新されているので、_get_observation は現在のグリッド状態を反映します
@@ -138,14 +138,8 @@ class MultiAgentGridEnv:
 
         # 7. 情報辞書 (オプション)
         info:Dict = {"global_state":self._get_global_state(), "total_reward":sum(reward.values())}
-        done_dict = {}
 
-        for aid in self._agent_ids:
-            done_dict[aid] = done # 全エージェントに同じ全体完了状態を割り当て
-
-        done_dict['__all__'] = done # 全体の完了状態を直接設定
-
-        return next_observation, reward, done_dict, info
+        return next_observation, reward, dones, info
 
     # --- ヘルパーメソッド (内部ロジック) ---
 
@@ -341,7 +335,8 @@ class MultiAgentGridEnv:
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
         reward_dict: Dict[str, float] = {}
-        done = self._check_done_condition(done_mode)
+        dones = self._check_done_condition(done_mode)
+        done = dones["__all__"]
         
         # 共通設定
         max_penalty_dist = float(self.grid_size * 2) # inf時のクリッピング用
@@ -393,33 +388,46 @@ class MultiAgentGridEnv:
             for aid in self._agent_ids:
                 reward_dict[aid] = 0.0
 
+        goal_count = sum(1 for aid in self._agent_ids if dones.get(aid, False))
+        bonus = goal_count * 5.0
+
+        for aid in self._agent_ids:
+            reward_dict[aid] += bonus
+
         return reward_dict
 
-    def _check_done_condition(self,done_mode) -> bool:
+    def _check_done_condition(self,done_mode) -> Dict[str, bool]:
         """
         エピソードが終了したかチェックします。完了条件は self.done_mode に依存します。
         - done_mode 0: 全てのゴールが少なくとも1つのエージェントによって占有されているか。
-        - done_mode 1: いずれかのゴールが少なくとも1つのエージェントによって占有されているか。
-        - done_mode 2: 全てのエージェントがいずれかのゴール位置にいるか。
+        - done_mode 1: 誰か一人でもゴール。
+        - done_mode 2: 全員がゴール。
         """
-        agent_positions = list(self.get_agent_positions().values())
-        current_agents_pos_set = set(agent_positions)
-        goal_positions = list(self.get_goal_positions().values())
-        goal_positions_set = set(goal_positions)
+        agent_positions = self.get_agent_positions()
+        goal_positions_set = set(self.get_goal_positions().values())
 
+        # 各エージェントが現在ゴールにいるか
+        dones = {aid: pos in goal_positions_set for aid, pos in agent_positions.items()}
+        overall_done = False
 
         if done_mode == 0:
             # Rule 1: 全てのゴールがエージェントによって占有されているか
-            return all(goal in current_agents_pos_set for goal in goal_positions)
+            overall_done = all(goal in set(agent_positions.values()) for goal in self.get_goal_positions().values())
+
         elif done_mode == 1:
-            # Rule 2: いずれかのゴールが少なくとも1つのエージェントによって占有されているか
-            return any(goal in current_agents_pos_set for goal in goal_positions)
+            # Rule 2: 誰か一人でもゴールしたらエピソード終了
+            overall_done = any(dones.values())        
+
         elif done_mode == 2:
-            # Rule 3: 全てのエージェントがいずれかのゴール位置にいるか
-            return all(agent_pos in goal_positions_set for agent_pos in agent_positions)
+            # Rule 3: 全員がゴールしたらエピソード終了
+            overall_done = all(dones.values())
+
         else:
-            print(f"Warning: 未知の完了条件モード: {done_mode}。常に False を返します。")
-            return False
+            print(f"Warning: 未知の完了条件モード: {done_mode}。done_mode=2にフォールバック。")
+            overall_done = all(dones.values())
+        
+        dones["__all__"] = overall_done
+        return dones
 
     def get_all_object(self):
         r = self._grid.get_all_object_positions()

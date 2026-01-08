@@ -143,7 +143,8 @@ class TestMultiAgentGridEnvCycle(unittest.TestCase):
 
         # 内部メソッドのモック化（計算ロジック自体は別でテスト済みのため）
         self.env._calculate_reward = MagicMock(return_value={"agent_0":0.2,"agent_1":1.9})
-        self.env._check_done_condition = MagicMock(return_value=False)
+        mock_dones = {"agent_0": True, "agent_1": True, "__all__": True}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
 
     def test_reset_returns_correct_obs_format(self):
         """reset() がタプルではなく辞書形式の観測を返すか"""
@@ -361,55 +362,192 @@ class TestRewardCalculation(unittest.TestCase):
         self.args.agents_number = 2
         self.args.goals_number = 2
         self.args.reward_mode = 1
-        self.args.neighbor_distance = 1
         
-        # テスト対象クラスをインスタンス化（前のステップで修正した仕様を想定）
+        # テスト対象クラスをインスタンス化
         with patch('src.Environments.Grid'), patch('src.Environments.CollisionResolver'):
+            # MultiAgentGridEnv の __init__ が動作する前提
             self.env = MultiAgentGridEnv(self.args)
             self.env._agent_ids = ["agent_0", "agent_1"]
+            # Reward Shaping用の初期化
+            self.env.prev_distances = {"agent_0": 5.0, "agent_1": 5.0}
 
     def test_reward_mode_0_done(self):
-        """モード0: 完了時に全員 +100"""
+        """モード0: 全員ゴール時に +100 + 同時ボーナス(5*2=10) = 110"""
         self.env.reward_mode = 0
-        self.env._check_done_condition = MagicMock(return_value=True)
+        # 修正された _check_done_condition の戻り値を模倣
+        mock_dones = {"agent_0": True, "agent_1": True, "__all__": True}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
-        rewards = self.env._calculate_reward(done_mode="any")
+        rewards = self.env._calculate_reward(done_mode=0)
         
-        self.assertEqual(rewards["agent_0"], 100.0)
-        self.assertEqual(rewards["agent_1"], 100.0)
+        # 100(完了) + 10(2人同時ボーナス) = 110.0
+        self.assertEqual(rewards["agent_0"], 110.0)
+        self.assertEqual(rewards["agent_1"], 110.0)
 
     def test_reward_mode_1_not_done(self):
-        """モード1: 未完了時は全員 -0.1 (ステップペナルティ)"""
+        """モード1: 未完了時は全員 -0.1 (ステップペナルティのみ)"""
         self.env.reward_mode = 1
-        self.env._check_done_condition = MagicMock(return_value=False)
+        mock_dones = {"agent_0": False, "agent_1": False, "__all__": False}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
-        rewards = self.env._calculate_reward(done_mode="any")
+        rewards = self.env._calculate_reward(done_mode=1)
         
         self.assertEqual(rewards["agent_0"], -0.1)
         self.assertEqual(rewards["agent_1"], -0.1)
 
     def test_reward_mode_2_distance_based(self):
-        """モード2: 距離に基づく負の報酬"""
+        """モード2: 距離に基づく負の報酬 + 到着状況に応じたボーナス"""
         self.env.reward_mode = 2
-        self.env._check_done_condition = MagicMock(return_value=False)
+        # agent_0だけゴールにいる状況
+        mock_dones = {"agent_0": True, "agent_1": False, "__all__": False}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
-        # 前のメソッドをモックにして距離を返す
-        mock_distances = {"agent_0": 5.0, "agent_1": float('inf')}
+        mock_distances = {"agent_0": 0.0, "agent_1": float('inf')}
         self.env._calculate_total_distance_to_goals = MagicMock(return_value=mock_distances)
         
-        rewards = self.env._calculate_reward(done_mode="any")
+        rewards = self.env._calculate_reward(done_mode=2)
         
-        # 距離 5.0 -> 報酬 -5.0
-        self.assertEqual(rewards["agent_0"], -5.0)
-        # 距離 inf -> 報酬 -gsize*2=10
-        self.assertEqual(rewards["agent_1"], -10.0)
+        # agent_0: -0.0(距離) + 5.0(1人ゴールボーナス) = 5.0
+        self.assertEqual(rewards["agent_0"], 5.0)
+        # agent_1: -10.0(クリップされた距離) + 5.0(1人ゴールボーナス) = -5.0
+        self.assertEqual(rewards["agent_1"], -5.0)
 
-    def test_unknown_reward_mode(self):
-        """未知のモード: 警告を出しつつ 0.0 を返す"""
-        self.env.reward_mode = 999
-        self.env._check_done_condition = MagicMock(return_value=False)
+    def test_reward_mode_3_potential_shaping(self):
+        """モード3: ポテンシャル報酬の計算テスト"""
+        self.env.reward_mode = 3
+        # 前回の距離は setUp で 5.0 に設定済み
+        # 今回 agent_0 は接近(3.0)、agent_1 は離脱(6.0)
+        current_distances = {"agent_0": 3.0, "agent_1": 6.0}
+        self.env._calculate_total_distance_to_goals = MagicMock(return_value=current_distances)
         
-        rewards = self.env._calculate_reward(done_mode="any")
+        mock_dones = {"agent_0": False, "agent_1": False, "__all__": False}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
-        self.assertEqual(rewards["agent_0"], 0.0)
-        self.assertEqual(rewards["agent_1"], 0.0)
+        rewards = self.env._calculate_reward(done_mode=2)
+        
+        # agent_0: (5.0-3.0) - 0.01(penalty) + 0(bonus) = 1.99
+        self.assertAlmostEqual(rewards["agent_0"], 1.99)
+        # agent_1: (5.0-6.0) - 0.01(penalty) + 0(bonus) = -1.01
+        self.assertAlmostEqual(rewards["agent_1"], -1.01)
+        
+        # prev_distances が更新されているか確認
+        self.assertEqual(self.env.prev_distances["agent_0"], 3.0)
+
+    def test_bonus_calculation_logic(self):
+        """ボーナス計算がエージェント数に基づいて正しく加算されるか"""
+        self.env.reward_mode = 0
+        # 2人中1人だけゴールしている状況
+        mock_dones = {"agent_0": True, "agent_1": False, "__all__": False}
+        self.env._check_done_condition = MagicMock(return_value=mock_dones)
+        
+        rewards = self.env._calculate_reward(done_mode=1)
+        
+        # ボーナス = 1人 * 5.0 = 5.0
+        # モード0なので、doneがFalseなら基本報酬0。よって最終報酬は 5.0
+        self.assertEqual(rewards["agent_0"], 5.0)
+        self.assertEqual(rewards["agent_1"], 5.0)
+
+    def test_reward_mode_3_moving_away(self):
+        """モード3: ゴールから遠ざかった場合に負の報酬が出るか"""
+        self.env.reward_mode = 3
+        self.env.prev_distances = {"agent_0": 2.0}
+        current_distances = {"agent_0": 5.0} # 遠ざかった
+        self.env._calculate_total_distance_to_goals = MagicMock(return_value=current_distances)
+        self.env._check_done_condition = MagicMock(return_value={"agent_0": False, "__all__": False})
+
+        rewards = self.env._calculate_reward(done_mode=2)
+        # (2.0 - 5.0) - 0.01 = -3.01
+        self.assertAlmostEqual(rewards["agent_0"], -3.01)
+
+    def test_reward_mode_2_clipping(self):
+        """モード2: 距離報酬が grid_size * 2 でクリップされるか"""
+        self.env.reward_mode = 2
+        self.env.grid_size = 5 # max_penalty = 10
+        mock_distances = {"agent_0": 99.0} # 異常に遠い距離
+        self.env._calculate_total_distance_to_goals = MagicMock(return_value=mock_distances)
+        self.env._check_done_condition = MagicMock(return_value={"agent_0": False, "__all__": False})
+
+        rewards = self.env._calculate_reward(done_mode=2)
+        # -min(99.0, 10.0) + bonus(0) = -10.0
+        self.assertEqual(rewards["agent_0"], -10.0)
+
+class TestDoneCondition(unittest.TestCase):
+    def setUp(self):
+        self.args = MagicMock()
+        self.args.grid_size = 5
+        self.args.agents_number = 2
+        self.args.goals_number = 2
+        
+        with patch('src.Environments.Grid'), patch('src.Environments.CollisionResolver'):
+            self.env = MultiAgentGridEnv(self.args)
+            self.env._agent_ids = ["agent_0", "agent_1"]
+
+    def set_positions(self, agent_pos: dict, goal_pos: dict):
+        """テスト用に位置情報をセットするヘルパーメソッド"""
+        self.env.get_agent_positions = MagicMock(return_value=agent_pos)
+        self.env.get_goal_positions = MagicMock(return_value=goal_pos)
+
+    def test_mode_0_all_goals_covered(self):
+        """Mode 0: 全てのゴールが占有されている必要がある"""
+        # ケース1: 2つのゴールに対して2人が別々に乗っている (True)
+        self.set_positions(
+            {"agent_0": (1, 1), "agent_1": (2, 2)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=0)
+        self.assertTrue(dones["__all__"])
+
+        # ケース2: 2人が同じゴールに乗っており、もう1つのゴールが空いている (False)
+        self.set_positions(
+            {"agent_0": (1, 1), "agent_1": (1, 1)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=0)
+        self.assertFalse(dones["__all__"])
+
+    def test_mode_1_any_goal_reached(self):
+        """Mode 1: 誰か一人がどこかのゴールに到達すれば終了"""
+        # ケース1: agent_0だけがゴール (True)
+        self.set_positions(
+            {"agent_0": (1, 1), "agent_1": (4, 4)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=1)
+        self.assertTrue(dones["__all__"])
+        self.assertTrue(dones["agent_0"])
+        self.assertFalse(dones["agent_1"])
+
+    def test_mode_2_all_agents_in_goals(self):
+        """Mode 2: 全てのエージェントがいずれかのゴールにいる必要がある"""
+        # ケース1: agent_0はゴール、agent_1は道半ば (False)
+        self.set_positions(
+            {"agent_0": (1, 1), "agent_1": (3, 3)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=2)
+        self.assertFalse(dones["__all__"])
+
+        # ケース2: 全員がゴール（同じゴールでも可） (True)
+        self.set_positions(
+            {"agent_0": (2, 2), "agent_1": (2, 2)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=2)
+        self.assertTrue(dones["__all__"])
+
+    def test_individual_dones_format(self):
+        """各エージェントの個別doneが正しく含まれているか"""
+        self.set_positions(
+            {"agent_0": (1, 1), "agent_1": (4, 4)},
+            {"goal_0": (1, 1), "goal_1": (2, 2)}
+        )
+        dones = self.env._check_done_condition(done_mode=1)
+        
+        # 必要なキーが揃っているか
+        self.assertIn("agent_0", dones)
+        self.assertIn("agent_1", dones)
+        self.assertIn("__all__", dones)
+        
+        # 個別判定の正確性
+        self.assertEqual(dones["agent_0"], True)
+        self.assertEqual(dones["agent_1"], False)

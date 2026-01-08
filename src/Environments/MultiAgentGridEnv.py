@@ -42,6 +42,7 @@ class MultiAgentGridEnv:
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
 
         self.distance_fn = distance_fn
+        self.prev_distances: Dict[str, float] = {}
 
         fixrd_goals_list=list(fixrd_goals)
         if len(fixrd_goals) < self.goals_number:
@@ -95,6 +96,9 @@ class MultiAgentGridEnv:
         for i, pos in enumerate(agent_positions):
             # エージェント位置がゴールと重複していないか、追加前にチェックします (明示的な場合は上で既に実施)
             self._grid.add_object(self._agent_ids[i], pos)
+
+        # 初回の距離を計算して保持（報酬計算の基準点）
+        self.prev_distances = self._calculate_total_distance_to_goals()
 
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
@@ -337,7 +341,10 @@ class MultiAgentGridEnv:
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
         reward_dict: Dict[str, float] = {}
-        done = self._check_done_condition(done_mode) # 報酬計算のために完了ステータスをチェック
+        done = self._check_done_condition(done_mode)
+        
+        # 共通設定
+        max_penalty_dist = float(self.grid_size * 2) # inf時のクリッピング用
 
         if self.reward_mode == 0:
             # モード 0: 完了条件を満たしていれば +100、それ以外 0
@@ -351,16 +358,34 @@ class MultiAgentGridEnv:
                 reward_dict[aid] = 100.0 if done else -0.1
 
         elif self.reward_mode == 2:
-            # モード 2: 近いペアから順に確定させていくロジック
             distances_dict = self._calculate_total_distance_to_goals()
-            
-            # グリッドの対角線距離（最長距離）などを基準にクリッピング
-            max_penalty = float(self.grid_size * 2) 
-            
             for aid in self._agent_ids:
                 dist = distances_dict.get(aid, float('inf'))
-                # inf の場合は max_penalty を、それ以外は実際の距離を負にして採用
-                reward_dict[aid] = -min(dist, max_penalty)
+                reward_dict[aid] = -min(dist, max_penalty_dist)
+
+        elif self.reward_mode == 3:
+            # --- モード 3: Potential-based Reward Shaping ---
+            current_distances = self._calculate_total_distance_to_goals()
+            
+            for aid in self._agent_ids:
+                # 1. 距離の取得とクリッピング (inf対策)
+                prev_d = min(self.prev_distances.get(aid, max_penalty_dist), max_penalty_dist)
+                curr_d = min(current_distances.get(aid, max_penalty_dist), max_penalty_dist)
+                
+                # 2. ポテンシャル報酬: (前回の距離 - 今回の距離) 
+                # 近づけばプラス、遠ざかればマイナス
+                shaping_reward = float(prev_d - curr_d)
+                
+                # 3. ステップペナルティ (早く全員揃うことを促す)
+                step_penalty = -0.01
+                
+                # 4. 完了ボーナス (全員同時にゴールにいる場合)
+                completion_bonus = 100.0 if done else 0.0
+                
+                reward_dict[aid] = shaping_reward + step_penalty + completion_bonus
+            
+            # 5. prev_distances を更新 (次のステップ用)
+            self.prev_distances = current_distances
 
         else:
             print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")

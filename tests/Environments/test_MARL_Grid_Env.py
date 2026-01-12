@@ -372,7 +372,7 @@ class TestRewardCalculation(unittest.TestCase):
             self.env.prev_distances = {"agent_0": 5.0, "agent_1": 5.0}
 
     def test_reward_mode_0_done(self):
-        """モード0: 全員ゴール時に +100 + 同時ボーナス(5*2=10) = 110"""
+        """モード0: 全員ゴール時に +10.0 = 10.0"""
         self.env.reward_mode = 0
         # 修正された _check_done_condition の戻り値を模倣
         mock_dones = {"agent_0": True, "agent_1": True, "__all__": True}
@@ -380,20 +380,20 @@ class TestRewardCalculation(unittest.TestCase):
         
         rewards = self.env._calculate_reward(done_mode=0)
         
-        # 100(完了) + 10(2人同時ボーナス) = 110.0
-        self.assertEqual(rewards["agent_0"], 110.0)
-        self.assertEqual(rewards["agent_1"], 110.0)
+        # 100(完了) + 10(2人同時ボーナス) = 20.0
+        self.assertEqual(rewards["agent_0"], 10.0)
+        self.assertEqual(rewards["agent_1"], 10.0)
 
     def test_reward_mode_1_not_done(self):
-        """モード1: 未完了時は全員 -0.1 (ステップペナルティのみ)"""
+        """モード1: 未完了時は全員 -0.02 (ステップペナルティのみ)"""
         self.env.reward_mode = 1
         mock_dones = {"agent_0": False, "agent_1": False, "__all__": False}
         self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
         rewards = self.env._calculate_reward(done_mode=1)
         
-        self.assertEqual(rewards["agent_0"], -0.1)
-        self.assertEqual(rewards["agent_1"], -0.1)
+        self.assertEqual(rewards["agent_0"], -0.02)
+        self.assertEqual(rewards["agent_1"], -0.02)
 
     def test_reward_mode_2_distance_based(self):
         """モード2: 距離に基づく負の報酬 + 到着状況に応じたボーナス"""
@@ -407,10 +407,10 @@ class TestRewardCalculation(unittest.TestCase):
         
         rewards = self.env._calculate_reward(done_mode=2)
         
-        # agent_0: -0.0(距離) + 5.0(1人ゴールボーナス) = 5.0
-        self.assertEqual(rewards["agent_0"], 5.0)
-        # agent_1: -10.0(クリップされた距離) + 5.0(1人ゴールボーナス) = -5.0
-        self.assertEqual(rewards["agent_1"], -5.0)
+        # agent_0: -0.0(距離) = 5.0
+        self.assertEqual(rewards["agent_0"], 0.0)
+        # agent_1: -10.0(クリップされた距離) = -10.0
+        self.assertEqual(rewards["agent_1"], -10.0)
 
     def test_reward_mode_3_potential_shaping(self):
         """モード3: ポテンシャル報酬の計算テスト"""
@@ -433,19 +433,19 @@ class TestRewardCalculation(unittest.TestCase):
         # prev_distances が更新されているか確認
         self.assertEqual(self.env.prev_distances["agent_0"], 3.0)
 
-    def test_bonus_calculation_logic(self):
-        """ボーナス計算がエージェント数に基づいて正しく加算されるか"""
-        self.env.reward_mode = 0
-        # 2人中1人だけゴールしている状況
-        mock_dones = {"agent_0": True, "agent_1": False, "__all__": False}
-        self.env._check_done_condition = MagicMock(return_value=mock_dones)
+    # def test_bonus_calculation_logic(self):
+    #     """ボーナス計算がエージェント数に基づいて正しく加算されるか"""
+    #     self.env.reward_mode = 0
+    #     # 2人中1人だけゴールしている状況
+    #     mock_dones = {"agent_0": True, "agent_1": False, "__all__": False}
+    #     self.env._check_done_condition = MagicMock(return_value=mock_dones)
         
-        rewards = self.env._calculate_reward(done_mode=1)
+    #     rewards = self.env._calculate_reward(done_mode=1)
         
-        # ボーナス = 1人 * 5.0 = 5.0
-        # モード0なので、doneがFalseなら基本報酬0。よって最終報酬は 5.0
-        self.assertEqual(rewards["agent_0"], 5.0)
-        self.assertEqual(rewards["agent_1"], 5.0)
+    #     # ボーナス = 1人 * 5.0 = 5.0
+    #     # モード0なので、doneがFalseなら基本報酬0。よって最終報酬は 5.0
+    #     self.assertEqual(rewards["agent_0"], 5.0)
+    #     self.assertEqual(rewards["agent_1"], 5.0)
 
     def test_reward_mode_3_moving_away(self):
         """モード3: ゴールから遠ざかった場合に負の報酬が出るか"""

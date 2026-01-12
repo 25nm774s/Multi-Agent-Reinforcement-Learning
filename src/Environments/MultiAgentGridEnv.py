@@ -32,6 +32,7 @@ class MultiAgentGridEnv:
         self.goals_number: int = args.goals_number
         self.reward_mode: int = args.reward_mode
         self.neighbor_distance: float = args.neighbor_distance
+        self.done_mode = 2
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)
@@ -126,11 +127,10 @@ class MultiAgentGridEnv:
 
         # 4. 報酬を計算します
         # 報酬計算は Grid の更新後の位置に基づいて行います
-        done_mode = 2
-        reward = self._calculate_reward(done_mode=done_mode)
+        reward = self._calculate_reward(self.done_mode)
 
         # 5. 終了条件をチェックします
-        dones = self._check_done_condition(done_mode=done_mode)
+        dones = self._check_done_condition(self.done_mode)
 
         # 6. 次の観測を取得します
         # Grid が既に更新されているので、_get_observation は現在のグリッド状態を反映します
@@ -342,15 +342,15 @@ class MultiAgentGridEnv:
         max_penalty_dist = float(self.grid_size * 2) # inf時のクリッピング用
 
         if self.reward_mode == 0:
-            # モード 0: 完了条件を満たしていれば +100、それ以外 0
-            # reward_dict = 100.0 if done else 0.0
+            # モード 0: 完了条件を満たしていれば +10、それ以外 0
+            # reward_dict = 10.0 if done else 0.0
             for aid in self._agent_ids:
-                reward_dict[aid] = 100.0 if done else 0.0
+                reward_dict[aid] = 10.0 if done else 0.0
 
         elif self.reward_mode == 1:
-            # モード 2: 完了条件を満たしていれば +100、それ以外 -0.1
+            # モード 2: 完了条件を満たしていれば +10、それ以外 -0.02
             for aid in self._agent_ids:
-                reward_dict[aid] = 100.0 if done else -0.1
+                reward_dict[aid] = 10.0 if done else -0.02
 
         elif self.reward_mode == 2:
             distances_dict = self._calculate_total_distance_to_goals()
@@ -375,7 +375,7 @@ class MultiAgentGridEnv:
                 step_penalty = -0.01
                 
                 # 4. 完了ボーナス (全員同時にゴールにいる場合)
-                completion_bonus = 100.0 if done else 0.0
+                completion_bonus = 10.0 if done else 0.0
                 
                 reward_dict[aid] = shaping_reward + step_penalty + completion_bonus
             
@@ -387,12 +387,6 @@ class MultiAgentGridEnv:
             reward_dict = {}
             for aid in self._agent_ids:
                 reward_dict[aid] = 0.0
-
-        goal_count = sum(1 for aid in self._agent_ids if dones.get(aid, False))
-        bonus = goal_count * 5.0
-
-        for aid in self._agent_ids:
-            reward_dict[aid] += bonus
 
         return reward_dict
 

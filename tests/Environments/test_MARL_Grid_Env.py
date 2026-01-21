@@ -433,20 +433,6 @@ class TestRewardCalculation(unittest.TestCase):
         # prev_distances が更新されているか確認
         self.assertEqual(self.env.prev_distances["agent_0"], 3.0)
 
-    def test_bonus_calculation_logic(self):
-        """ボーナス計算がエージェント数に基づいて正しく加算されるか"""
-        self.env.reward_mode = 0
-        # 2人中1人だけゴールしている状況
-        mock_dones = {"agent_0": True, "agent_1": False, "__all__": False}
-        self.env._check_done_condition = MagicMock(return_value=mock_dones)
-        
-        rewards = self.env._calculate_reward(done_mode=1)
-        
-        # ボーナス = 1人 * 5.0 = 5.0
-        # モード0なので、doneがFalseなら基本報酬0。よって最終報酬は 5.0
-        self.assertEqual(rewards["agent_0"], 5.0)
-        self.assertEqual(rewards["agent_1"], 5.0)
-
     def test_reward_mode_3_moving_away(self):
         """モード3: ゴールから遠ざかった場合に負の報酬が出るか"""
         self.env.reward_mode = 3

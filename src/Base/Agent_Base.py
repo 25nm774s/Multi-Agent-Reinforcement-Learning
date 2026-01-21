@@ -5,7 +5,7 @@ import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
 
 from utils.StateProcesser import StateProcessor
-from DQN.dqn import AgentNetwork
+from DQN.network import AgentNetwork
 from .Constant import GlobalState
 
 class BaseMasterAgent(ABC):

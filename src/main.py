@@ -29,7 +29,7 @@ import json
 import os
 import shutil
 
-from DQN.dqn import AgentNetwork
+from DQN.network import AgentNetwork
 from utils.StateProcesser import StateProcessor
 from utils.replay_buffer import ReplayBuffer
 from DQN.MultiAgent_DQN import MARLTrainer

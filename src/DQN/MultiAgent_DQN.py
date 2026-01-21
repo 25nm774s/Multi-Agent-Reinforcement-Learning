@@ -10,7 +10,7 @@ from utils.Saver import Saver
 
 from .IQLMasterAgent import IQLMasterAgent
 from .QMIXMasterAgent import QMIXMasterAgent
-from .dqn import AgentNetwork 
+from .network import AgentNetwork 
 from .IO_Handler import Model_IO
 
 from Base.Constant import GlobalState

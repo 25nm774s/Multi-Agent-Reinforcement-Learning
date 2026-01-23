@@ -29,6 +29,11 @@ import json
 import os
 import shutil
 
+from DQN.network import AgentNetwork
+from utils.StateProcesser import StateProcessor
+from utils.replay_buffer import ReplayBuffer
+from DQN.MultiAgent_DQN import MARLTrainer
+
 RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
@@ -79,9 +84,8 @@ def parse_args():
     parser.add_argument('-g','--grid_size', default=4, type=int)
     parser.add_argument('-A','--agents_number', default=2, type=int)
     parser.add_argument('-G','--goals_number', default=2, type=int)
-    parser.add_argument('-l','--learning_mode', choices=['Q', 'DQN'], default='DQN')
+    parser.add_argument('-l','--learning_mode', choices=['Q', 'QMIX','IQL'], default='IQL')
     parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
-    parser.add_argument('--mask', choices=[0, 1], default=0, type=int)
     parser.add_argument('--neighbor_distance', default=256, type=int)# 大きい値にしておくことで全観測になる。
     parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
     parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
@@ -140,7 +144,7 @@ if __name__ == '__main__':
     def q_learning():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
         from Q_learn.Agent_Q import Agent
-        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
         
         simulation.train(config.episode_number)
@@ -155,7 +159,7 @@ if __name__ == '__main__':
     def q_play():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
         from Q_learn.Agent_Q import Agent
-        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
         #simulation.render_anime(config.episode_number)
@@ -163,21 +167,52 @@ if __name__ == '__main__':
             
 
     def dqn_process():
-        from DQN.MultiAgent_DQN import MultiAgent_DQN
-        from DQN.Agent_DQN import Agent
-        agents:list = [Agent(id, config,config.use_per) for id in range(config.agents_number)]
+        # Shared components
+        device = torch.device(config.device)
+        shared_agent_network = AgentNetwork(
+            grid_size=config.grid_size,
+            output_size=5, # Action size (UP, DOWN, LEFT, RIGHT, STAY)
+            total_agents=config.agents_number
+        ).to(device)
+        shared_state_processor = StateProcessor(
+            grid_size=config.grid_size,
+            goals_number=config.goals_number,
+            agents_number=config.agents_number,
+            device=device
+        )
+        # Pass goals_number to ReplayBuffer
+        # MARLTrainerが初期化されてから、_goal_idsと_agent_idsを取得するために、shared_replay_bufferの初期化をMARLTrainerの後に移動します。
+        # ここでは仮のReplayBufferをインスタンス化し、後で置き換えるか、またはMARLTrainer内でReplayBufferをインスタンス化するように変更します。
+        # 一旦、_goal_idsと_agent_idsを直接渡すように修正します。
 
-        simulation = MultiAgent_DQN(config,agents)
+        _agent_ids = [f'agent_{i}' for i in range(config.agents_number)]
+        _goal_ids = [f'goal_{i}' for i in range(config.goals_number)]
 
-        simulation.train()
+        shared_replay_buffer = ReplayBuffer(
+            buffer_size=config.buffer_size,
+            batch_size=config.batch_size,
+            device=device,
+            alpha=config.alpha,
+            use_per=bool(config.use_per),
+            goals_number=config.goals_number, # Pass goals_number here
+            goal_ids=_goal_ids,    # Pass these
+            agent_ids=_agent_ids   # Pass these
+        )
 
-        simulation.result_save()
+        # Instantiate MARLTrainer in learning_mode
+        trainer = MARLTrainer(
+            args=config,
+            mode=config.learning_mode,
+            shared_agent_network=shared_agent_network,
+            shared_state_processor=shared_state_processor,
+            shared_replay_buffer=shared_replay_buffer
+        )
 
-        simulation.save_model_weights()
-        simulation.load_model_weights()
+        # Run training
+        trainer.train() # Comment out the full training
 
-        simulation.simulate_agent_behavior(max_simulation_timestep=150)
-    
+        print(f"--- {config.learning_mode} mode test finished successfully ---")
+
     def dimensions_estimater(grid_size:int, agent_number:int)->int:
         res = 1
         for i in range(agent_number):
@@ -194,7 +229,7 @@ if __name__ == '__main__':
         else:
             q_learning()
 
-    elif config.learning_mode == "DQN":
+    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX":
         dqn_process()
     else:
         print("未実装\n")

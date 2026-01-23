@@ -11,26 +11,16 @@ class PlotResults:
     エージェントの訪問状態を記録し、ヒートマップとして可視化する機能も提供します。
     保存処理は Saver クラスに委譲されます。
     """
-    def __init__(self, save_dir: str):
-        self.save_dir = save_dir
-
+    def __init__(self, scores_summary_path: str, visited_coordinates_path: str):
+ 
         # save_dir を使用して PlotResults 内でファイルパスを定義
         # scores_summary100.csv:集計済みファイル
-        self.scores_summary_100_path = os.path.join(self.save_dir, "scores_summary100.csv")
+        # self.scores_summary_100_path = os.path.join(self.save_dir, "aggregated_episode_metrics_100.csv")
+        self.scores_summary_100_path = scores_summary_path
+
         # visited_coordinates.npy をヒートマップデータファイルとする
-        self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
-
-
-    def add_episode_data(self, episode: int, time_step: int, reward: float, loss: float):
-        # バッファリングおよび平均化ロジックを削除
-        # データログ記録は Saver の責任となったため、このメソッドは PlotResults には不要であるべきです。
-        # ただし、元のコード構造に基づいて、現時点では保持していますが、何も実行しません。
-        pass
-
-    def add_agent_state(self, agent_id: int, x: int, y: int):
-        # データログ記録は Saver の責任となったため、このメソッドは PlotResults には不要であるべきです。
-        # ただし、元のコード構造に基づいて、現時点では保持していますが、何も実行しません。
-        pass
+        # self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
+        self.visited_coordinates_path = visited_coordinates_path
 
     def road_csv(self):
         # scores_summary100.csv から読み込むように更新
@@ -118,7 +108,6 @@ class PlotResults:
         title_fontsize = 16
         # 全体の訪問回数を表す単一のヒートマップの場合、ここでは agent_id ロジックは不要
         # 集計された訪問回数に対して単一のヒートマップを生成
-        num_agents = 1 # 集計ヒートマップを1つプロット
 
         # 単一ヒートマップのプロットロジック
         fig, ax = plt.subplots(1, 1, figsize=(6, 5))

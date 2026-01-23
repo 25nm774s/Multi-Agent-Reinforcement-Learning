@@ -4,8 +4,12 @@ from typing import Tuple,List,Any,Dict
 PosType = Tuple[int,int]
 """共通の座標表現形式"""
 
-GlobalState = Tuple[PosType,...]
+GlobalState = Dict[str,PosType]
 """共通の状態表現s"""
+
+ExperienceType = \
+    Tuple[Dict[str, Dict[str, Any]], Dict[str, int], Dict[str, float], Dict[str, Dict[str, Any]], Dict[str, bool]]
+"""経験のデータ型"""
 
 #####################################
 # Qテーブル内部の座標表現形式

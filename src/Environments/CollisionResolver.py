@@ -14,6 +14,7 @@ class CollisionResolver:
             grid (Grid): 位置情報にアクセスするための Grid クラスのインスタンス。
         """
         self._grid: Grid = grid
+        self.action_space_size = 5 # 行動空間をここで定義
 
     def _calculate_next_position(self, current_pos: PosType, action: int) -> PosType:
         """

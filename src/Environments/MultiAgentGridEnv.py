@@ -388,12 +388,6 @@ class MultiAgentGridEnv:
             for aid in self._agent_ids:
                 reward_dict[aid] = 0.0
 
-        goal_count = sum(1 for aid in self._agent_ids if dones.get(aid, False))
-        bonus = goal_count * 5.0
-
-        for aid in self._agent_ids:
-            reward_dict[aid] += bonus
-
         return reward_dict
 
     def _check_done_condition(self,done_mode) -> Dict[str, bool]:

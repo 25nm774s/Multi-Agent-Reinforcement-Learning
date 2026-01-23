@@ -29,7 +29,7 @@ import json
 import os
 import shutil
 
-from DQN.dqn import AgentNetwork
+from DQN.network import AgentNetwork
 from utils.StateProcesser import StateProcessor
 from utils.replay_buffer import ReplayBuffer
 from DQN.MultiAgent_DQN import MARLTrainer
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     def q_learning():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
         from Q_learn.Agent_Q import Agent
-        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
         
         simulation.train(config.episode_number)
@@ -159,7 +159,7 @@ if __name__ == '__main__':
     def q_play():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
         from Q_learn.Agent_Q import Agent
-        agents:list[Agent] = [Agent(config,id) for id in range(config.agents_number)]
+        agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
         simulation = MultiAgent_Q(config,agents)
 
         #simulation.render_anime(config.episode_number)

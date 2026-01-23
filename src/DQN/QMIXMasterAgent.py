@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple, Dict, Any
 
 from Base.Agent_Base import AgentNetwork, BaseMasterAgent, StateProcessor
 
-from .dqn import MixingNetwork
+from .network import MixingNetwork
 
 class QMIXMasterAgent(BaseMasterAgent):
     """

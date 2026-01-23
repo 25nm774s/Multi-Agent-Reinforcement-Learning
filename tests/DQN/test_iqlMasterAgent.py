@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from typing import Dict, Any
 
 from src.DQN.IQLMasterAgent import IQLMasterAgent
-from src.DQN.dqn import AgentNetwork
+from DQN.network import AgentNetwork
 from src.utils.StateProcesser import StateProcessor
 
 class TestIQLMasterAgent(unittest.TestCase):

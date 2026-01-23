@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import unittest
 
-from src.DQN.dqn import AgentNetwork
+from DQN.network import AgentNetwork
 
 class TestAgentNetwork(unittest.TestCase):
     def setUp(self):
@@ -82,7 +82,7 @@ import torch.nn.functional as F
 import unittest
 import numpy as np
 
-from src.DQN.dqn import MixingNetwork
+from DQN.network import MixingNetwork
 
 class TestMixingNetwork(unittest.TestCase):
     def setUp(self):

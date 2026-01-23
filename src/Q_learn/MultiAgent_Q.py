@@ -51,11 +51,15 @@ class MultiAgent_Q:
         print("Qtable-len: ", self.agents[0].get_q_table_size())
 
         # 学習で発生したデータを保存するクラス
-        self.saver = Saver(self.save_dir,self.grid_size)
+        os.makedirs(self.save_dir,exist_ok=True)
+        score_sammary_path = os.path.join(self.save_dir, "aggregated_episode_metrics_10.csv")
+        visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
+
+        self.saver = Saver(score_sammary_path,visited_coordinates_path,self.grid_size)
         self.saver.CALCULATION_PERIOD = 10
 
         # saverクラスで保存されたデータを使ってグラフを作るクラス
-        self.plot_results = PlotResults(self.save_dir)
+        self.plot_results = PlotResults(score_sammary_path,visited_coordinates_path)
 
     def save_checkpoint(self, episode:int, goal_position:tuple[PosType,...]|list[PosType]):
         """

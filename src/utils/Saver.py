@@ -15,8 +15,7 @@ class Saver:
     # 集計期間
     CALCULATION_PERIOD:int = 100
 
-    # コンストラクタにposition_validator_funcを追加
-    def __init__(self, save_dir, grid_size, position_validator_func=None):
+    def __init__(self, score_summary_path, visited_coordinates_path, grid_size, position_validator_func=None):
         """
         Saverクラスの新しいインスタンスを初期化します。
 
@@ -27,16 +26,15 @@ class Saver:
                                                            引数として(x, y)のタプルを受け取り、boolを返します。
                                                            指定しない場合は、内部でGridクラスを使用します。
         """
-        self.save_dir = save_dir
         self.grid_size = grid_size # グリッドサイズを保存
         
         # 集計エピソード指標を保存するパス
-        self.episode_batch_summary_path = os.path.join(self.save_dir, f"aggregated_episode_metrics_{self.CALCULATION_PERIOD}.csv")
+        # self.episode_batch_summary_path = os.path.join(self.save_dir, f"aggregated_episode_metrics_{self.CALCULATION_PERIOD}.csv")
+        self.episode_batch_summary_path = score_summary_path
 
         # ヒートマップデータ用にファイル名と形式を.npyに変更
-        self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
-
-        os.makedirs(self.save_dir, exist_ok=True)
+        # self.visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
+        self.visited_coordinates_path = visited_coordinates_path
 
         if not os.path.exists(self.episode_batch_summary_path):
             with open(self.episode_batch_summary_path, "w", newline='') as f:

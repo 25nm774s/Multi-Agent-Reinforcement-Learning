@@ -33,7 +33,9 @@ class TestSaver(unittest.TestCase):
 
         # position_validator_funcをラムダ関数で定義して注入
         self.position_validator = lambda pos: 0 <= pos[0] < self.grid_size and 0 <= pos[1] < self.grid_size
-        self.saver = Saver(self.test_dir, self.grid_size, self.position_validator)
+        score_path = os.path.join(self.test_dir, "aggregated_episode_metrics.csv")
+        visit_path = os.path.join(self.test_dir, "visited_coordinates.npy")
+        self.saver = Saver(score_path, visit_path, self.grid_size, self.position_validator)
 
     def tearDown(self):
         """
@@ -50,7 +52,7 @@ class TestSaver(unittest.TestCase):
         self.assertTrue(os.path.exists(self.test_dir))
 
         # scores_summary100.csvが作成され、正しいヘッダーを持つことを確認
-        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics_{Saver.CALCULATION_PERIOD}.csv")
+        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics.csv")
         self.assertTrue(os.path.exists(scores_100_path))
         with open(scores_100_path, 'r', newline='') as f:
             reader = csv.reader(f)
@@ -127,7 +129,7 @@ class TestSaver(unittest.TestCase):
             expected_losses.append(loss)
             expected_dones.append(int(done))
 
-        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics_{Saver.CALCULATION_PERIOD}.csv")
+        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics.csv")
         df = pd.read_csv(scores_100_path)
 
         # 2つの集計グループが保存されていることを確認
@@ -179,7 +181,7 @@ class TestSaver(unittest.TestCase):
             expected_dones.append(int(done))
 
         # 集計期間に満たないため、ファイルはまだ空
-        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics_{Saver.CALCULATION_PERIOD}.csv")
+        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics.csv")
         initial_df = pd.read_csv(scores_100_path)
         self.assertEqual(len(initial_df), 0)
 
@@ -209,7 +211,7 @@ class TestSaver(unittest.TestCase):
         self.assertEqual(len(self.saver.episode_data_buffer), 0)
 
         # 呼び出し時にエラーが発生しないこと、ファイルが変更されないことを確認
-        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics_{Saver.CALCULATION_PERIOD}.csv")
+        scores_100_path = os.path.join(self.test_dir, f"aggregated_episode_metrics.csv")
         initial_df = pd.read_csv(scores_100_path)
 
         self.saver.save_remaining_episode_data()

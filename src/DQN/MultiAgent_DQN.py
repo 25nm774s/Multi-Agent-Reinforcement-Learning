@@ -147,9 +147,15 @@ class MARLTrainer:
         )
 
         # 結果保存およびプロット関連クラスの初期化
-        self.saver = Saver(self.save_dir,self.grid_size)
+        os.makedirs(self.save_dir,exist_ok=True)
+        score_sammary_path = os.path.join(self.save_dir, "aggregated_episode_metrics_10.csv")
+        visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
+
+        self.saver = Saver(score_sammary_path,visited_coordinates_path,self.grid_size)
         self.saver.CALCULATION_PERIOD = 20
-        self.plot_results = PlotResults(self.save_dir)
+
+        # saverクラスで保存されたデータを使ってグラフを作るクラス
+        self.plot_results = PlotResults(score_sammary_path,visited_coordinates_path)
 
         self.load_checkpoint(None)
 

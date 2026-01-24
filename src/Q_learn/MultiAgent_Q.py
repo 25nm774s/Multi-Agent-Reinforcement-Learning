@@ -43,7 +43,7 @@ class MultiAgent_Q:
         self._start_episode = 1
 
         goal_pos_list = [(args.grid_size-1, args.grid_size-1),(args.grid_size//2, args.grid_size//4),(args.grid_size-1, args.grid_size//3), (0, args.grid_size//2)]
-        self.env = MultiAgentGridEnv(args, goal_pos_list[:self.goals_number])# 環境クラス. Fixed: pass goals_number not agents_number
+        self.env = MultiAgentGridEnv(args, goal_pos_list[:self.goals_number])# 環境クラス. 
 
         self.goal_pos = tuple(self.env.get_goal_positions().values())
 

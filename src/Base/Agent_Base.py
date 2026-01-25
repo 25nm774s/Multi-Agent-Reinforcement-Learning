@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
+import copy
 import torch
 import torch.nn as nn # オプティマイザーを設定するため。
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
 
 from Environments.StateProcesser import ObsToTensorWrapper
-from DQN.network import AgentNetwork
+from DQN.network import AgentNetwork, IAgentNetwork
 from .Constant import GlobalState
 
 class BaseMasterAgent(ABC):
@@ -21,7 +22,7 @@ class BaseMasterAgent(ABC):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: AgentNetwork,
+                 agent_network: IAgentNetwork,
                  agent_ids: List[str],
                  goal_ids: List[str]):
         """
@@ -34,7 +35,7 @@ class BaseMasterAgent(ABC):
             goals_number (int): 環境内のゴール数.
             device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
             state_processor (StateProcessor): 状態変換に使用するStateProcessorのインスタンス.
-            agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
+            agent_network (IAgentNetwork): 共有AgentNetworkのインスタンス.
             agent_ids (List[str]): エージェントのIDリスト.
             goal_ids (List[str]): ゴールのIDリスト.
         """
@@ -51,8 +52,8 @@ class BaseMasterAgent(ABC):
 
         self.num_channels = self.agent_network.num_channels
 
-        self.agent_network_target = AgentNetwork(grid_size, action_size, n_agents).to(device)
-        self.agent_network_target.load_state_dict(self.agent_network.state_dict())
+        # ターゲットネットワークはメインネットワークのコピーとして作成
+        self.agent_network_target = copy.deepcopy(self.agent_network).to(device)
         self.agent_network_target.eval()
 
     def _process_raw_observations_batch(self, obs_dicts_batch: List[Dict[str, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -114,7 +115,7 @@ class BaseMasterAgent(ABC):
 
     # --- 既存のメソッドはそのまま維持 ---
 
-    def _flatten_global_state_dict(self, state_dict: GlobalState) -> np.ndarray:
+    def _flatten_global_state_dict(self, state_dict: Dict[str, Any]) -> np.ndarray:
         """
         GlobalState辞書をStateProcessorが期待する順序でフラットなNumPy配列に変換します。
         順序はゴールID、次にエージェントIDの座標です。
@@ -137,7 +138,7 @@ class BaseMasterAgent(ABC):
     # _get_agent_q_values method now expects transformed_obs_batch and agent_ids_batch directly
     def _get_agent_q_values(
         self,
-        agent_network_instance: AgentNetwork,
+        agent_network_instance: IAgentNetwork,
         transformed_obs_batch_for_q_values: torch.Tensor, # (B*N, C, G, G) from _process_raw_observations_batch
         agent_ids_batch_for_q_values: torch.Tensor # (B*N,) agent_ids for batch processing, already flattened
     ) -> torch.Tensor:
@@ -146,7 +147,7 @@ class BaseMasterAgent(ABC):
         バッチ内の全エージェントの全アクションに対するQ値を計算します。
 
         Args:
-            agent_network_instance (AgentNetwork): Q値を計算するAgentNetworkのインスタンス.
+            agent_network_instance (IAgentNetwork): Q値を計算するAgentNetworkのインスタンス.
             transformed_obs_batch_for_q_values (torch.Tensor): AgentNetworkへの入力 (形状: (batch_size * n_agents, num_channels, grid_size, grid_size)).
             agent_ids_batch_for_q_values (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size * n_agents,)).
 

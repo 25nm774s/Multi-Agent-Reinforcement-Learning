@@ -1,8 +1,55 @@
+from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class AgentNetwork(nn.Module):
+class IAgentNetwork(nn.Module, ABC):
+    """
+    Abstract Base Class for AgentNetwork.
+    Defines the interface for all agent Q-value networks.
+    """
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__()
+        # Abstract properties are defined below, concrete classes will implement them.
+        pass
+
+    @property
+    @abstractmethod
+    def grid_size(self) -> int:
+        """Returns the grid size the network is configured for."""
+        pass
+
+    @property
+    @abstractmethod
+    def num_channels(self) -> int:
+        """Returns the number of input channels for the network."""
+        pass
+
+    @property
+    @abstractmethod
+    def total_agents(self) -> int:
+        """Returns the total number of agents the network is configured for."""
+        pass
+
+    @property
+    @abstractmethod
+    def action_size(self) -> int:
+        """Returns the size of the action space the network outputs for."""
+        pass
+
+    @abstractmethod
+    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Computes Q-values for given observations and agent IDs.
+        Args:
+            x (torch.Tensor): Transformed observations (B*N, C, G, G).
+            agent_ids (torch.Tensor): Agent IDs (B*N,).
+        Returns:
+            torch.Tensor: Q-values for each action (B*N, action_size).
+        """
+        pass
+
+class AgentNetwork(IAgentNetwork):
     """
     DQNで使用されるQネットワークモデル.
     状態を入力として受け取り、各行動に対するQ値を出力する.
@@ -16,11 +63,12 @@ class AgentNetwork(nn.Module):
             output_size (int): Qネットワークの出力サイズ (行動空間の次元).
             total_agents (int): 全エージェント数 (パラメータ共有のためのAgent IDワンホットエンコーディングに使用)
         """
-        super().__init__()
+        super().__init__(grid_size, output_size, total_agents)
 
-        self.grid_size = grid_size
-        self.num_channels = 3
-        self.total_agents = total_agents # Add total_agents to instance variables
+        self._grid_size = grid_size
+        self._num_channels = 3 # Concrete value
+        self._total_agents = total_agents
+        self._action_size = output_size
 
         # 状態入力の次元 (グリッドマップのフラット化されたサイズ)
         state_input_size = self.num_channels * self.grid_size**2
@@ -34,6 +82,22 @@ class AgentNetwork(nn.Module):
         self.fc1 = nn.Linear(combined_input_size, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, output_size)
+
+    @property
+    def grid_size(self) -> int:
+        return self._grid_size
+
+    @property
+    def num_channels(self) -> int:
+        return self._num_channels
+
+    @property
+    def total_agents(self) -> int:
+        return self._total_agents
+
+    @property
+    def action_size(self) -> int:
+        return self._action_size
 
     def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
         """

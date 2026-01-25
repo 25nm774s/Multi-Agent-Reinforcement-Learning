@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
 
-from Base.Agent_Base import AgentNetwork, BaseMasterAgent, ObsToTensorWrapper
+from Base.Agent_Base import IAgentNetwork, BaseMasterAgent, ObsToTensorWrapper
 
 from .network import MixingNetwork
 
@@ -20,7 +20,7 @@ class QMIXMasterAgent(BaseMasterAgent):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: AgentNetwork,
+                 agent_network: IAgentNetwork,
                  gamma: float,
                  agent_ids: List[str],
                  goal_ids: List[str]):

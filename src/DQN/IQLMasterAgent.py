@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
 
-from Base.Agent_Base import BaseMasterAgent, ObsToTensorWrapper, AgentNetwork
+from Base.Agent_Base import BaseMasterAgent, ObsToTensorWrapper, IAgentNetwork
 
 class IQLMasterAgent(BaseMasterAgent):
     """
@@ -18,7 +18,7 @@ class IQLMasterAgent(BaseMasterAgent):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: AgentNetwork,
+                 agent_network: IAgentNetwork,
                  gamma: float,
                  agent_ids: List[str],
                  goal_ids: List[str]):

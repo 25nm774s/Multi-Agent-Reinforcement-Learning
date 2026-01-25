@@ -180,32 +180,13 @@ if __name__ == '__main__':
             agents_number=config.agents_number,
             device=device
         )
-        # Pass goals_number to ReplayBuffer
-        # MARLTrainerが初期化されてから、_goal_idsと_agent_idsを取得するために、shared_replay_bufferの初期化をMARLTrainerの後に移動します。
-        # ここでは仮のReplayBufferをインスタンス化し、後で置き換えるか、またはMARLTrainer内でReplayBufferをインスタンス化するように変更します。
-        # 一旦、_goal_idsと_agent_idsを直接渡すように修正します。
-
-        _agent_ids = [f'agent_{i}' for i in range(config.agents_number)]
-        _goal_ids = [f'goal_{i}' for i in range(config.goals_number)]
-
-        shared_replay_buffer = ReplayBuffer(
-            buffer_size=config.buffer_size,
-            batch_size=config.batch_size,
-            device=device,
-            alpha=config.alpha,
-            use_per=bool(config.use_per),
-            goals_number=config.goals_number, # Pass goals_number here
-            goal_ids=_goal_ids,    # Pass these
-            agent_ids=_agent_ids   # Pass these
-        )
 
         # Instantiate MARLTrainer in learning_mode
         trainer = MARLTrainer(
             args=config,
             mode=config.learning_mode,
             shared_agent_network=shared_agent_network,
-            shared_state_processor=shared_state_processor,
-            shared_replay_buffer=shared_replay_buffer
+            shared_state_processor=shared_state_processor
         )
 
         # Run training

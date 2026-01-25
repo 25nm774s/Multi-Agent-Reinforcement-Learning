@@ -29,7 +29,7 @@ class MARLTrainer:
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
     """
-    def __init__(self, args, mode: str, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper, shared_replay_buffer: ReplayBuffer):
+    def __init__(self, args, mode: str, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper):
         """
         MARLTrainer クラスのコンストラクタ.
 
@@ -113,7 +113,16 @@ class MARLTrainer:
             raise ValueError(f"Unknown mode: {mode}. Must be 'IQL' or 'QMIX'.")
 
         # ReplayBufferの割り当て
-        self.replay_buffer = shared_replay_buffer
+        self.replay_buffer = ReplayBuffer(
+            buffer_size=args.buffer_size,
+            batch_size=args.batch_size,
+            device=args.device,
+            alpha=args.alpha,
+            use_per=bool(args.use_per),
+            goals_number=args.goals_number,
+            goal_ids=self._goal_ids,
+            agent_ids=self._agent_ids
+        )
 
         # Optimizer initialization
         optim_params = self.master_agent.get_optimizer_params()

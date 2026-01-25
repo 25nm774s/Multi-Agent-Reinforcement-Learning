@@ -30,7 +30,7 @@ import os
 import shutil
 
 from DQN.network import AgentNetwork
-from Environments.StateProcesser import StateProcessor
+from Environments.StateProcesser import ObsToTensorWrapper
 from utils.replay_buffer import ReplayBuffer
 from DQN.MultiAgent_DQN import MARLTrainer
 
@@ -174,7 +174,7 @@ if __name__ == '__main__':
             output_size=5, # Action size (UP, DOWN, LEFT, RIGHT, STAY)
             total_agents=config.agents_number
         ).to(device)
-        shared_state_processor = StateProcessor(
+        shared_state_processor = ObsToTensorWrapper(
             grid_size=config.grid_size,
             goals_number=config.goals_number,
             agents_number=config.agents_number,

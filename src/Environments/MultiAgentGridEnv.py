@@ -1,13 +1,99 @@
 import random
-from typing import Tuple, Dict
+from abc import ABC, abstractmethod
+import torch
+from typing import Tuple, Dict, List, Optional, Any
 from itertools import product
 
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
 
-from Base.Constant import PosType#, GlobalState
+from Base.Constant import PosType
 
 GlobalState = Dict[str,PosType]
+
+class IEnvWrapper(ABC):
+    """
+    環境ラッパー抽象クラス。
+    強化学習エージェントとのインターフェースを標準化し、
+    環境の観測、行動、報酬、完了状態を統一された形式で提供します。
+    """
+
+    @abstractmethod
+    def reset(self, initial_agent_positions: Optional[List[PosType]] = None) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        """
+        環境をリセットし、初期観測を返します。
+
+        Args:
+            initial_agent_positions (Optional[List[PosType]]): 各エージェントの初期位置のリスト。
+                                                            Noneの場合、ランダムに配置されます。
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
+                - agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
+                - global_state_tensor (torch.Tensor): フラット化されたグローバル状態 ((goals_number + n_agents) * 2,)。
+                - info (Dict[str, Any]): 環境に関する追加情報。少なくとも 'raw_global_state': Dict[str, PosType] を含む。
+        """
+        pass
+
+    @abstractmethod
+    def step(self, actions: Dict[str, int]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        """
+        指定されたエージェントの行動を実行し、次の状態、報酬、完了フラグを返します。
+
+        Args:
+            actions (Dict[str, int]): 各エージェントのIDをキーとする行動の辞書。
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
+                - next_agent_obs_tensor (torch.Tensor): 各エージェントの次のグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
+                - next_global_state_tensor (torch.Tensor): 次のフラット化されたグローバル状態 ((goals_number + n_agents) * 2,)。
+                - rewards_tensor (torch.Tensor): 各エージェントの報酬 (n_agents,)。
+                - dones_tensor (torch.Tensor): 各エージェントの完了フラグ (0.0: not done, 1.0: done) (n_agents,)。
+                - info (Dict[str, Any]): 環境に関する追加情報。少なくとも 'raw_global_state': Dict[str, PosType] および 'all_agents_done': bool を含む。
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def action_space_size(self) -> int:
+        """エージェントのアクション空間のサイズを返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def n_agents(self) -> int:
+        """環境内のエージェントの数を返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def grid_size(self) -> int:
+        """グリッド環境のサイズを返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def goals_number(self) -> int:
+        """環境内のゴールの数を返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def agent_ids(self) -> List[str]:
+        """エージェントのIDのリストを返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def goal_ids(self) -> List[str]:
+        """ゴールのIDのリストを返します。"""
+        pass
+
+    @property
+    @abstractmethod
+    def num_channels(self) -> int:
+        """観測グリッドのチャネル数を返します。"""
+        pass
 
 class MultiAgentGridEnv:
     """
@@ -426,3 +512,94 @@ class MultiAgentGridEnv:
     def get_all_object(self):
         r = self._grid.get_all_object_positions()
         return r
+
+from Environments.StateProcesser import ObsToTensorWrapper
+class GridEnvWrapper(IEnvWrapper):
+    """
+    MultiAgentGridEnv を IEnvWrapper インターフェースに適合させるラッパークラス。
+    環境の生の出力を標準化されたテンソル形式に変換します。
+    """
+    def __init__(self, env_instance: MultiAgentGridEnv, state_processor_instance: ObsToTensorWrapper):
+        self._env = env_instance
+        self._state_processor = state_processor_instance
+        self._agent_ids = self._env._agent_ids
+        self._goal_ids = self._env._goal_ids
+
+    @property
+    def action_space_size(self) -> int:
+        return self._env.action_space_size
+
+    @property
+    def n_agents(self) -> int:
+        return self._env.agents_number
+
+    @property
+    def grid_size(self) -> int:
+        return self._env.grid_size
+
+    @property
+    def goals_number(self) -> int:
+        return self._env.goals_number
+
+    @property
+    def agent_ids(self) -> List[str]:
+        return self._agent_ids
+
+    @property
+    def goal_ids(self) -> List[str]:
+        return self._goal_ids
+
+    @property
+    def num_channels(self) -> int:
+        return self._state_processor.num_channels
+
+    def reset(self, initial_agent_positions:List[PosType]=[]) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        current_partial_observations_dict = self._env.reset(initial_agent_positions)
+        true_current_global_state: GlobalState = self._env._get_global_state()
+
+        # (goals_number + n_agents) * 2,)
+        global_state_tensor = self._state_processor._flatten_global_state_dict(true_current_global_state)
+
+        # 各エージェントの観測を変換し、スタックして (n_agents, num_channels, grid_size, grid_size) テンソルを作成
+        transformed_agent_obs_list = []
+        for agent_id in self._agent_ids:
+            single_agent_obs = current_partial_observations_dict[agent_id]
+            transformed_obs = self._state_processor.transform_state_batch(single_agent_obs)
+            transformed_agent_obs_list.append(transformed_obs)
+        agent_obs_tensor = torch.stack(transformed_agent_obs_list, dim=0)
+
+        info: Dict[str, Any] = {
+            'raw_global_state': true_current_global_state
+        }
+
+        return agent_obs_tensor, global_state_tensor, info
+
+    def step(self, actions: Dict[str, int]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        next_partial_observations_dict, reward_dict_per_agent, done_dict, env_info = self._env.step(actions)
+        true_next_global_state: GlobalState = self._env._get_global_state()
+
+        # (goals_number + n_agents) * 2,)
+        next_global_state_tensor = self._state_processor._flatten_global_state_dict(true_next_global_state)
+
+        # 各エージェントの次の観測を変換し、スタックして (n_agents, num_channels, grid_size, grid_size) テンソルを作成
+        transformed_next_agent_obs_list = []
+        for agent_id in self._agent_ids:
+            single_agent_obs = next_partial_observations_dict[agent_id]
+            transformed_obs = self._state_processor.transform_state_batch(single_agent_obs)
+            transformed_next_agent_obs_list.append(transformed_obs)
+        next_agent_obs_tensor = torch.stack(transformed_next_agent_obs_list, dim=0)
+
+        # 報酬を (n_agents,) テンソルに変換
+        rewards_list = [reward_dict_per_agent[agent_id] for agent_id in self._agent_ids]
+        rewards_tensor = torch.tensor(rewards_list, dtype=torch.float32, device=self._state_processor.device)
+
+        # Doneフラグを (n_agents,) テンソルに変換
+        dones_list = [float(done_dict[agent_id]) for agent_id in self._agent_ids]
+        dones_tensor = torch.tensor(dones_list, dtype=torch.float32, device=self._state_processor.device)
+
+        info: Dict[str, Any] = {
+            'raw_global_state': true_next_global_state,
+            'all_agents_done': done_dict['__all__']
+        }
+
+        return next_agent_obs_tensor, next_global_state_tensor, rewards_tensor, dones_tensor, info

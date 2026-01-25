@@ -2,12 +2,10 @@ from abc import ABC, abstractmethod
 import copy
 import torch
 import torch.nn as nn # オプティマイザーを設定するため。
-import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict
 
 from Environments.StateProcesser import ObsToTensorWrapper
-from DQN.network import AgentNetwork, IAgentNetwork
-from .Constant import GlobalState
+from DQN.network import IAgentNetwork, IAgentNetwork
 
 class BaseMasterAgent(ABC):
     """
@@ -22,7 +20,7 @@ class BaseMasterAgent(ABC):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork,
+                 agent_network_instance: IAgentNetwork, 
                  agent_ids: List[str],
                  goal_ids: List[str]):
         """
@@ -35,7 +33,7 @@ class BaseMasterAgent(ABC):
             goals_number (int): 環境内のゴール数.
             device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
             state_processor (StateProcessor): 状態変換に使用するStateProcessorのインスタンス.
-            agent_network (IAgentNetwork): 共有AgentNetworkのインスタンス.
+            agent_network_instance (IAgentNetwork): 共有AgentNetworkのインスタンス (IAgentNetwork型).
             agent_ids (List[str]): エージェントのIDリスト.
             goal_ids (List[str]): ゴールのIDリスト.
         """
@@ -46,101 +44,25 @@ class BaseMasterAgent(ABC):
         self.goals_num = goals_number
         self.device = device
         self.state_processor = state_processor
-        self.agent_network = agent_network
+        self.agent_network = agent_network_instance # Store the provided instance
         self._agent_ids = agent_ids
         self._goal_ids = goal_ids
 
+        # num_channels は IAgentNetwork のプロパティから取得
         self.num_channels = self.agent_network.num_channels
 
         # ターゲットネットワークはメインネットワークのコピーとして作成
         self.agent_network_target = copy.deepcopy(self.agent_network).to(device)
         self.agent_network_target.eval()
 
-    def _process_raw_observations_batch(self, obs_dicts_batch: List[Dict[str, Dict[str, Any]]]) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        ReplayBuffer.sampleから得られる観測辞書のバッチを処理し、
-        AgentNetworkおよびMixingNetworkが期待するテンソル形式に変換します。
+    # _process_raw_observations_batch は ReplayBuffer が既にテンソルを扱うようになったため、不要となり削除されます。
+    # _flatten_global_state_dict は StateProcessor に移動したため削除されます。
 
-        Args:
-            obs_dicts_batch (List[Dict[str, Dict[str, Any]]]):
-                バッチサイズBの観測辞書のリスト。各辞書はエージェントIDをキーとし、
-                そのエージェントのローカル観測（'self', 'all_goals', 'others'）を含む。
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]:
-                - transformed_obs_batch (torch.Tensor): AgentNetworkへの入力 (B * N, C, G, G)。
-                - global_state_tensor_for_mixing_network (torch.Tensor): MixingNetworkへの入力 (B, state_dim)。
-        """
-        batch_size = len(obs_dicts_batch)
-
-        all_transformed_obs_for_agents = [] # (B*N, C, G, G)
-        all_flattened_global_states_for_mixing = [] # (B, state_dim)
-
-        for obs_dict_item in obs_dicts_batch:
-            # AgentNetwork用のローカル観測テンソルを生成
-            for agent_id in self._agent_ids:
-                # StateProcessor.transform_state_batch は単一エージェントの観測辞書を期待するように変更された
-                single_agent_obs = obs_dict_item[agent_id]
-                transformed_obs_for_agent = self.state_processor.transform_state_batch(single_agent_obs)
-                all_transformed_obs_for_agents.append(transformed_obs_for_agent)
-
-            # MixingNetwork用のグローバル状態テンソルを生成
-            # obs_dict_itemからGlobalState辞書を再構築し、それをフラット化
-            # この再構築は、_flatten_global_state_dictがGlobalState dictを期待するため
-            reconstructed_global_state: GlobalState = {}
-
-            # ゴール座標を抽出
-            # どのアージェントの観測辞書を使っても'all_goals'は同じはず
-            if self._agent_ids and self._agent_ids[0] in obs_dict_item and 'all_goals' in obs_dict_item[self._agent_ids[0]]:
-                for i, goal_pos_tuple in enumerate(obs_dict_item[self._agent_ids[0]]['all_goals']):
-                    # goal_pos_tupleはリストとして読み込まれる可能性があるので、タプルに変換
-                    reconstructed_global_state[self._goal_ids[i]] = tuple(goal_pos_tuple)
-
-            # エージェント自身の座標を抽出
-            for agent_id in self._agent_ids:
-                if agent_id in obs_dict_item and 'self' in obs_dict_item[agent_id]:
-                    reconstructed_global_state[agent_id] = tuple(obs_dict_item[agent_id]['self'])
-
-            # 再構築したGlobalStateをフラットなNumPy配列に変換し、テンソル化
-            flattened_global_state_np = self._flatten_global_state_dict(reconstructed_global_state)
-            flattened_global_state_tensor = torch.tensor(flattened_global_state_np, dtype=torch.float32, device=self.device)
-            all_flattened_global_states_for_mixing.append(flattened_global_state_tensor)
-
-        # 最終的なテンソルにスタック
-        transformed_obs_batch = torch.stack(all_transformed_obs_for_agents, dim=0) # (B*N, C, G, G)
-        global_state_tensor_for_mixing_network = torch.stack(all_flattened_global_states_for_mixing, dim=0) # (B, state_dim)
-
-        return transformed_obs_batch, global_state_tensor_for_mixing_network
-
-
-    # --- 既存のメソッドはそのまま維持 ---
-
-    def _flatten_global_state_dict(self, state_dict: Dict[str, Any]) -> np.ndarray:
-        """
-        GlobalState辞書をStateProcessorが期待する順序でフラットなNumPy配列に変換します。
-        順序はゴールID、次にエージェントIDの座標です。
-        """
-        flat_coords = []
-        # ゴール座標を順序通りに追加
-        for goal_id in self._goal_ids:
-            # 存在しない場合は (-1, -1) を使用
-            pos = state_dict.get(goal_id, (-1, -1))
-            flat_coords.extend(pos)
-
-        # エージェント座標を順序通りに追加
-        for agent_id in self._agent_ids:
-            # 存在しない場合は (-1, -1) を使用
-            pos = state_dict.get(agent_id, (-1, -1))
-            flat_coords.extend(pos)
-
-        return np.array(flat_coords, dtype=np.float32)
-
-    # _get_agent_q_values method now expects transformed_obs_batch and agent_ids_batch directly
     def _get_agent_q_values(
         self,
         agent_network_instance: IAgentNetwork,
-        transformed_obs_batch_for_q_values: torch.Tensor, # (B*N, C, G, G) from _process_raw_observations_batch
-        agent_ids_batch_for_q_values: torch.Tensor # (B*N,) agent_ids for batch processing, already flattened
+        agent_obs_batch: torch.Tensor, # (B * N, C, G, G)
+        agent_ids_batch: torch.Tensor # (B * N,)
     ) -> torch.Tensor:
         """
         与えられたAgentNetworkインスタンス（メインまたはターゲット）から、
@@ -148,44 +70,66 @@ class BaseMasterAgent(ABC):
 
         Args:
             agent_network_instance (IAgentNetwork): Q値を計算するAgentNetworkのインスタンス.
-            transformed_obs_batch_for_q_values (torch.Tensor): AgentNetworkへの入力 (形状: (batch_size * n_agents, num_channels, grid_size, grid_size)).
-            agent_ids_batch_for_q_values (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size * n_agents,)).
+            agent_obs_batch (torch.Tensor): AgentNetworkへの入力 (形状: (batch_size * n_agents, num_channels, grid_size, grid_size)).
+            agent_ids_batch (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size * n_agents,)).
 
         Returns:
             torch.Tensor: 各エージェントの各アクションに対するQ値 (形状: (batch_size, n_agents, action_size)).
         """
-        batch_size = transformed_obs_batch_for_q_values.size(0) // self.n_agents
-
         # AgentNetworkからQ値を計算
         # agent_network_instance((B*N, C, G, G), (B*N,)) -> (B*N, A)
-        q_values_flat = agent_network_instance(transformed_obs_batch_for_q_values, agent_ids_batch_for_q_values)
+        q_values_flat = agent_network_instance(agent_obs_batch, agent_ids_batch)
 
         # 結果を元の形状 (B, N, A) に戻す
+        batch_size = agent_obs_batch.size(0) // self.n_agents
         q_values_reshaped = q_values_flat.view(batch_size, self.n_agents, self.action_size)
 
         return q_values_reshaped
 
     @abstractmethod
-    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> Dict[str, int]:
+    def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
-        与えられたグローバル状態とイプシロンに基づいて、各エージェントのアクションを選択します。
-        具体的な実装はサブクラスで提供されます。
+        与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
+        
+        Args:
+            agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
+            epsilon (float): 探索率。
+
+        Returns:
+            Dict[str, int]: 各エージェントIDをキー、選択された行動を値とする辞書。
         """
         pass
 
     @abstractmethod
     def evaluate_q(
         self,
-        obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
-        actions_batch: torch.Tensor,
-        rewards_batch: torch.Tensor,
-        next_obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
-        dones_batch: torch.Tensor,
+        agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
+        global_state_tensor_batch: torch.Tensor, # (B, state_dim)
+        actions_tensor_batch: torch.Tensor, # (B, N)
+        rewards_tensor_batch: torch.Tensor, # (B, N)
+        dones_tensor_batch: torch.Tensor, # (B, N)
+        next_agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
+        next_global_state_tensor_batch: torch.Tensor, # (B, state_dim)
         is_weights_batch: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         リプレイバッファからサンプリングされたバッチデータを使用して、Q値を評価し、
         損失とTD誤差を計算します。具体的な実装はサブクラスで提供されます。
+        
+        Args:
+            agent_obs_tensor_batch (torch.Tensor): 現在のエージェント観測バッチ (B, N, C, G, G)。
+            global_state_tensor_batch (torch.Tensor): 現在のグローバル状態バッチ (B, state_dim)。
+            actions_tensor_batch (torch.Tensor): エージェントが取った行動のバッチ (B, N)。
+            rewards_tensor_batch (torch.Tensor): 報酬のバッチ (B, N)。
+            dones_tensor_batch (torch.Tensor): 完了フラグのバッチ (B, N)。
+            next_agent_obs_tensor_batch (torch.Tensor): 次のエージェント観測バッチ (B, N, C, G, G)。
+            next_global_state_tensor_batch (torch.Tensor): 次のグローバル状態バッチ (B, state_dim)。
+            is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重み (B,)。
+
+        Returns:
+            Tuple[torch.Tensor, Optional[torch.Tensor]]:
+                - loss (torch.Tensor): 計算された損失。
+                - abs_td_errors (Optional[torch.Tensor]): TD誤差の絶対値 (PERの場合)。
         """
         pass
 
@@ -217,8 +161,10 @@ class BaseMasterAgent(ABC):
         loss_per_sample: torch.Tensor = torch.where(cond, L2, L1)
 
         if is_weights is not None:
-            weighted_loss = loss_per_sample * is_weights.squeeze(-1) if is_weights.ndim > 1 else loss_per_sample * is_weights
-            final_loss = torch.mean(weighted_loss)
+            # `q` が `(B*N,)` で `is_weights` が `(B,)` の場合、`is_weights` を `(B*N,)` に拡張します。
+            # evaluate_q メソッド内で既に `expanded_is_weights` が生成されているため、
+            # ここでは `is_weights` が適切な形状であることを期待します。
+            final_loss = torch.mean(loss_per_sample * is_weights)
         else:
             final_loss = torch.mean(loss_per_sample)
 
@@ -230,3 +176,4 @@ class BaseMasterAgent(ABC):
         オプティマイザが更新すべきネットワークパラメータのリストを返します。
         """
         pass
+

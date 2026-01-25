@@ -31,7 +31,7 @@ import shutil
 
 from DQN.network import AgentNetwork
 from Environments.StateProcesser import ObsToTensorWrapper
-from utils.replay_buffer import ReplayBuffer
+from Environments.MultiAgentGridEnv import MultiAgentGridEnv, GridEnvWrapper
 from DQN.MultiAgent_DQN import MARLTrainer
 
 RED = '\033[91m'
@@ -165,28 +165,43 @@ if __name__ == '__main__':
         #simulation.render_anime(config.episode_number)
         # simulation.log_disp()
             
-
     def dqn_process():
-        # Shared components
         device = torch.device(config.device)
-        shared_agent_network = AgentNetwork(
-            grid_size=config.grid_size,
-            output_size=5, # Action size (UP, DOWN, LEFT, RIGHT, STAY)
-            total_agents=config.agents_number
-        ).to(device)
+
+        # 1. MultiAgentGridEnv のインスタンス化
+        fix_goal_pool = [(config.grid_size-1,config.grid_size-1),(config.grid_size//4,config.grid_size//3),(config.grid_size-1,0),(config.grid_size//4,config.grid_size//6)]
+        _fix_goal_from_goal_number = fix_goal_pool[:min(config.goals_number, len(fix_goal_pool))]
+
+        multi_agent_env = MultiAgentGridEnv(config, fixrd_goals=_fix_goal_from_goal_number)
+
+        # 2. StateProcessor をインスタンス化
         shared_state_processor = ObsToTensorWrapper(
             grid_size=config.grid_size,
             goals_number=config.goals_number,
             agents_number=config.agents_number,
-            device=device
+            neighbor_distance=config.neighbor_distance,
+            device=device,
+            agent_ids=multi_agent_env._agent_ids,
+            goal_ids=multi_agent_env._goal_ids
         )
 
-        # Instantiate MARLTrainer in learning_mode
+        # 3. GridEnvWrapper をインスタンス化
+        env_wrapper_instance = GridEnvWrapper(env_instance=multi_agent_env, state_processor_instance=shared_state_processor)
+
+        shared_agent_network = AgentNetwork(
+            grid_size=config.grid_size,
+            output_size=env_wrapper_instance.action_space_size, # Use the dynamically retrieved action_space_size
+            total_agents=config.agents_number
+        ).to(device)
+
+        # Instantiate MARLTrainer. It will now create its own ReplayBuffer internally.
         trainer = MARLTrainer(
             args=config,
             mode=config.learning_mode,
+            env_wrapper=env_wrapper_instance, # 4. GridEnvWrapper のインスタンスを渡す
             shared_agent_network=shared_agent_network,
-            shared_state_processor=shared_state_processor
+            shared_state_processor=shared_state_processor,
+            # run_id=run_id
         )
 
         # Run training

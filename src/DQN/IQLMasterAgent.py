@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict
 
 from Base.Agent_Base import BaseMasterAgent, ObsToTensorWrapper, IAgentNetwork
 
 class IQLMasterAgent(BaseMasterAgent):
     """
     Independent Q-Learning (IQL) の Master Agent クラス.
-    各エージェントは共有の AgentNetwork を使用してQ値を学習しますが、
+    各エージェントは共有の AgentNetwork を使用してQ値を学習しますが,
     Q値の評価と行動選択は独立して行われます。
     """
     def __init__(self,
@@ -18,7 +18,7 @@ class IQLMasterAgent(BaseMasterAgent):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork,
+                 agent_network: IAgentNetwork, 
                  gamma: float,
                  agent_ids: List[str],
                  goal_ids: List[str]):
@@ -29,7 +29,7 @@ class IQLMasterAgent(BaseMasterAgent):
             goals_number=goals_number,
             device=device,
             state_processor=state_processor,
-            agent_network=agent_network,
+            agent_network_instance=agent_network, 
             agent_ids=agent_ids,
             goal_ids=goal_ids
         )
@@ -41,29 +41,27 @@ class IQLMasterAgent(BaseMasterAgent):
         """
         return list(self.agent_network.parameters())
 
-    def get_actions(self, obs_dict_for_current_step: Dict[str, Dict[str, Any]], epsilon: float) -> Dict[str, int]:
+    def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
-        与えられたグローバル状態（ローカル観測辞書）とイプシロンに基づいて、各エージェントのアクションを選択します。
+        与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
+        
+        Args:
+            agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
+            global_state_tensor (torch.Tensor): フラット化されたグローバル状態 ((goals_number + n_agents) * 2,)。
+            epsilon (float): 探索率。
+
+        Returns:
+            Dict[str, int]: 各エージェントIDをキー、選択された行動を値とする辞書。
         """
         self.agent_network.eval() # ネットワークを評価モードに設定
         with torch.no_grad():
-            transformed_obs_list_for_all_agents = []
-            for agent_id in self._agent_ids:
-                single_agent_obs = obs_dict_for_current_step[agent_id]
-                # StateProcessor.transform_state_batchは単一エージェントの観測辞書を受け取る
-                transformed_obs = self.state_processor.transform_state_batch(single_agent_obs)
-                transformed_obs_list_for_all_agents.append(transformed_obs)
-
-            # 全エージェントの変換済み観測をスタック: (N, C, G, G)
-            transformed_obs_for_all_agents = torch.stack(transformed_obs_list_for_all_agents, dim=0)
-
-            # エージェントIDバッチの作成 (N,)
+            # agent_obs_tensor は (N, C, G, G) の形状で既に渡される
+            # agent_ids_for_all_agents は (N,) の形状
             agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
 
             # AgentNetwork からQ値を計算 (N, action_size)
-            q_values_all_agents = self.agent_network(transformed_obs_for_all_agents, agent_ids_for_all_agents)
+            q_values_all_agents = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
 
-            # ε-greedyポリシーを適用
             actions: Dict[str, int] = {}
             for i, aid in enumerate(self._agent_ids):
                 if np.random.rand() < epsilon:
@@ -76,12 +74,14 @@ class IQLMasterAgent(BaseMasterAgent):
 
     def evaluate_q(
         self,
-        obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
-        actions_batch: torch.Tensor, # (batch_size, n_agents)
-        rewards_batch: torch.Tensor, # (batch_size, n_agents) - Changed from (batch_size,)
-        next_obs_dicts_batch: List[Dict[str, Dict[str, Any]]],
-        dones_batch: torch.Tensor, # (batch_size, n_agents) - Individual done flags
-        is_weights_batch: Optional[torch.Tensor] = None # (batch_size,)
+        agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
+        global_state_tensor_batch: torch.Tensor, # (B, state_dim)
+        actions_tensor_batch: torch.Tensor, # (B, N)
+        rewards_tensor_batch: torch.Tensor, # (B, N)
+        dones_tensor_batch: torch.Tensor, # (B, N)
+        next_agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
+        next_global_state_tensor_batch: torch.Tensor, # (B, state_dim)
+        is_weights_batch: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         IQLモードにおけるQ値の評価と損失計算を行います。
@@ -89,40 +89,34 @@ class IQLMasterAgent(BaseMasterAgent):
         self.agent_network.train()
         self.agent_network_target.eval()
 
-        batch_size = len(obs_dicts_batch)
+        batch_size = agent_obs_tensor_batch.size(0)
 
-        # Process raw observation dictionaries into tensors for AgentNetwork and MixingNetwork
-        current_transformed_obs_batch, _ = self._process_raw_observations_batch(obs_dicts_batch)
-        next_transformed_obs_batch, _ = self._process_raw_observations_batch(next_obs_dicts_batch)
+        # AgentNetworkに渡すために(B*N, C, G, G)にreshape
+        current_agent_obs_flat = agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
+        next_agent_obs_flat = next_agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
 
         # Agent IDs for current and next state processing
         # This needs to be (B*N,) for the _get_agent_q_values method
-        # We create a base sequence of agent_ids (0 to N-1) and repeat it for each item in the batch
         agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size)
 
         # Current Q-values from main network
-        # (batch_size * n_agents, action_size) -> reshaped to (batch_size, n_agents, action_size)
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_transformed_obs_batch, agent_ids_for_q_values)
+        # (batch_size, n_agents, action_size)
+        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
 
         # Q-values for the actions actually taken by each agent
-        # actions_batch (B, N) -> (B, N, 1) for gather
-        current_q_values_taken_actions = current_q_values_all_agents.gather(2, actions_batch.unsqueeze(-1)).squeeze(-1) # (batch_size, n_agents)
+        # actions_tensor_batch (B, N) -> (B, N, 1) for gather
+        current_q_values_taken_actions = current_q_values_all_agents.gather(2, actions_tensor_batch.unsqueeze(-1)).squeeze(-1) # (batch_size, n_agents)
 
         # Next Q-values from target network
         with torch.no_grad():
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_transformed_obs_batch, agent_ids_for_q_values)
+            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
 
             # Max Q-values for next states, for each agent
             next_max_q_values = next_q_values_all_agents_target.max(dim=2)[0] # (batch_size, n_agents)
 
             # Apply individual done flags to next_max_q_values
-            # If agent is 'done' (dones_batch[idx, agent_id] == 1), its next Q-value should be 0
-            # (1 - dones_batch) will be 1 if not done, 0 if done
-
-            # TD Target calculation for each agent
             # Target = R + gamma * max_Q(s', a') * (1 - done)
-            # rewards_batch is now (batch_size, n_agents)
-            target_q_values_all_agents = rewards_batch + self.gamma * next_max_q_values * (1 - dones_batch)
+            target_q_values_all_agents = rewards_tensor_batch + self.gamma * next_max_q_values * (1 - dones_tensor_batch)
 
         # Calculate Huber Loss for each agent independently
         # Flatten Q-values and targets for loss calculation
@@ -132,11 +126,13 @@ class IQLMasterAgent(BaseMasterAgent):
         # If PER is used, IS weights need to be expanded/repeated for each agent
         expanded_is_weights = None
         if is_weights_batch is not None:
+            # is_weights_batch (B,) を (B*N,) に拡張
             expanded_is_weights = is_weights_batch.unsqueeze(1).repeat(1, self.n_agents).view(-1) # (batch_size * n_agents,)
 
         loss, abs_td_errors_flat = self._huber_loss(current_q_flat, target_q_flat, expanded_is_weights)
 
         # Average abs_td_errors across agents for each sample in the batch
-        abs_td_errors_per_sample = abs_td_errors_flat.view(batch_size, self.n_agents).mean(dim=1) # (batch_size,)
+        # (batch_size * n_agents,) -> (batch_size, n_agents) -> (batch_size,)
+        abs_td_errors_per_sample = abs_td_errors_flat.view(batch_size, self.n_agents).mean(dim=1) 
 
         return loss, abs_td_errors_per_sample.detach()

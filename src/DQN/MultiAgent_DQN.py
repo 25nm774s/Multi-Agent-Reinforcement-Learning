@@ -1,9 +1,10 @@
 import sys
 import os
+import torch
 import torch.optim as optim
 from typing import List, Dict, Any
 
-from Environments.MultiAgentGridEnv import MultiAgentGridEnv
+from Environments.MultiAgentGridEnv import IEnvWrapper
 
 from utils.plot_results import PlotResults
 from utils.Saver import Saver
@@ -29,7 +30,7 @@ class MARLTrainer:
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
     """
-    def __init__(self, args, mode: str, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper):
+    def __init__(self, args, mode: str, env_wrapper: IEnvWrapper, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper, run_id=None):
         """
         MARLTrainer クラスのコンストラクタ.
 
@@ -39,32 +40,32 @@ class MARLTrainer:
                    agents_number, goals_number, grid_size, load_model, mask,
                    save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
             mode (str): 学習モード ('IQL' または 'QMIX').
+            env_wrapper (IEnvWrapper): 環境とのインタラクションを標準化するラッパーインスタンス.
             shared_agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
             shared_state_processor (StateProcessor): 共有StateProcessorのインスタンス.
-            shared_replay_buffer (ReplayBuffer): 共有ReplayBufferのインスタンス.
         """
         self.args = args # Store args for later use
 
-        # 3つまでゴールを手動で設定できるように変更。
-        fix_goal_pool = [(args.grid_size-1,args.grid_size-1),(args.grid_size//4,args.grid_size//3),(args.grid_size-1,0),(args.grid_size//4,args.grid_size//6)]
-        self._fix_goal_from_goal_number = fix_goal_pool[:min(args.goals_number, len(fix_goal_pool))]
-
-        self.env = MultiAgentGridEnv(args, fixrd_goals=self._fix_goal_from_goal_number)
+        self.env_wrapper = env_wrapper # Store the IEnvWrapper instance
 
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
         self.max_ts = args.max_timestep
-        self.agents_number = args.agents_number
-        self.goals_number = args.goals_number
-        self.grid_size = args.grid_size
+
+        # 環境ラッパーからプロパティを取得
+        self.action_space_size = self.env_wrapper.action_space_size
+        self.agents_number = self.env_wrapper.n_agents
+        self.goals_number = self.env_wrapper.goals_number
+        self.grid_size = self.env_wrapper.grid_size
+        self.num_channels = self.env_wrapper.num_channels
+
         self.update_frequency = 4 # 学習の頻度
         self.target_update_frequency = args.target_update_frequency
 
         self.save_agent_states = args.save_agent_states
 
         self.start_episode = 1
-        self.total_step = 0
 
         # Epsilon decay parameters
         self.epsilon = 1.0
@@ -75,9 +76,9 @@ class MARLTrainer:
         self.beta_anneal_steps = args.beta_anneal_steps
         self.use_per = args.use_per
 
-        # These are already defined in self.env but Trainer should also know them for ReplayBuffer setup
-        self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
-        self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
+        # These are already defined in self.env_wrapper
+        self._agent_ids: list[str] = self.env_wrapper.agent_ids
+        self._goal_ids: list[str] = self.env_wrapper.goal_ids
 
         # Debug print to confirm goals_number
         # print(f"[DEBUG] MARLTrainer initialized with goals_number: {self.goals_number}")
@@ -85,10 +86,10 @@ class MARLTrainer:
         # MasterAgentのインスタンス化
         if mode == 'IQL':
             self.master_agent = IQLMasterAgent(
-                n_agents=args.agents_number,
-                action_size=self.env.action_space_size,
-                grid_size=args.grid_size,
-                goals_number=args.goals_number,
+                n_agents=self.agents_number,
+                action_size=self.action_space_size,
+                grid_size=self.grid_size,
+                goals_number=self.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
                 agent_network=shared_agent_network,
@@ -98,10 +99,10 @@ class MARLTrainer:
             )
         elif mode == 'QMIX':
             self.master_agent = QMIXMasterAgent(
-                n_agents=args.agents_number,
-                action_size=self.env.action_space_size,
-                grid_size=args.grid_size,
-                goals_number=args.goals_number,
+                n_agents=self.agents_number,
+                action_size=self.action_space_size,
+                grid_size=self.grid_size,
+                goals_number=self.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
                 agent_network=shared_agent_network,
@@ -112,16 +113,17 @@ class MARLTrainer:
         else:
             raise ValueError(f"Unknown mode: {mode}. Must be 'IQL' or 'QMIX'.")
 
-        # ReplayBufferの割り当て
+        # ReplayBufferの割り当て - MARLTrainer内で初期化
         self.replay_buffer = ReplayBuffer(
             buffer_size=args.buffer_size,
             batch_size=args.batch_size,
             device=args.device,
             alpha=args.alpha,
             use_per=bool(args.use_per),
-            goals_number=args.goals_number,
-            goal_ids=self._goal_ids,
-            agent_ids=self._agent_ids
+            n_agents=self.agents_number, # env_wrapperから取得
+            num_channels=self.num_channels, # env_wrapperから取得
+            grid_size=self.grid_size, # env_wrapperから取得
+            goals_number=self.goals_number # env_wrapperから取得
         )
 
         # Optimizer initialization
@@ -142,7 +144,7 @@ class MARLTrainer:
         if args.neighbor_distance >= args.grid_size:
             folder_name += "_全観測"
         else:
-            folder_name += f"_観測[{args.neighbor_distance}]"
+            folder_name += f"_観測径[{args.neighbor_distance}]"
 
         folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
 
@@ -154,6 +156,10 @@ class MARLTrainer:
             "output",
             folder_name
         )
+
+        if run_id is not None:
+            self.save_dir = os.path.join(self.save_dir, f"run_{run_id}")
+            os.makedirs(self.save_dir, exist_ok=True)
 
         # 結果保存およびプロット関連クラスの初期化
         os.makedirs(self.save_dir,exist_ok=True)
@@ -194,7 +200,11 @@ class MARLTrainer:
 
         # 学習開始メッセージ
         print(f"{GREEN}MARLTrainer{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})") + "\n")
-        print(f"goals: {self.env.get_goal_positions().values()}")
+        # goals_number の直接参照からenv_wrapper経由に変更
+        # これはMultiAgentGridEnvの内部実装に依存しない方法を模索すべき
+        # 現在はenv_wrapper._env.get_goal_positions()に依存するが、IEnvWrapperにはゴール位置取得メソッドがない
+        # 一旦コメントアウトするか、info dict経由でゴール位置を取得するように変更する
+        # print(f"goals: {self.env_wrapper._env.get_goal_positions().values()}")
 
         total_step = 0 # 環境との全インタラクションステップ数の累積
         # 集計用一時変数の初期化
@@ -210,17 +220,16 @@ class MARLTrainer:
 
             print(f'{GREEN if done_counts and done_counts[-1] else ""}■{RESET}', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
-            # 50エピソードごとに集計結果を出力
-            CONSOLE_LOG_FREQ = 20
+            # 10エピソードごとに集計結果を出力
+            CONSOLE_LOG_FREQ = 10
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
-            # reset() は部分観測を返します。
-            current_partial_observations: Dict[str, Dict[str, Any]] = self.env.reset(initial_agent_positions=iap)
-            # 真のグローバル状態はログ目的で別途取得
-            true_current_global_state: GlobalState = self.env._get_global_state() # For logging and potential future use where full global state is needed
+            # reset() は部分観測テンソル、グローバル状態テンソル、および情報辞書を返します。
+            agent_obs_tensor, global_state_tensor, info = self.env_wrapper.reset(initial_agent_positions=iap)
+            true_current_global_state: GlobalState = info['raw_global_state'] # For logging and potential future use where full global state is needed
 
-            episode_done = False # Overall episode done flag, returned by env.step
+            episode_done = False # Overall episode done flag, returned by env_wrapper.step
             step_count:int = 0 # 現在のエピソードのステップ数
             episode_reward:float = 0.0 # 現在のエピソードの累積報酬
 
@@ -233,8 +242,8 @@ class MARLTrainer:
                 # Epsilon decay
                 self.decay_epsilon_power()
 
-                # 各エージェントの行動を選択 - master_agentは観測辞書を期待します
-                actions: Dict[str, int] = self.master_agent.get_actions(current_partial_observations, self.epsilon)
+                # 各エージェントの行動を選択 - master_agentは観測テンソルを期待します
+                actions_dict: Dict[str, int] = self.master_agent.get_actions(agent_obs_tensor, self.epsilon)
 
                 # エージェントの状態を保存（オプション）
                 if self.save_agent_states:
@@ -245,18 +254,17 @@ class MARLTrainer:
                             self.saver.log_agent_states(agent_id_str, agent_pos[0], agent_pos[1])
 
                 # 環境にステップを与えて状態を更新し、結果を取得
-                # next_partial_observations は部分観測の辞書 (Dict[str, Dict[str, Any]])
-                next_partial_observations, reward_dict_per_agent, done_dict, info = self.env.step(actions)
+                # step() は次の観測テンソル、グローバル状態テンソル、報酬テンソル、完了テンソル、および情報辞書を返します。
+                next_agent_obs_tensor, next_global_state_tensor, rewards_tensor, dones_tensor, step_info = self.env_wrapper.step(actions_dict)
 
-                # `dones_for_experience` は、このステップでの各エージェントの個別の完了フラグである必要があります。
-                # 変更前: dones_for_experience: List[bool] = [done_dict[f'agent_{i}'] for i in range(self.agents_number)]
-                dones_for_experience: Dict[str, bool] = {agent_id: done_dict[agent_id] for agent_id in self._agent_ids}
+                # アクション辞書をテンソルに変換（ReplayBufferに渡すため）
+                actions_tensor = torch.tensor([actions_dict[agent_id] for agent_id in self._agent_ids], dtype=torch.long, device=self.args.device)
 
                 # Store experience in replay buffer - use the observation dictionaries directly
-                self.replay_buffer.add(current_partial_observations, actions, reward_dict_per_agent, next_partial_observations, dones_for_experience)
+                self.replay_buffer.add(agent_obs_tensor, global_state_tensor, actions_tensor, rewards_tensor, dones_tensor, next_agent_obs_tensor, next_global_state_tensor)
 
                 # Each step accumulates total reward
-                episode_reward += sum(reward_dict_per_agent.values()) # reward_dict_per_agentはDict[str, float]です。
+                episode_reward += rewards_tensor.sum().item() # rewards_tensorは(n_agents,)です。
 
                 # Perform learning at update_frequency
                 if total_step % self.update_frequency == 0 and len(self.replay_buffer) >= self.replay_buffer.batch_size:
@@ -265,13 +273,13 @@ class MARLTrainer:
 
                     if sample_output is not None:
                         # replay_buffer.sample now returns lists of observation dictionaries
-                        obs_dicts_batch, actions_batch, rewards_batch, next_obs_dicts_batch, dones_batch, is_weights_batch, sampled_indices = sample_output
+                        (current_agent_obs_batch, current_global_state_batch, actions_batch, rewards_batch, dones_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch, sampled_indices) = sample_output
 
                         # Calculate loss using MasterAgent
                         # master_agent.evaluate_q expects lists of observation dictionaries
                         loss, abs_td_errors = self.master_agent.evaluate_q(
-                            obs_dicts_batch, actions_batch, rewards_batch,
-                            next_obs_dicts_batch, dones_batch, is_weights_batch
+                            current_agent_obs_batch, current_global_state_batch, actions_batch, rewards_batch,
+                            dones_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch
                         )
 
                         # Backward pass and optimize
@@ -296,12 +304,14 @@ class MARLTrainer:
                         beta_increment_per_learning_step = (1.0 - self.args.beta) / self.beta_anneal_steps # 初期ベータ値から増分を計算
                         self.beta = min(1.0, self.beta + beta_increment_per_learning_step)
 
-                current_partial_observations = next_partial_observations # 次のステップのために現在の観測を更新
-                true_current_global_state = info['global_state'] # ログのために真のグローバル状態も更新
+                # 次のステップのために状態を更新
+                agent_obs_tensor = next_agent_obs_tensor
+                global_state_tensor = next_global_state_tensor
+                true_current_global_state = step_info['raw_global_state'] # ログのために真のグローバル状態も更新
                 step_count += 1
                 total_step += 1
 
-                if done_dict['__all__']: # もしエピソードが成功したら
+                if step_info['all_agents_done']: # もしエピソードが成功したら
                     episode_done = True
                     # print(f"DEBUG: Episode {episode} finished successfully at step: {step_count}")
                 elif step_count == self.max_ts: # もし最大ステップ数に達したら
@@ -322,10 +332,10 @@ class MARLTrainer:
                 avg_step   = sum(episode_steps) / len(episode_steps)        # 期間内の平均ステップ数
                 done_rate  = sum(done_counts) / len(done_counts)            # 達成率
 
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET},\t 最小/最大:{GREEN}{min(episode_steps)}{RESET}/{GREEN}{max(episode_steps)}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET},\t 最大/最小:{GREEN}{max(episode_rewards):.2f}{RESET}/{GREEN}{min(episode_rewards):.2f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET},\t 最大/最小:{GREEN}{max(episode_losses):.3f}{RESET}/{GREEN}{min(episode_losses):.3f}{RESET}")
                 print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET}") # 平均損失も出力
                 if self.use_per:
                     print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}, beta: {GREEN}{self.beta:.3f}{RESET}")
                 else:
@@ -340,7 +350,7 @@ class MARLTrainer:
                 self.save_checkpoint(episode, total_step)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント
-            if done_dict['__all__']:
+            if step_info['all_agents_done']:
                 episode_steps.append(step_count)
 
             # エピソードの平均損失を計算
@@ -348,13 +358,13 @@ class MARLTrainer:
             episode_step:int = step_count
 
             # Saverでエピソードごとのスコアをログに記録
-            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, done_dict['__all__'])
+            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, step_info['all_agents_done'])
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             episode_losses.append(episode_loss)
             episode_rewards.append(episode_reward)
             episode_steps.append(episode_step)
-            done_counts.append(1 if done_dict['__all__'] else 0)
+            done_counts.append(1 if step_info['all_agents_done'] else 0)
 
         self.saver.save_remaining_episode_data()
         self.saver.save_visited_coordinates()
@@ -422,8 +432,9 @@ class MARLTrainer:
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
 
             # エージェントの初期位置を設定
-            current_partial_observations = self.env.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)])
-            current_global_state_for_logging = self.env._get_global_state() # Reset後の真のグローバル状態を取得
+            # current_partial_observations は agent_obs_tensor, global_state_tensor, info を返します。
+            agent_obs_tensor, global_state_tensor, info = self.env_wrapper.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)])
+            current_global_state_for_logging = info['raw_global_state'] # Reset後の真のグローバル状態を取得
 
             episode_done = False
             step_count = 0
@@ -434,21 +445,24 @@ class MARLTrainer:
                 print(f"  現在の全体状態: {current_global_state_for_logging}")
 
                 # Get actions from master_agent (epsilon=0 for greedy actions)
-                actions = self.master_agent.get_actions(current_partial_observations, epsilon=0.0)
+                actions_dict = self.master_agent.get_actions(agent_obs_tensor, epsilon=0.0)
 
                 # Display Q-values (This part requires MasterAgent to expose a way to get all Q-values, or replicate logic)
                 # For now, let's just display the chosen actions
-                print(f"  選択された行動: {actions}")
+                print(f"  選択された行動: {actions_dict}")
 
                 # 環境にステップを与えて状態を更新し、結果を取得
-                next_partial_observations, reward_dict_per_agent, done_dict, info = self.env.step(actions)
-                current_partial_observations = next_partial_observations # 次の真のグローバル状態に更新
-                current_global_state_for_logging = info['global_state'] # ログのためにグローバル状態も更新
+                next_agent_obs_tensor, next_global_state_tensor, rewards_tensor, dones_tensor, step_info = self.env_wrapper.step(actions_dict)
 
-                ep_reward += sum(reward_dict_per_agent.values())
-                episode_done = done_dict['__all__']
+                # 次のステップの観測を current にコピー
+                agent_obs_tensor = next_agent_obs_tensor
+                global_state_tensor = next_global_state_tensor
+                current_global_state_for_logging = step_info['raw_global_state'] # ログのためにグローバル状態も更新
 
-                print(f"  報酬: {sum(reward_dict_per_agent.values()):.2f}, 完了: {episode_done}")
+                ep_reward += rewards_tensor.sum().item()
+                episode_done = step_info['all_agents_done']
+
+                print(f"  報酬: {rewards_tensor.sum().item():.2f}, 完了: {episode_done}")
 
                 step_count += 1
 

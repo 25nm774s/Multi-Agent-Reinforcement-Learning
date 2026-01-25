@@ -6,7 +6,7 @@ class ObsToTensorWrapper:
     """
     環境の生の状態（全体座標）を、Qネットワークが処理できるグリッド表現に変換するクラス。
     """
-    def __init__(self, grid_size: int, goals_number: int, agents_number: int, device: torch.device):
+    def __init__(self, grid_size: int, goals_number: int, agents_number: int, device: torch.device, neighbor_distance: int = 0, agent_ids: List[str] = [], goal_ids: List[str] = []):
         """
         StateProcessor のコンストラクタ.
 
@@ -15,12 +15,19 @@ class ObsToTensorWrapper:
             goals_num (int): 環境中のゴール数.
             agents_num (int): 環境中のエージェント数.
             device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
+            neighbor_distance (int): エージェントが他のエージェントを観測できる最大距離。
+                                     0の場合、他のエージェントは観測されない。
+            agent_ids (List[str]): エージェントのIDリスト.
+            goal_ids (List[str]): ゴールのIDリスト.
         """
         self.grid_size = grid_size
         self.goals_num = goals_number
         self.agents_num = agents_number
         self.device = device
         self.num_channels = 3 # ゴール, 自身, 他者の3チャネル
+        self.neighbor_distance = neighbor_distance
+        self._agent_ids = agent_ids
+        self._goal_ids = goal_ids
 
     def transform_state_batch(self, single_agent_obs_dict: Dict[str, Any]) -> torch.Tensor:
         """
@@ -62,3 +69,29 @@ class ObsToTensorWrapper:
                 state_map[2, ox, oy] = 1.0
 
         return state_map
+
+    def _flatten_global_state_dict(self, state_dict: Dict[str, Any]) -> torch.Tensor:
+        """
+        GlobalState辞書をStateProcessorが期待する順序でフラットなテンソルに変換します。
+        順序はゴールID、次にエージェントIDの座標です。
+
+        Args:
+            state_dict (Dict[str, Any]): グローバル状態の辞書 (例: obj_id -> (x, y)).
+
+        Returns:
+            torch.Tensor: フラット化されたグローバル状態テンソル ((goals_num + agents_num) * 2,).
+        """
+        flat_coords = []
+        # ゴール座標を順序通りに追加
+        for goal_id in self._goal_ids:
+            # 存在しない場合は (-1, -1) を使用
+            pos = state_dict.get(goal_id, (-1, -1))
+            flat_coords.extend(pos)
+
+        # エージェント座標を順序通りに追加
+        for agent_id in self._agent_ids:
+            # 存在しない場合は (-1, -1) を使用
+            pos = state_dict.get(agent_id, (-1, -1))
+            flat_coords.extend(pos)
+
+        return torch.tensor(flat_coords, dtype=torch.float32, device=self.device)

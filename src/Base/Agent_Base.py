@@ -4,7 +4,7 @@ import torch.nn as nn # オプティマイザーを設定するため。
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
 
-from utils.StateProcesser import StateProcessor
+from Environments.StateProcesser import StateProcessor
 from DQN.network import AgentNetwork
 from .Constant import GlobalState
 

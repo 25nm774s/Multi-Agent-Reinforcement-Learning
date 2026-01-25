@@ -5,7 +5,7 @@ from typing import Dict, Any
 from unittest.mock import MagicMock, patch
 
 from src.DQN.QMIXMasterAgent import QMIXMasterAgent, AgentNetwork
-from src.utils.StateProcesser import StateProcessor
+from Environments.StateProcesser import StateProcessor
 
 class TestQMIXMasterAgent(unittest.TestCase):
     def setUp(self):

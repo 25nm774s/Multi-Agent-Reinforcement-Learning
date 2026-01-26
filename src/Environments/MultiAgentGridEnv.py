@@ -7,9 +7,9 @@ from itertools import product
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
 
-from Base.Constant import PosType
+from Base.Constant import PosType, GlobalState
 
-GlobalState = Dict[str,PosType]
+# GlobalState = Dict[str,PosType]
 
 class IEnvWrapper(ABC):
     """

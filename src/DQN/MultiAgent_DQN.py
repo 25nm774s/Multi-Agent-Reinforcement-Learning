@@ -2,7 +2,7 @@ import sys
 import os
 import torch
 import torch.optim as optim
-from typing import List, Dict, Any
+from typing import Dict
 
 from Environments.MultiAgentGridEnv import IEnvWrapper
 
@@ -336,9 +336,9 @@ class MARLTrainer:
                 avg_step   = sum(episode_steps) / len(episode_steps)        # 期間内の平均ステップ数
                 done_rate  = sum(done_counts) / len(done_counts)            # 達成率
 
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET},\t 最小/最大:{GREEN}{min(episode_steps)}{RESET}/{GREEN}{max(episode_steps)}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET},\t 最大/最小:{GREEN}{max(episode_rewards):.2f}{RESET}/{GREEN}{min(episode_rewards):.2f}{RESET}")
-                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET},\t 最大/最小:{GREEN}{max(episode_losses):.3f}{RESET}/{GREEN}{min(episode_losses):.3f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 step  : {GREEN}{avg_step:.3f}{RESET},\t 最小/最大:{GREEN}{min(episode_steps)}{RESET}/{RED}{max(episode_steps)}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 reward: {GREEN}{avg_reward:.3f}{RESET},\t 最大/最小:{GREEN}{max(episode_rewards):.2f}{RESET}/{RED}{min(episode_rewards):.2f}{RESET}")
+                print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の平均 loss  : {GREEN}{avg_loss:.5f}{RESET},\t 最小/最大:{GREEN}{min(episode_losses):.3f}{RESET}/{RED}{max(episode_losses):.3f}{RESET}")
                 print(f"     エピソード {episode - CONSOLE_LOG_FREQ+1} ~ {episode} の達成率     : {GREEN}{done_rate:.2f}{RESET}") # 達成率も出力 .2f で小数点以下2桁表示
                 if self.use_per:
                     print(f"     (Step: {total_step}), 探索率 : {GREEN}{self.epsilon:.3f}{RESET}, beta: {GREEN}{self.beta:.3f}{RESET}")

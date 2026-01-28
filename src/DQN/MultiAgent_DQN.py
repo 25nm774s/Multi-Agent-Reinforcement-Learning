@@ -351,7 +351,7 @@ class MARLTrainer:
                 done_counts = []
 
             if episode % 200 == 0:
-                self.save_checkpoint(episode, total_step)
+                self.save_checkpoint(episode)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント
             if step_info['all_agents_done']:
@@ -514,8 +514,8 @@ class MARLTrainer:
             # Update start_episode and epsilon/beta
             self.start_episode = agent_net_checkpoint_data['epoch'] + 1 # Fixed: should be + 1 to resume from next episode
             self.epsilon = agent_net_checkpoint_data['epsilon']
-            # The beta value for PER annealing might need to be explicitly saved/loaded if it's dynamic.
-            # For simplicity, we are not loading beta here. It will reset to args.beta and anneal from there.
+            if 'beta' in agent_net_checkpoint_data: # betaが保存されている場合のみロード
+                self.beta = agent_net_checkpoint_data['beta']
 
             # Set networks to train mode
             self.master_agent.agent_network.train()
@@ -542,7 +542,7 @@ class MARLTrainer:
 
         print(f"エピソード{self.start_episode}から再開")
 
-    def save_checkpoint(self, episode:int, total_step: int):
+    def save_checkpoint(self, episode:int):
         model_io = Model_IO()
         model_dir = os.path.join(self.save_dir, "checkpoints")
         if not os.path.exists(model_dir): os.makedirs(model_dir)
@@ -556,7 +556,6 @@ class MARLTrainer:
             self.master_agent.agent_network_target.state_dict(),
             self.optimizer.state_dict(),
             episode,
-            total_step,
             epsilon=self.epsilon,
             beta=self.beta # Optionally save beta as well
         )
@@ -566,7 +565,6 @@ class MARLTrainer:
             self.master_agent.agent_network_target.state_dict(),
             self.optimizer.state_dict(),
             episode,
-            total_step,
             epsilon=self.epsilon,
             beta=self.beta
         )
@@ -581,7 +579,6 @@ class MARLTrainer:
                 self.master_agent.mixing_network_target.state_dict(),
                 None, # Optimizer state already saved with agent_network, or needs separate handling for mixing network optimizer
                 episode,
-                total_step,
                 epsilon=self.epsilon,
                 beta=self.beta
             )
@@ -591,7 +588,6 @@ class MARLTrainer:
                 self.master_agent.mixing_network_target.state_dict(),
                 None,
                 episode,
-                total_step,
                 epsilon=self.epsilon,
                 beta=self.beta
             )

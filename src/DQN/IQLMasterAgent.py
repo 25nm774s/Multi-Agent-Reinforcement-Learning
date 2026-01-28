@@ -18,10 +18,11 @@ class IQLMasterAgent(BaseMasterAgent):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork, 
+                 agent_network: IAgentNetwork,
                  gamma: float,
                  agent_ids: List[str],
-                 goal_ids: List[str]):
+                 goal_ids: List[str],
+                 agent_reward_processing_mode: str): # Add new argument
         super().__init__(
             n_agents=n_agents,
             action_size=action_size,
@@ -29,9 +30,10 @@ class IQLMasterAgent(BaseMasterAgent):
             goals_number=goals_number,
             device=device,
             state_processor=state_processor,
-            agent_network_instance=agent_network, 
+            agent_network_instance=agent_network,
             agent_ids=agent_ids,
-            goal_ids=goal_ids
+            goal_ids=goal_ids,
+            agent_reward_processing_mode=agent_reward_processing_mode # Pass to base
         )
         self.gamma = gamma
 
@@ -44,10 +46,9 @@ class IQLMasterAgent(BaseMasterAgent):
     def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
         与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
-        
+
         Args:
             agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
-            global_state_tensor (torch.Tensor): フラット化されたグローバル状態 ((goals_number + n_agents) * 2,)。
             epsilon (float): 探索率。
 
         Returns:
@@ -79,6 +80,7 @@ class IQLMasterAgent(BaseMasterAgent):
         actions_tensor_batch: torch.Tensor, # (B, N)
         rewards_tensor_batch: torch.Tensor, # (B, N)
         dones_tensor_batch: torch.Tensor, # (B, N)
+        all_agents_done_batch: torch.Tensor, # (B, 1) - NEW
         next_agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
         next_global_state_tensor_batch: torch.Tensor, # (B, state_dim)
         is_weights_batch: Optional[torch.Tensor] = None
@@ -114,9 +116,14 @@ class IQLMasterAgent(BaseMasterAgent):
             # Max Q-values for next states, for each agent
             next_max_q_values = next_q_values_all_agents_target.max(dim=2)[0] # (batch_size, n_agents)
 
+            # --- Reward and Done processing for IQL using the new helper ---
+            processed_rewards_for_iql, processed_dones_for_iql, _, _ = self._process_rewards_and_dones(
+                rewards_tensor_batch, dones_tensor_batch, all_agents_done_batch
+            )
+
             # Apply individual done flags to next_max_q_values
             # Target = R + gamma * max_Q(s', a') * (1 - done)
-            target_q_values_all_agents = rewards_tensor_batch + self.gamma * next_max_q_values * (1 - dones_tensor_batch)
+            target_q_values_all_agents = processed_rewards_for_iql + self.gamma * next_max_q_values * (1 - processed_dones_for_iql)
 
         # Calculate Huber Loss for each agent independently
         # Flatten Q-values and targets for loss calculation
@@ -133,6 +140,6 @@ class IQLMasterAgent(BaseMasterAgent):
 
         # Average abs_td_errors across agents for each sample in the batch
         # (batch_size * n_agents,) -> (batch_size, n_agents) -> (batch_size,)
-        abs_td_errors_per_sample = abs_td_errors_flat.view(batch_size, self.n_agents).mean(dim=1) 
+        abs_td_errors_per_sample = abs_td_errors_flat.view(batch_size, self.n_agents).mean(dim=1)
 
         return loss, abs_td_errors_per_sample.detach()

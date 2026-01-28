@@ -20,9 +20,10 @@ class BaseMasterAgent(ABC):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network_instance: IAgentNetwork, 
+                 agent_network_instance: IAgentNetwork,
                  agent_ids: List[str],
-                 goal_ids: List[str]):
+                 goal_ids: List[str],
+                 agent_reward_processing_mode: str): # Add new argument
         """
         BaseMasterAgent のコンストラクタ.
 
@@ -36,6 +37,7 @@ class BaseMasterAgent(ABC):
             agent_network_instance (IAgentNetwork): 共有AgentNetworkのインスタンス (IAgentNetwork型).
             agent_ids (List[str]): エージェントのIDリスト.
             goal_ids (List[str]): ゴールのIDリスト.
+            agent_reward_processing_mode (str): 報酬処理モード ('individual', 'sum_and_distribute', 'mean_and_distribute').
         """
         super().__init__()
         self.n_agents = n_agents
@@ -47,6 +49,7 @@ class BaseMasterAgent(ABC):
         self.agent_network = agent_network_instance # Store the provided instance
         self._agent_ids = agent_ids
         self._goal_ids = goal_ids
+        self.agent_reward_processing_mode = agent_reward_processing_mode # Store the new argument
 
         # num_channels は IAgentNetwork のプロパティから取得
         self.num_channels = self.agent_network.num_channels
@@ -55,12 +58,66 @@ class BaseMasterAgent(ABC):
         self.agent_network_target = copy.deepcopy(self.agent_network).to(device)
         self.agent_network_target.eval()
 
+    def _process_rewards_and_dones(
+        self,
+        rewards_tensor_batch: torch.Tensor, # (B, N)
+        dones_tensor_batch: torch.Tensor,   # (B, N) - individual dones for each agent
+        all_agents_done_batch: torch.Tensor # (B, 1) - overall episode done flag
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        指定されたモードに基づいて報酬と完了フラグを処理し、IQLとQMIXの両方で使用できる形式で返します。
+
+        Args:
+            rewards_tensor_batch (torch.Tensor): バッチ内の各エージェントの報酬 (B, N)。
+            dones_tensor_batch (torch.Tensor): バッチ内の各エージェントの完了フラグ (B, N)。
+            all_agents_done_batch (torch.Tensor): 各バッチサンプルにおけるエピソード全体の完了フラグ (B, 1)。
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                - processed_rewards_for_iql (torch.Tensor): IQLで使用する (B, N) 形状の報酬。
+                - processed_dones_for_iql (torch.Tensor): IQLで使用する (B, N) 形状の完了フラグ。
+                - team_reward_scalar (torch.Tensor): QMIXで使用する (B, 1) 形状のチーム報酬。
+                - team_done_scalar (torch.Tensor): QMIXで使用する (B, 1) 形状のチーム完了フラグ (all_agents_done_batchをそのまま使用)。
+        """
+        batch_size = rewards_tensor_batch.size(0)
+
+        # IQL用報酬: agent_reward_processing_modeに従って処理 (B, N)
+        processed_rewards_for_iql = rewards_tensor_batch.clone()
+        if self.agent_reward_processing_mode == 'sum_and_distribute':
+            sum_rewards = rewards_tensor_batch.sum(dim=1, keepdim=True) # (B, 1)
+            processed_rewards_for_iql = sum_rewards.expand_as(rewards_tensor_batch) # (B, N)
+        elif self.agent_reward_processing_mode == 'mean_and_distribute':
+            mean_rewards = rewards_tensor_batch.mean(dim=1, keepdim=True) # (B, 1)
+            processed_rewards_for_iql = mean_rewards.expand_as(rewards_tensor_batch) # (B, N)
+        # 'individual'の場合はprocessed_rewards_for_iqlはrewards_tensor_batchのクローンがそのまま使われる
+
+        # IQL用完了フラグ: 各エージェントの完了フラグをそのまま使用 (B, N)
+        processed_dones_for_iql = dones_tensor_batch.clone()
+
+        # QMIX用チーム報酬: agent_reward_processing_modeに従って処理 (B, 1)
+        # ここでのagent_reward_processing_modeは、QMIXの「チーム全体報酬」の定義を制御すると解釈する
+        team_reward_scalar: torch.Tensor
+        if self.agent_reward_processing_mode == 'individual' or self.agent_reward_processing_mode == 'sum_and_distribute':
+            # 'individual'モードでは、QMIXはデフォルトで個々の報酬の合計をチーム報酬とする
+            # 'sum_and_distribute'モードでも、チーム報酬は個々の報酬の合計が自然な解釈
+            team_reward_scalar = rewards_tensor_batch.sum(dim=1, keepdim=True) # (B, 1)
+        elif self.agent_reward_processing_mode == 'mean_and_distribute':
+            # 'mean_and_distribute'モードでは、チーム報酬は個々の報酬の平均
+            team_reward_scalar = rewards_tensor_batch.mean(dim=1, keepdim=True) # (B, 1)
+        else:
+            raise ValueError(f"Unknown agent_reward_processing_mode for QMIX: {self.agent_reward_processing_mode}")
+
+        # QMIX用チーム完了フラグ: エピソード全体の完了フラグを使用 (B, 1)
+        team_done_scalar = all_agents_done_batch.clone() # (B, 1)
+
+        return processed_rewards_for_iql, processed_dones_for_iql, team_reward_scalar, team_done_scalar
+
     # _process_raw_observations_batch は ReplayBuffer が既にテンソルを扱うようになったため、不要となり削除されます。
     # _flatten_global_state_dict は StateProcessor に移動したため削除されます。
 
     def _get_agent_q_values(
         self,
-        agent_network_instance: IAgentNetwork,
+        agent_network_instance: "IAgentNetwork",
         agent_obs_batch: torch.Tensor, # (B * N, C, G, G)
         agent_ids_batch: torch.Tensor # (B * N,)
     ) -> torch.Tensor:
@@ -90,7 +147,7 @@ class BaseMasterAgent(ABC):
     def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
         与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
-        
+
         Args:
             agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
             epsilon (float): 探索率。
@@ -108,6 +165,7 @@ class BaseMasterAgent(ABC):
         actions_tensor_batch: torch.Tensor, # (B, N)
         rewards_tensor_batch: torch.Tensor, # (B, N)
         dones_tensor_batch: torch.Tensor, # (B, N)
+        all_agents_done_batch: torch.Tensor, # (B, 1) - NEW
         next_agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
         next_global_state_tensor_batch: torch.Tensor, # (B, state_dim)
         is_weights_batch: Optional[torch.Tensor] = None
@@ -115,13 +173,14 @@ class BaseMasterAgent(ABC):
         """
         リプレイバッファからサンプリングされたバッチデータを使用して、Q値を評価し、
         損失とTD誤差を計算します。具体的な実装はサブクラスで提供されます。
-        
+
         Args:
             agent_obs_tensor_batch (torch.Tensor): 現在のエージェント観測バッチ (B, N, C, G, G)。
             global_state_tensor_batch (torch.Tensor): 現在のグローバル状態バッチ (B, state_dim)。
             actions_tensor_batch (torch.Tensor): エージェントが取った行動のバッチ (B, N)。
-            rewards_tensor_batch (torch.Tensor): 報酬のバッチ (B, N)。
-            dones_tensor_batch (torch.Tensor): 完了フラグのバッチ (B, N)。
+            rewards_tensor_batch (torch.Tensor): 環境からの生の報酬のバッチ (B, N)。
+            dones_tensor_batch (torch.Tensor): 環境からの個々の完了フラグのバッチ (B, N)。
+            all_agents_done_batch (torch.Tensor): エピソード全体の完了フラグのバッチ (B, 1)。
             next_agent_obs_tensor_batch (torch.Tensor): 次のエージェント観測バッチ (B, N, C, G, G)。
             next_global_state_tensor_batch (torch.Tensor): 次のグローバル状態バッチ (B, state_dim)。
             is_weights_batch (Optional[torch.Tensor]): PERの重要度サンプリング重み (B,)。
@@ -176,4 +235,3 @@ class BaseMasterAgent(ABC):
         オプティマイザが更新すべきネットワークパラメータのリストを返します。
         """
         pass
-

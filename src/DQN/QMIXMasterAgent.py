@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict
 
 from Base.Agent_Base import IAgentNetwork, BaseMasterAgent, ObsToTensorWrapper
 
@@ -10,7 +10,7 @@ from .network import MixingNetwork
 class QMIXMasterAgent(BaseMasterAgent):
     """
     QMIX (Q-value Mixing Network) の Master Agent クラス.
-    各エージェントは共有の AgentNetwork を使用してQ値を学習し、
+    各エージェントは共有の AgentNetwork を使用してQ値を学習し,
     MixingNetwork を介してチーム全体のQ値 (Q_tot) を協調的に学習します。
     """
     def __init__(self,
@@ -20,10 +20,11 @@ class QMIXMasterAgent(BaseMasterAgent):
                  goals_number: int,
                  device: torch.device,
                  state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork, 
+                 agent_network: IAgentNetwork,
                  gamma: float,
                  agent_ids: List[str],
-                 goal_ids: List[str]):
+                 goal_ids: List[str],
+                 agent_reward_processing_mode: str): # Add new argument
         super().__init__(
             n_agents=n_agents,
             action_size=action_size,
@@ -31,9 +32,10 @@ class QMIXMasterAgent(BaseMasterAgent):
             goals_number=goals_number,
             device=device,
             state_processor=state_processor,
-            agent_network_instance=agent_network, 
+            agent_network_instance=agent_network,
             agent_ids=agent_ids,
-            goal_ids=goal_ids
+            goal_ids=goal_ids,
+            agent_reward_processing_mode=agent_reward_processing_mode # Pass to base
         )
         self.gamma = gamma
 
@@ -90,6 +92,7 @@ class QMIXMasterAgent(BaseMasterAgent):
         actions_tensor_batch: torch.Tensor, # (B, N)
         rewards_tensor_batch: torch.Tensor, # (B, N)
         dones_tensor_batch: torch.Tensor, # (B, N)
+        all_agents_done_batch: torch.Tensor, # (B, 1) - NEW
         next_agent_obs_tensor_batch: torch.Tensor, # (B, N, C, G, G)
         next_global_state_tensor_batch: torch.Tensor, # (B, state_dim)
         is_weights_batch: Optional[torch.Tensor] = None
@@ -122,6 +125,8 @@ class QMIXMasterAgent(BaseMasterAgent):
 
         # 生存マスクの適用 (Q_i): 脱落したエージェントのQ値を0にする
         # dones_tensor_batch (B, N) -> (B, N, 1)
+        # NOTE: For QMIX, individual dones are used to mask *individual agent Q-values* before mixing.
+        # This is distinct from the 'team_done_scalar' which applies to the total Q-value.
         chosen_q_values_masked = chosen_q_values * (1 - dones_tensor_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
 
         # STEP 3: MixingNetwork への入力整形と Q_tot の算出 (メインネットワーク)
@@ -141,14 +146,19 @@ class QMIXMasterAgent(BaseMasterAgent):
             # 生存マスクの適用 (次のQ_i): 脱落したエージェントの次のQ値を0にする
             next_max_q_values_target_masked = next_max_q_values_target * (1 - dones_tensor_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
 
+            # --- Reward and Done processing for QMIX using the new helper ---
+            # For QMIX, we need the scalar team reward and team done status.
+            _, _, team_reward_scalar, team_done_scalar = self._process_rewards_and_dones(
+                rewards_tensor_batch, dones_tensor_batch, all_agents_done_batch
+            )
+
             # ターゲットMixingNetwork を介して target_Q_tot_unmasked を算出
             # next_global_state_tensor_batch has shape (batch_size, state_dim)
             target_Q_tot_unmasked = self.mixing_network_target(next_max_q_values_target_masked, next_global_state_tensor_batch) # (batch_size, 1)
 
             # Bellman方程式による最終的なターゲットQ_tot
-            # rewards_tensor_batch (B, N) を (B, 1) のチーム報酬に合計
-            team_rewards_batch = rewards_tensor_batch.sum(dim=1, keepdim=True) # (batch_size, 1)
-            target_Q_tot = team_rewards_batch + self.gamma * target_Q_tot_unmasked # (batch_size, 1)
+            # The team_reward_scalar is already (B, 1) and processed according to agent_reward_processing_mode
+            target_Q_tot = team_reward_scalar + self.gamma * target_Q_tot_unmasked * (1 - team_done_scalar) # (batch_size, 1)
 
         # 損失の計算
         # _huber_lossは(batch_size,)を期待するので、squeeze(-1)で整形

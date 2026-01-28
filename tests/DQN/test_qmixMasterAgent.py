@@ -5,7 +5,7 @@ from typing import Dict, Any
 from unittest.mock import MagicMock, patch
 
 from src.DQN.QMIXMasterAgent import QMIXMasterAgent, AgentNetwork
-from src.utils.StateProcesser import StateProcessor
+from Environments.StateProcesser import ObsToTensorWrapper
 
 class TestQMIXMasterAgent(unittest.TestCase):
     def setUp(self):
@@ -19,7 +19,7 @@ class TestQMIXMasterAgent(unittest.TestCase):
         self.goal_ids = [f'goal_{i}' for i in range(self.goals_num)]
 
         # Mock StateProcessor
-        self.mock_state_processor = MagicMock(spec=StateProcessor)
+        self.mock_state_processor = MagicMock(spec=ObsToTensorWrapper)
         self.mock_state_processor.num_channels = 3
         # Mock transform_state_batch to accept single_agent_obs_dict and return dummy grid states
         # Expected return shape: (C, G, G)

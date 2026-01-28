@@ -2,7 +2,7 @@ import torch
 from typing import Dict, List, Any
 from Base.Constant import PosType
 
-class StateProcessor:
+class ObsToTensorWrapper:
     """
     環境の生の状態（全体座標）を、Qネットワークが処理できるグリッド表現に変換するクラス。
     """

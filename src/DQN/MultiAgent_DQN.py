@@ -15,7 +15,7 @@ from .IO_Handler import Model_IO
 
 from Base.Constant import GlobalState
 from utils.replay_buffer import ReplayBuffer
-from utils.StateProcesser import StateProcessor
+from Environments.StateProcesser import ObsToTensorWrapper
 
 RED = '\033[91m'
 GREEN = '\033[92m'
@@ -29,7 +29,7 @@ class MARLTrainer:
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
     """
-    def __init__(self, args, mode: str, shared_agent_network: AgentNetwork, shared_state_processor: StateProcessor, shared_replay_buffer: ReplayBuffer):
+    def __init__(self, args, mode: str, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper, shared_replay_buffer: ReplayBuffer):
         """
         MARLTrainer クラスのコンストラクタ.
 

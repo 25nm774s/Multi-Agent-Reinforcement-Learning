@@ -38,11 +38,11 @@ class MARLTrainer:
             args: 実行設定を含むオブジェクト.
                   (reward_mode, render_mode, episode_number, max_timestep,
                    agents_number, goals_number, grid_size, load_model, mask,
-                   save_agent_states, alpha, beta, beta_anneal_steps, use_per 属性を持つことを想定)
+                   save_agent_states, alpha, beta, beta_anneal_steps, use_per, agent_reward_processing_mode 属性を持つことを想定)
             mode (str): 学習モード ('IQL' または 'QMIX').
             env_wrapper (IEnvWrapper): 環境とのインタラクションを標準化するラッパーインスタンス.
             shared_agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
-            shared_state_processor (StateProcessor): 共有StateProcessorのインスタンス.
+            shared_state_processor (ObsToTensorWrapper): 共有ObsToTensorWrapperのインスタンス.
         """
         self.args = args # Store args for later use
 
@@ -95,7 +95,8 @@ class MARLTrainer:
                 agent_network=shared_agent_network,
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
-                goal_ids=self._goal_ids
+                goal_ids=self._goal_ids,
+                agent_reward_processing_mode=args.agent_reward_processing_mode # Pass new argument
             )
         elif mode == 'QMIX':
             self.master_agent = QMIXMasterAgent(
@@ -108,7 +109,8 @@ class MARLTrainer:
                 agent_network=shared_agent_network,
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
-                goal_ids=self._goal_ids
+                goal_ids=self._goal_ids,
+                agent_reward_processing_mode=args.agent_reward_processing_mode # Pass new argument
             )
         else:
             raise ValueError(f"Unknown mode: {mode}. Must be 'IQL' or 'QMIX'.")
@@ -146,7 +148,7 @@ class MARLTrainer:
         else:
             folder_name += f"_観測径[{args.neighbor_distance}]"
 
-        folder_name += f"_報酬[{self.reward_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
+        folder_name += f"_報酬[{self.reward_mode}]_ARPM[{args.agent_reward_processing_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
 
         # PERを使用している場合、PERパラメータを追加
         if args.use_per:
@@ -261,7 +263,9 @@ class MARLTrainer:
                 actions_tensor = torch.tensor([actions_dict[agent_id] for agent_id in self._agent_ids], dtype=torch.long, device=self.args.device)
 
                 # Store experience in replay buffer - use the observation dictionaries directly
-                self.replay_buffer.add(agent_obs_tensor, global_state_tensor, actions_tensor, rewards_tensor, dones_tensor, next_agent_obs_tensor, next_global_state_tensor)
+                # Pass all_agents_done_scalar from step_info
+                all_agents_done_scalar = torch.tensor([float(step_info['all_agents_done'])], dtype=torch.float32, device=self.args.device)
+                self.replay_buffer.add(agent_obs_tensor, global_state_tensor, actions_tensor, rewards_tensor, dones_tensor, all_agents_done_scalar, next_agent_obs_tensor, next_global_state_tensor)
 
                 # Each step accumulates total reward
                 episode_reward += rewards_tensor.sum().item() # rewards_tensorは(n_agents,)です。
@@ -273,13 +277,13 @@ class MARLTrainer:
 
                     if sample_output is not None:
                         # replay_buffer.sample now returns lists of observation dictionaries
-                        (current_agent_obs_batch, current_global_state_batch, actions_batch, rewards_batch, dones_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch, sampled_indices) = sample_output
+                        (current_agent_obs_batch, current_global_state_batch, actions_batch, rewards_batch, dones_batch, all_agents_done_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch, sampled_indices) = sample_output
 
                         # Calculate loss using MasterAgent
                         # master_agent.evaluate_q expects lists of observation dictionaries
                         loss, abs_td_errors = self.master_agent.evaluate_q(
                             current_agent_obs_batch, current_global_state_batch, actions_batch, rewards_batch,
-                            dones_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch
+                            dones_batch, all_agents_done_batch, next_agent_obs_batch, next_global_state_batch, is_weights_batch
                         )
 
                         # Backward pass and optimize
@@ -396,15 +400,15 @@ class MARLTrainer:
         self.master_agent.agent_network.load_state_dict(loaded_agent_net_state_dict)
         self.master_agent.agent_network.eval()
 
+        # Sync target networks after loading
+        self.master_agent.sync_target_network()
+
         # If QMIX, load MixingNetwork weights
         if isinstance(self.master_agent, QMIXMasterAgent):
             mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
             loaded_mixing_net_state_dict = model_io.load(mixing_net_path)
             self.master_agent.mixing_network.load_state_dict(loaded_mixing_net_state_dict)
             self.master_agent.mixing_network.eval()
-
-        # Sync target networks after loading
-        self.master_agent.sync_target_network()
 
     def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
         """
@@ -504,30 +508,37 @@ class MARLTrainer:
             self.master_agent.agent_network.load_state_dict(agent_net_checkpoint_data['model_state'])
             self.master_agent.agent_network_target.load_state_dict(agent_net_checkpoint_data['target_state'])
 
-            # Load MixingNetwork checkpoint if in QMIX mode
-            if isinstance(self.master_agent, QMIXMasterAgent):
-                mixing_net_checkpoint_data = model_io.load_checkpoint(mixing_net_checkpoint_path)
-                self.master_agent.mixing_network.load_state_dict(mixing_net_checkpoint_data['model_state'])
-                self.master_agent.mixing_network_target.load_state_dict(mixing_net_checkpoint_data['target_state'])
-
             # Load optimizer state (assuming one optimizer for all networks, saved with agent_network)
             self.optimizer.load_state_dict(agent_net_checkpoint_data['optimizer_state'])
 
             # Update start_episode and epsilon/beta
-            self.start_episode = agent_net_checkpoint_data['epoch'] + 1
-            self.total_step = agent_net_checkpoint_data['step'] + 1
+            self.start_episode = agent_net_checkpoint_data['epoch'] + 1 # Fixed: should be + 1 to resume from next episode
             self.epsilon = agent_net_checkpoint_data['epsilon']
             # The beta value for PER annealing might need to be explicitly saved/loaded if it's dynamic.
             # For simplicity, we are not loading beta here. It will reset to args.beta and anneal from there.
 
             # Set networks to train mode
             self.master_agent.agent_network.train()
+            self.master_agent.agent_network_target.eval() # Ensure target network is in eval mode
+
             if isinstance(self.master_agent, QMIXMasterAgent):
                 self.master_agent.mixing_network.train()
+                self.master_agent.mixing_network_target.eval() # Ensure target network is in eval mode
+                mixing_net_checkpoint_data = model_io.load_checkpoint(mixing_net_checkpoint_path)
+                self.master_agent.mixing_network.load_state_dict(mixing_net_checkpoint_data['model_state'])
+                self.master_agent.mixing_network_target.load_state_dict(mixing_net_checkpoint_data['target_state'])
+
 
         except Exception as e:
             print(f"エラー発生: {e}")
             print("チェックポイントのロードに失敗しました。新規学習を開始します。")
+            # If loading fails, ensure networks are in a consistent state (e.g., train mode)
+            self.master_agent.agent_network.train()
+            self.master_agent.agent_network_target.eval()
+            if isinstance(self.master_agent, QMIXMasterAgent):
+                self.master_agent.mixing_network.train()
+                self.master_agent.mixing_network_target.eval()
+
 
         print(f"エピソード{self.start_episode}から再開")
 

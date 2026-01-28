@@ -3,7 +3,7 @@ import random
 import torch
 from collections import deque
 import numpy as np
-from typing import Tuple, List, Any, Dict,Optional
+from typing import Tuple, List, Optional
 
 from Base.Constant import ExperienceType
 
@@ -129,17 +129,6 @@ class ReplayBuffer:
         self.grid_size: int = grid_size
         self.goals_number: int = goals_number
 
-        # Define ExperienceType to store tensors directly
-        # ExperienceType = Tuple[
-        #     torch.Tensor, # agent_obs_tensor (n_agents, num_channels, grid_size, grid_size)
-        #     torch.Tensor, # global_state_tensor ((goals_number + n_agents) * 2,)
-        #     torch.Tensor, # actions_tensor (n_agents,)
-        #     torch.Tensor, # rewards_tensor (n_agents,)
-        #     torch.Tensor, # dones_tensor (n_agents,)
-        #     torch.Tensor, # next_agent_obs_tensor (n_agents, num_channels, grid_size, grid_size)
-        #     torch.Tensor  # next_global_state_tensor ((goals_number + n_agents) * 2,)
-        # ]
-
         if self.use_per:
             self.experiences: List[Optional[ExperienceType]] = [None] * buffer_size
             self.tree = SumTree(capacity=buffer_size)
@@ -149,13 +138,14 @@ class ReplayBuffer:
             self.buffer: deque[ExperienceType] = deque(maxlen=buffer_size)
             self.priorities: deque[float] = deque(maxlen=buffer_size)
 
-    def add(self, agent_obs_tensor: torch.Tensor, global_state_tensor: torch.Tensor, actions_tensor: torch.Tensor, rewards_tensor: torch.Tensor, dones_tensor: torch.Tensor, next_agent_obs_tensor: torch.Tensor, next_global_state_tensor: torch.Tensor) -> None:
+    def add(self, agent_obs_tensor: torch.Tensor, global_state_tensor: torch.Tensor, actions_tensor: torch.Tensor, rewards_tensor: torch.Tensor, dones_tensor: torch.Tensor, all_agents_done_scalar: torch.Tensor, next_agent_obs_tensor: torch.Tensor, next_global_state_tensor: torch.Tensor) -> None:
         data: ExperienceType = (
             agent_obs_tensor,
             global_state_tensor,
             actions_tensor,
             rewards_tensor,
             dones_tensor,
+            all_agents_done_scalar,
             next_agent_obs_tensor,
             next_global_state_tensor
         )
@@ -175,7 +165,7 @@ class ReplayBuffer:
         else:
             return len(self.buffer)
 
-    def sample(self, beta: float) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
+    def sample(self, beta: float) -> Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Optional[torch.Tensor], Optional[List[int]]]]:
         buffer_len = len(self)
         if buffer_len < self.batch_size:
             return None
@@ -239,8 +229,9 @@ class ReplayBuffer:
             actions_tensor_batch = torch.stack([exp[2] for exp in filtered_experiences], dim=0)
             rewards_tensor_batch = torch.stack([exp[3] for exp in filtered_experiences], dim=0)
             dones_tensor_batch = torch.stack([exp[4] for exp in filtered_experiences], dim=0)
-            next_agent_obs_tensor_batch = torch.stack([exp[5] for exp in filtered_experiences], dim=0)
-            next_global_state_tensor_batch = torch.stack([exp[6] for exp in filtered_experiences], dim=0)
+            all_agents_done_scalar_batch = torch.stack([exp[5] for exp in filtered_experiences], dim=0)
+            next_agent_obs_tensor_batch = torch.stack([exp[6] for exp in filtered_experiences], dim=0)
+            next_global_state_tensor_batch = torch.stack([exp[7] for exp in filtered_experiences], dim=0)
 
         except Exception as e:
             print(f"Error converting sampled data to batched tensors: {e}")
@@ -252,6 +243,7 @@ class ReplayBuffer:
             actions_tensor_batch,
             rewards_tensor_batch,
             dones_tensor_batch,
+            all_agents_done_scalar_batch,
             next_agent_obs_tensor_batch,
             next_global_state_tensor_batch,
             is_weights_tensor,

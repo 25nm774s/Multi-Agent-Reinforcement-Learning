@@ -1,7 +1,6 @@
 import unittest
 import torch
 import numpy as np
-from typing import Dict,List,Any
 
 from src.utils.replay_buffer import ReplayBuffer
 
@@ -14,7 +13,7 @@ class TestReplayBuffer(unittest.TestCase):
         self.n_agents = 2
         self.goals_number = 2
         self.grid_size = 6
-        self.num_channels = 3 # From StateProcessor
+        self.num_channels = 3 # From ObsToTensorWrapper
 
         # self.global_state_dim = (self.goals_num + self.n_agents) * 2 # Reinstated
 
@@ -25,6 +24,7 @@ class TestReplayBuffer(unittest.TestCase):
         actions_tensor = torch.full((self.n_agents,), fill_value=action_value, dtype=torch.long, device=self.device)
         rewards_tensor = torch.full((self.n_agents,), fill_value=reward_value, dtype=torch.float32, device=self.device)
         dones_tensor = torch.full((self.n_agents,), fill_value=float(done_value), dtype=torch.float32, device=self.device)
+        all_agents_done_scalar = torch.full((self.n_agents,), fill_value=float(done_value), dtype=torch.float32, device=self.device)
         next_agent_obs_tensor = torch.randn(self.n_agents, self.num_channels, self.grid_size, self.grid_size, device=self.device)
         next_global_state_tensor = torch.randn((self.goals_number + self.n_agents) * 2, device=self.device)
 
@@ -34,6 +34,7 @@ class TestReplayBuffer(unittest.TestCase):
             actions_tensor,
             rewards_tensor,
             dones_tensor,
+            all_agents_done_scalar,
             next_agent_obs_tensor,
             next_global_state_tensor
         )
@@ -81,17 +82,19 @@ class TestReplayBuffer(unittest.TestCase):
             actions_tensor_batch,
             rewards_tensor_batch,
             dones_tensor_batch,
+            all_agents_done_batch,
             next_agent_obs_tensor_batch,
             next_global_state_tensor_batch,
             is_weights_batch,
             sampled_indices
-        ) = sample_output#type:ignore
+        ) = sample_output # type: ignore
 
         self.assertEqual(agent_obs_tensor_batch.shape, (self.batch_size, self.n_agents, self.num_channels, self.grid_size, self.grid_size))
         self.assertEqual(global_state_tensor_batch.shape, (self.batch_size, (self.goals_number + self.n_agents) * 2))
         self.assertEqual(actions_tensor_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(rewards_tensor_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(dones_tensor_batch.shape, (self.batch_size, self.n_agents))
+        self.assertEqual(all_agents_done_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(next_agent_obs_tensor_batch.shape, (self.batch_size, self.n_agents, self.num_channels, self.grid_size, self.grid_size))
         self.assertEqual(next_global_state_tensor_batch.shape, (self.batch_size, (self.goals_number + self.n_agents) * 2))
 
@@ -146,24 +149,26 @@ class TestReplayBuffer(unittest.TestCase):
             actions_tensor_batch,
             rewards_tensor_batch,
             dones_tensor_batch,
+            all_agents_done_batch,
             next_agent_obs_tensor_batch,
             next_global_state_tensor_batch,
             is_weights_batch,
             sampled_indices
-        ) = sample_output#type:ignore
+        ) = sample_output # type: ignore
 
         self.assertEqual(agent_obs_tensor_batch.shape, (self.batch_size, self.n_agents, self.num_channels, self.grid_size, self.grid_size))
         self.assertEqual(global_state_tensor_batch.shape, (self.batch_size, (self.goals_number + self.n_agents) * 2))
         self.assertEqual(actions_tensor_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(rewards_tensor_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(dones_tensor_batch.shape, (self.batch_size, self.n_agents))
+        self.assertEqual(all_agents_done_batch.shape, (self.batch_size, self.n_agents))
         self.assertEqual(next_agent_obs_tensor_batch.shape, (self.batch_size, self.n_agents, self.num_channels, self.grid_size, self.grid_size))
         self.assertEqual(next_global_state_tensor_batch.shape, (self.batch_size, (self.goals_number + self.n_agents) * 2))
 
         self.assertIsNotNone(is_weights_batch) # Should have IS weights
-        self.assertEqual(is_weights_batch.shape, (self.batch_size,))#type:ignore
+        self.assertEqual(is_weights_batch.shape, (self.batch_size,)) # type: ignore
         self.assertIsNotNone(sampled_indices) # Should have sampled indices
-        self.assertEqual(len(sampled_indices), self.batch_size)#type:ignore
+        self.assertEqual(len(sampled_indices), self.batch_size) # type: ignore
 
     def test_update_priorities(self):
         rb = ReplayBuffer(
@@ -189,11 +194,12 @@ class TestReplayBuffer(unittest.TestCase):
             actions_tensor_batch,
             rewards_tensor_batch,
             dones_tensor_batch,
+            all_agents_done_batch,
             next_agent_obs_tensor_batch,
             next_global_state_tensor_batch,
             is_weights_batch,
             sampled_indices
-        ) = sample_output#type:ignore
+        ) = sample_output # type: ignore
 
         # Create dummy TD errors for updating priorities
         dummy_td_errors = np.abs(np.random.randn(self.batch_size)) + 0.1 # Ensure positive
@@ -201,7 +207,7 @@ class TestReplayBuffer(unittest.TestCase):
         # The `sampled_indices` returned by `rb.sample` are the `tree_idx` values from SumTree.
         # These are what `update_priorities` expects.
         self.assertIsNotNone(sampled_indices)
-        rb.update_priorities(sampled_indices, dummy_td_errors)#type:ignore
+        rb.update_priorities(sampled_indices, dummy_td_errors) # type: ignore
 
         # Verify that priorities in SumTree have changed
         # A simple check: total_priority should reflect the sum of updated priorities, roughly

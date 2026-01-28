@@ -14,6 +14,7 @@ ExperienceType = Tuple[
     torch.Tensor, # actions_tensor (n_agents,)
     torch.Tensor, # rewards_tensor (n_agents,)
     torch.Tensor, # dones_tensor (n_agents,)
+    torch.Tensor, # all_agents_done_scalar(n_agents,)
     torch.Tensor, # next_agent_obs_tensor (n_agents, num_channels, grid_size, grid_size)
     torch.Tensor  # next_global_state_tensor ((goals_number + n_agents) * 2,)
 ]

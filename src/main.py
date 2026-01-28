@@ -143,21 +143,22 @@ if __name__ == '__main__':
         #simulation.render_anime(config.episode_number)
         # simulation.log_disp()
             
-    def dqn_process():
-        device = torch.device(config.device)
+    def dqn_process(current_conf, run_id=None):
+        # Shared components
+        device = torch.device(current_conf.device)
 
         # 1. MultiAgentGridEnv のインスタンス化
-        fix_goal_pool = [(config.grid_size-1,config.grid_size-1),(config.grid_size//4,config.grid_size//3),(config.grid_size-1,0),(config.grid_size//4,config.grid_size//6)]
-        _fix_goal_from_goal_number = fix_goal_pool[:min(config.goals_number, len(fix_goal_pool))]
+        fix_goal_pool = [(current_conf.grid_size-1,current_conf.grid_size-1),(current_conf.grid_size//4,current_conf.grid_size//3),(current_conf.grid_size-1,0),(current_conf.grid_size//4,current_conf.grid_size//6)]
+        _fix_goal_from_goal_number = fix_goal_pool[:min(current_conf.goals_number, len(fix_goal_pool))]
 
-        multi_agent_env = MultiAgentGridEnv(config, fixrd_goals=_fix_goal_from_goal_number)
+        multi_agent_env = MultiAgentGridEnv(current_conf, fixrd_goals=_fix_goal_from_goal_number)
 
-        # 2. StateProcessor をインスタンス化
+        # 2. ObsToTensorWrapper をインスタンス化
         shared_state_processor = ObsToTensorWrapper(
-            grid_size=config.grid_size,
-            goals_number=config.goals_number,
-            agents_number=config.agents_number,
-            neighbor_distance=config.neighbor_distance,
+            grid_size=current_conf.grid_size,
+            goals_number=current_conf.goals_number,
+            agents_number=current_conf.agents_number,
+            neighbor_distance=current_conf.neighbor_distance,
             device=device,
             agent_ids=multi_agent_env._agent_ids,
             goal_ids=multi_agent_env._goal_ids
@@ -167,26 +168,26 @@ if __name__ == '__main__':
         env_wrapper_instance = GridEnvWrapper(env_instance=multi_agent_env, state_processor_instance=shared_state_processor)
 
         shared_agent_network = AgentNetwork(
-            grid_size=config.grid_size,
+            grid_size=current_conf.grid_size,
             output_size=env_wrapper_instance.action_space_size, # Use the dynamically retrieved action_space_size
-            total_agents=config.agents_number
+            total_agents=current_conf.agents_number
         ).to(device)
 
         # Instantiate MARLTrainer. It will now create its own ReplayBuffer internally.
         trainer = MARLTrainer(
-            args=config,
-            mode=config.learning_mode,
+            args=current_conf,
+            mode=current_conf.learning_mode,
             env_wrapper=env_wrapper_instance, # 4. GridEnvWrapper のインスタンスを渡す
             shared_agent_network=shared_agent_network,
             shared_state_processor=shared_state_processor,
-            # run_id=run_id
+            run_id=run_id
         )
 
         # Run training
         trainer.train() # Comment out the full training
 
-        print(f"--- {config.learning_mode} mode test finished successfully ---")
-
+        print(f"--- {current_conf.learning_mode} mode test finished successfully ---")    
+    
     def dimensions_estimater(grid_size:int, agent_number:int)->int:
         res = 1
         for i in range(agent_number):
@@ -204,6 +205,6 @@ if __name__ == '__main__':
             q_learning()
 
     elif config.learning_mode == "IQL" or config.learning_mode == "QMIX":
-        dqn_process()
+        dqn_process(config)
     else:
         print("未実装\n")

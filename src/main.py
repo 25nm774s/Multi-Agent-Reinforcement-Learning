@@ -71,7 +71,7 @@ def parse_args():
     parser.add_argument('-T','--max_timestep', default=150, type=int)
     parser.add_argument('--epsilon_decay', default=0.50, type=float)
     parser.add_argument('--learning_rate', default=0.001, type=float)
-    parser.add_argument('--gamma', default=0.99, type=float)
+    parser.add_argument('--gamma', default=0.95, type=float)
     parser.add_argument('--buffer_size', default=10000, type=int)
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--save_agent_states', choices=[0, 1], default=1, type=int)
@@ -204,7 +204,7 @@ if __name__ == '__main__':
         else:
             q_learning()
 
-    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX":
+    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX" or config.learning_mode == "VDN":
         dqn_process(config)
     else:
         print("未実装\n")

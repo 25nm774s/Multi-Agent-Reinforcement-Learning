@@ -11,6 +11,7 @@ from utils.Saver import Saver
 
 from .IQLMasterAgent import IQLMasterAgent
 from .QMIXMasterAgent import QMIXMasterAgent
+from .VDNMasterAgent import VDNMasterAgent
 from .network import AgentNetwork 
 from .IO_Handler import Model_IO
 
@@ -23,7 +24,7 @@ GREEN = '\033[92m'
 RESET = '\033[0m'
 
 MAX_EPSILON = 1.0
-MIN_EPSILON = 0.05
+MIN_EPSILON = 0.01
 
 class MARLTrainer:
     """
@@ -39,7 +40,7 @@ class MARLTrainer:
                   (reward_mode, render_mode, episode_number, max_timestep,
                    agents_number, goals_number, grid_size, load_model, mask,
                    save_agent_states, alpha, beta, beta_anneal_steps, use_per, agent_reward_processing_mode 属性を持つことを想定)
-            mode (str): 学習モード ('IQL' または 'QMIX').
+            mode (str): 学習モード ('IQL' または 'QMIX' または 'VDN').
             env_wrapper (IEnvWrapper): 環境とのインタラクションを標準化するラッパーインスタンス.
             shared_agent_network (AgentNetwork): 共有AgentNetworkのインスタンス.
             shared_state_processor (ObsToTensorWrapper): 共有ObsToTensorWrapperのインスタンス.
@@ -80,9 +81,6 @@ class MARLTrainer:
         self._agent_ids: list[str] = self.env_wrapper.agent_ids
         self._goal_ids: list[str] = self.env_wrapper.goal_ids
 
-        # Debug print to confirm goals_number
-        # print(f"[DEBUG] MARLTrainer initialized with goals_number: {self.goals_number}")
-
         # MasterAgentのインスタンス化
         if mode == 'IQL':
             self.master_agent = IQLMasterAgent(
@@ -112,8 +110,23 @@ class MARLTrainer:
                 goal_ids=self._goal_ids,
                 agent_reward_processing_mode=args.agent_reward_processing_mode # Pass new argument
             )
+        # Added VDN mode instantiation as per the plan
+        elif mode == 'VDN':
+            self.master_agent = VDNMasterAgent(
+                n_agents=self.agents_number,
+                action_size=self.action_space_size,
+                grid_size=self.grid_size,
+                goals_number=self.goals_number,
+                device=args.device,
+                state_processor=shared_state_processor,
+                agent_network=shared_agent_network,
+                gamma=args.gamma,
+                agent_ids=self._agent_ids,
+                goal_ids=self._goal_ids,
+                agent_reward_processing_mode=args.agent_reward_processing_mode
+            )
         else:
-            raise ValueError(f"Unknown mode: {mode}. Must be 'IQL' or 'QMIX'.")
+            raise ValueError(f"Unknown mode: {mode}. Must be 'IQL', 'QMIX', or 'VDN'.")
 
         # ReplayBufferの割り当て - MARLTrainer内で初期化
         self.replay_buffer = ReplayBuffer(
@@ -197,7 +210,7 @@ class MARLTrainer:
         """
         # 事前条件チェック: エージェント数はゴール数以下である必要がある
         if self.agents_number > self.goals_number:
-            print('goals_number >= agents_number に設定してください.\n')
+            print('goals_number >= agents_number に設定してください。\n')
             sys.exit()
 
         # 学習開始メッセージ
@@ -389,6 +402,9 @@ class MARLTrainer:
         if isinstance(self.master_agent, QMIXMasterAgent):
             mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
             model_io.save(mixing_net_path, self.master_agent.mixing_network.state_dict())
+        # If VDN, no mixing network to save
+        elif isinstance(self.master_agent, VDNMasterAgent):
+            pass # No mixing network to save for VDN
 
     def load_model_weights(self):
         model_io = Model_IO()
@@ -409,6 +425,10 @@ class MARLTrainer:
             loaded_mixing_net_state_dict = model_io.load(mixing_net_path)
             self.master_agent.mixing_network.load_state_dict(loaded_mixing_net_state_dict)
             self.master_agent.mixing_network.eval()
+        # If VDN, no mixing network to load
+        elif isinstance(self.master_agent, VDNMasterAgent):
+            pass # No mixing network to load for VDN
+
 
     def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
         """
@@ -431,6 +451,8 @@ class MARLTrainer:
         self.master_agent.agent_network.eval()
         if isinstance(self.master_agent, QMIXMasterAgent):
             self.master_agent.mixing_network.eval()
+        elif isinstance(self.master_agent, VDNMasterAgent):
+            pass # No mixing network for VDN
 
         for episode_idx in range(1, num_simulation_episodes + 1):
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
@@ -502,6 +524,7 @@ class MARLTrainer:
                     mixing_net_checkpoint_path_ep = os.path.join(model_dir, f"checkpoint_episode[{episode}]_mixing_network.pth")
                     if os.path.exists(mixing_net_checkpoint_path_ep):
                         mixing_net_checkpoint_path = mixing_net_checkpoint_path_ep
+                # For VDN, no mixing network checkpoint
 
             # Load AgentNetwork checkpoint
             agent_net_checkpoint_data = model_io.load_checkpoint(agent_net_checkpoint_path)
@@ -527,7 +550,9 @@ class MARLTrainer:
                 mixing_net_checkpoint_data = model_io.load_checkpoint(mixing_net_checkpoint_path)
                 self.master_agent.mixing_network.load_state_dict(mixing_net_checkpoint_data['model_state'])
                 self.master_agent.mixing_network_target.load_state_dict(mixing_net_checkpoint_data['target_state'])
-
+            # For VDN, no mixing network to load
+            elif isinstance(self.master_agent, VDNMasterAgent):
+                pass # No mixing network for VDN
 
         except Exception as e:
             print(f"エラー発生: {e}")
@@ -538,7 +563,8 @@ class MARLTrainer:
             if isinstance(self.master_agent, QMIXMasterAgent):
                 self.master_agent.mixing_network.train()
                 self.master_agent.mixing_network_target.eval()
-
+            elif isinstance(self.master_agent, VDNMasterAgent):
+                pass # No mixing network for VDN
 
         print(f"エピソード{self.start_episode}から再開")
 
@@ -591,3 +617,6 @@ class MARLTrainer:
                 epsilon=self.epsilon,
                 beta=self.beta
             )
+        # If VDN, no mixing network to save
+        elif isinstance(self.master_agent, VDNMasterAgent):
+            pass # No mixing network to save for VDN

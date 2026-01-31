@@ -59,12 +59,12 @@ def parse_args():
     parser.add_argument('-g','--grid_size', default=4, type=int)
     parser.add_argument('-A','--agents_number', default=2, type=int)
     parser.add_argument('-G','--goals_number', default=2, type=int)
-    parser.add_argument('-l','--learning_mode', choices=['Q', 'QMIX','IQL'], default='IQL')
+    parser.add_argument('-l','--learning_mode', choices=['Q', 'QMIX','IQL', 'VDN'], default='IQL')
     parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
     parser.add_argument('--neighbor_distance', default=256, type=int)# 大きい値にしておくことで全観測になる。
     parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
     parser.add_argument('--agent_reward_processing_mode', \
-                        choices=['individual', 'sum_and_distribute', 'mean_and_distribute'], default='mean_and_distribute', \
+                        choices=['individual', 'sum_and_distribute', 'mean_and_distribute'], default='individual', \
                         help='IQL agent reward processing mode: how environment rewards are aggregated or scaled.')
     parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
     parser.add_argument('-e','--episode_number', default=1200, type=int)

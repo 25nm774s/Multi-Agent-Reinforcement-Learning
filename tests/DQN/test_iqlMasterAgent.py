@@ -1,7 +1,7 @@
 import torch
 import unittest
 from unittest.mock import MagicMock, patch
-from typing import Dict, Any
+from typing import Dict
 
 from src.DQN.IQLMasterAgent import IQLMasterAgent
 from DQN.network import AgentNetwork
@@ -18,9 +18,9 @@ class TestIQLMasterAgent(unittest.TestCase):
         self.agent_ids = [f'agent_{i}' for i in range(self.n_agents)]
         self.goal_ids = [f'goal_{i}' for i in range(self.goals_num)]
 
-        # Mock StateProcessor (still needed for constructor, but its transform methods are not directly called by MasterAgent anymore)
+        # Mock ObsToTensorWrapper (still needed for constructor, but its transform methods are not directly called by MasterAgent anymore)
         self.mock_state_processor = MagicMock(spec=ObsToTensorWrapper)
-        self.mock_state_processor.num_channels = 3 # MasterAgentのnum_channelsプロパティがIAgentNetworkから取得されるため、StateProcessorのnum_channelsは直接関係しないが、インスタンスとしては必要。
+        self.mock_state_processor.num_channels = 3 # MasterAgentのnum_channelsプロパティがIAgentNetworkから取得されるため、ObsToTensorWrapperのnum_channelsは直接関係しないが、インスタンスとしては必要。
         self.mock_state_processor._flatten_global_state_dict.return_value = torch.randn((self.goals_num + self.n_agents) * 2, device=self.device)
 
         # AgentNetwork setup (using actual class, not mock)
@@ -41,7 +41,8 @@ class TestIQLMasterAgent(unittest.TestCase):
             agent_network=self.agent_network,
             gamma=self.gamma,
             agent_ids=self.agent_ids,
-            goal_ids=self.goal_ids
+            goal_ids=self.goal_ids,
+            agent_reward_processing_mode='individual' # Added new argument
         )
 
     def test_get_actions_greedy(
@@ -102,6 +103,7 @@ class TestIQLMasterAgent(unittest.TestCase):
         actions_tensor_batch = torch.tensor([[0, 1], [2, 3], [4, 0], [1, 2]], dtype=torch.long, device=self.device)
         rewards_tensor_batch = torch.randn(batch_size, self.n_agents, device=self.device)
         dones_tensor_batch = torch.tensor([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=torch.float32, device=self.device)
+        all_agents_done_batch = torch.tensor([[0], [0], [0], [1]], dtype=torch.float32, device=self.device) # NEW
         next_agent_obs_tensor_batch = torch.randn(batch_size, self.n_agents, self.agent_network.num_channels, self.grid_size, self.grid_size, device=self.device)
         next_global_state_tensor_batch = torch.randn(batch_size, (self.goals_num + self.n_agents) * 2, device=self.device)
 
@@ -118,14 +120,14 @@ class TestIQLMasterAgent(unittest.TestCase):
 
             loss, abs_td_errors = self.iql_master_agent.evaluate_q(
                 agent_obs_tensor_batch, global_state_tensor_batch, actions_tensor_batch, rewards_tensor_batch,
-                dones_tensor_batch, next_agent_obs_tensor_batch, next_global_state_tensor_batch, is_weights_batch
+                dones_tensor_batch, all_agents_done_batch, next_agent_obs_tensor_batch, next_global_state_tensor_batch, is_weights_batch
             )
 
             # Verify output types and shapes
             self.assertIsInstance(loss, torch.Tensor)
             self.assertIsInstance(abs_td_errors, torch.Tensor)
             self.assertEqual(loss.shape, torch.Size(())) # Scalar loss
-            self.assertEqual(abs_td_errors.shape, (batch_size,)) #type:ignore Mean TD error per sample
+            self.assertEqual(abs_td_errors.shape, (batch_size,)) # type: ignore # Mean TD error per sample
 
             # Verify mocks were called correctly
             self.assertEqual(mock_get_q_values.call_count, 2)
@@ -145,23 +147,24 @@ class TestIQLMasterAgent(unittest.TestCase):
 
             loss_per, abs_td_errors_per = self.iql_master_agent.evaluate_q(
                 agent_obs_tensor_batch, global_state_tensor_batch, actions_tensor_batch, rewards_tensor_batch,
-                dones_tensor_batch, next_agent_obs_tensor_batch, next_global_state_tensor_batch, is_weights_batch_per
+                dones_tensor_batch, all_agents_done_batch, next_agent_obs_tensor_batch, next_global_state_tensor_batch, is_weights_batch_per
             )
             self.assertFalse(torch.equal(loss, loss_per)) # Loss should be different if IS weights are applied
 
     def test_sync_target_network(self):
         # Modify main network weights
-        self.iql_master_agent.agent_network.fc1.weight.data.fill_(0.5) #type:ignore
+        self.iql_master_agent.agent_network.fc1.weight.data.fill_(0.5) # type: ignore # Corrected reference
 
         # Before sync, target weights should be different (initial state)
         self.assertFalse(torch.equal(
-            self.iql_master_agent.agent_network.fc1.weight.data, self.iql_master_agent.agent_network_target.fc1.weight.data#type:ignore
+            self.iql_master_agent.agent_network.fc1.weight.data, # type: ignore
+            self.iql_master_agent.agent_network_target.fc1.weight.data # type: ignore
         ))
 
         self.iql_master_agent.sync_target_network()
 
         # After sync, target weights should be identical to main weights
         self.assertTrue(torch.equal(
-            self.iql_master_agent.agent_network.fc1.weight.data, self.iql_master_agent.agent_network_target.fc1.weight.data#type:ignore
+            self.iql_master_agent.agent_network.fc1.weight.data, # type: ignore
+            self.iql_master_agent.agent_network_target.fc1.weight.data # type: ignore
         ))
-

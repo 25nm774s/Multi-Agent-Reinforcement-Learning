@@ -80,15 +80,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import unittest
-import numpy as np
 
 from DQN.network import MixingNetwork
 
 class TestMixingNetwork(unittest.TestCase):
     def setUp(self):
         self.n_agents = 2
-        self.state_dim = 8 # (goals_num + n_agents) * 2 = (2 + 2) * 2 = 8
+        self.goals_number = 4 # For state_dim calculation
+        self.state_dim = (self.goals_number + self.n_agents) * 2 # (4 + 2) * 2 = 12
         self.hidden_dim = 32
+        self.batch_size = 4
         self.device = torch.device('cpu')
 
         self.mixing_network = MixingNetwork(
@@ -97,57 +98,33 @@ class TestMixingNetwork(unittest.TestCase):
             hidden_dim=self.hidden_dim
         ).to(self.device)
 
-    def test_initialization(self):
-        # Check if hyper-networks are correctly initialized
-        self.assertIsInstance(self.mixing_network.hyper_w1, nn.Linear)
-        self.assertIsInstance(self.mixing_network.hyper_b1, nn.Linear)
-        self.assertIsInstance(self.mixing_network.hyper_w2, nn.Linear)
-        self.assertIsInstance(self.mixing_network.hyper_b2, nn.Linear)
+    def test_forward_shape(self):
+        agent_q_values = torch.randn(self.batch_size, self.n_agents, 1, device=self.device)
+        global_state = torch.randn(self.batch_size, self.state_dim, device=self.device)
 
-        # Check input/output dimensions of hyper-networks
-        self.assertEqual(self.mixing_network.hyper_w1.in_features, self.state_dim)
-        self.assertEqual(self.mixing_network.hyper_w1.out_features, self.n_agents * self.hidden_dim)
-        self.assertEqual(self.mixing_network.hyper_b1.in_features, self.state_dim)
-        self.assertEqual(self.mixing_network.hyper_b1.out_features, self.hidden_dim)
-        self.assertEqual(self.mixing_network.hyper_w2.in_features, self.state_dim)
-        self.assertEqual(self.mixing_network.hyper_w2.out_features, self.hidden_dim * 1)
-        self.assertEqual(self.mixing_network.hyper_b2.in_features, self.state_dim)
-        self.assertEqual(self.mixing_network.hyper_b2.out_features, 1)
+        Q_tot = self.mixing_network(agent_q_values, global_state)
 
+        self.assertEqual(Q_tot.shape, (self.batch_size, 1))
 
-    def test_forward_pass(self):
-        batch_size = 4
+    def test_monotonicity(self):
+        # Generate random Q-values and global state
+        agent_q_values = torch.randn(self.batch_size, self.n_agents, 1, device=self.device)
+        global_state = torch.randn(self.batch_size, self.state_dim, device=self.device)
 
-        # Dummy agent Q-values (batch_size, n_agents, 1)
-        dummy_agent_q_values = torch.randn(batch_size, self.n_agents, 1, device=self.device)
+        # Calculate base Q_tot
+        Q_tot_base = self.mixing_network(agent_q_values, global_state)
 
-        # Dummy global state (batch_size, state_dim)
-        dummy_global_state = torch.randn(batch_size, self.state_dim, device=self.device)
+        # Perturb one agent's Q-value by a positive amount
+        perturbed_agent_q_values = agent_q_values.clone()
+        # Increase Q-value of agent 0 in all batches by a small positive amount
+        # Ensure the increase is noticeable but not too large to avoid saturation effects too early
+        increase_amount = 0.1
+        perturbed_agent_q_values[:, 0, 0] += increase_amount
 
-        # Perform forward pass
-        q_tot = self.mixing_network(dummy_agent_q_values, dummy_global_state)
+        # Calculate Q_tot with perturbed Q-values
+        Q_tot_perturbed = self.mixing_network(perturbed_agent_q_values, global_state)
 
-        # Check output shape
-        expected_output_shape = (batch_size, 1)
-        self.assertEqual(q_tot.shape, expected_output_shape)
-
-        # Check if output values are floats
-        self.assertEqual(q_tot.dtype, torch.float32)
-
-    def test_monotonicity_constraint(self):
-        batch_size = 1
-        dummy_agent_q_values = torch.randn(batch_size, self.n_agents, 1, device=self.device)
-        dummy_global_state = torch.randn(batch_size, self.state_dim, device=self.device)
-
-        # Capture original weights before forward pass if possible or check after
-        # This test is more about ensuring the absolute value or exp is applied
-        # We can't directly inspect the intermediate W1 and W2 in forward pass without modification
-        # However, we can run forward pass and trust the implementation detail if it uses abs/exp
-
-        # Just calling forward pass to ensure no errors related to constraint logic
-        q_tot = self.mixing_network(dummy_agent_q_values, dummy_global_state)
-        self.assertIsNotNone(q_tot)
-
-        # A more direct test would require modifying MixingNetwork to expose W1, W2
-        # For now, we assume torch.abs is correctly applied as per the design.
-        # If we could access w1 and w2, we'd check: self.assertTrue(torch.all(w1 >= 0)) and self.assertTrue(torch.all(w2 >= 0))
+        # Assert that Q_tot_perturbed is greater than or equal to Q_tot_base
+        # Use assertGreaterEqual for element-wise comparison if the output is not a scalar
+        # Since Q_tot is (batch_size, 1), we compare element-wise
+        self.assertTrue(torch.all(Q_tot_perturbed >= Q_tot_base))

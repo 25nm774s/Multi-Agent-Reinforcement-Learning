@@ -219,7 +219,8 @@ class MixingNetwork(AbstractMixer): # AbstractMixerを継承するように変�
         w1 = w1.view(batch_size, self.n_agents, self.hidden_dim)
 
         # 単調性制約を適用: 重みが非負であることを保証
-        w1 = torch.exp(w1)
+        # w1 = torch.exp(w1)
+        w1 = F.softplus(w1)
 
         # B1: (batch_size, state_dim) -> (batch_size, hidden_dim)
         b1 = self.hyper_b1(global_state)
@@ -236,7 +237,8 @@ class MixingNetwork(AbstractMixer): # AbstractMixerを継承するように変�
         w2 = w2.view(batch_size, self.hidden_dim, 1)
 
         # 単調性制約を適用
-        w2 = torch.exp(w2)
+        # w2 = torch.exp(w2)
+        w2 = F.softplus(w2)
 
         # B2: (batch_size, state_dim) -> (batch_size, 1)
         b2 = self.hyper_b2(global_state)

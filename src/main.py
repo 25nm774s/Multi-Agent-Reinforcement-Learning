@@ -84,6 +84,7 @@ def parse_args():
     parser.add_argument('--beta', default=0.4, type=float)
     parser.add_argument('--beta_anneal_steps', default=20000, type=int)
     parser.add_argument('--use_per', choices=[0, 1], default=0, type=int)
+    parser.add_argument('--grad_norm_clip', default=10.0, type=float, help='Gradient clipping norm limit')
 
     # 3. 1回目のパース：プリセットの有無だけを確認
     # args, unknown = parser.parse_known_args() ではなく、

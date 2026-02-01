@@ -318,6 +318,10 @@ class MARLTrainer:
                         # Backward pass and optimize
                         self.optimizer.zero_grad()
                         loss.backward()
+
+                        # Gradient clipping
+                        torch.nn.utils.clip_grad_norm_(self.master_agent.get_optimizer_params(), self.args.grad_norm_clip)
+
                         self.optimizer.step()
 
                         # Update priorities in ReplayBuffer if PER is used

@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 import copy
 import torch
 import torch.nn as nn # オプティマイザーを設定するため。
+import numpy as np
 from typing import List, Optional, Tuple, Dict
 
 from Environments.StateProcesser import ObsToTensorWrapper
-from DQN.network import IAgentNetwork, IAgentNetwork
+from DQN.network import IAgentNetwork, IAgentNetwork, AbstractMixer
 
 class BaseMasterAgent(ABC):
     """
@@ -13,17 +14,19 @@ class BaseMasterAgent(ABC):
     状態処理、Q値計算、生存マスク適用などの共通ロジックをカプセル化し、
     IQLMasterAgent および QMIXMasterAgent の基盤を提供します。
     """
-    def __init__(self,
-                 n_agents: int,
-                 action_size: int,
-                 grid_size: int,
-                 goals_number: int,
-                 device: torch.device,
-                 state_processor: ObsToTensorWrapper,
-                 agent_network_instance: IAgentNetwork,
-                 agent_ids: List[str],
-                 goal_ids: List[str],
-                 agent_reward_processing_mode: str): # Add new argument
+    def __init__(
+        self,
+        n_agents: int,
+        action_size: int,
+        grid_size: int,
+        goals_number: int,
+        device: torch.device,
+        state_processor: ObsToTensorWrapper,
+        agent_network_instance: "IAgentNetwork",
+        agent_ids: List[str],
+        goal_ids: List[str],
+        agent_reward_processing_mode: str
+    ):
         """
         BaseMasterAgent のコンストラクタ.
 
@@ -33,7 +36,7 @@ class BaseMasterAgent(ABC):
             grid_size (int): グリッド環境のサイズ.
             goals_number (int): 環境内のゴール数.
             device (torch.device): テンソル操作に使用するデバイス (CPU/GPU).
-            state_processor (StateProcessor): 状態変換に使用するStateProcessorのインスタンス.
+            state_processor (ObsToTensorWrapper): 状態変換に使用するObsToTensorWrapperのインスタンス.
             agent_network_instance (IAgentNetwork): 共有AgentNetworkのインスタンス (IAgentNetwork型).
             agent_ids (List[str]): エージェントのIDリスト.
             goal_ids (List[str]): ゴールのIDリスト.
@@ -46,7 +49,7 @@ class BaseMasterAgent(ABC):
         self.goals_num = goals_number
         self.device = device
         self.state_processor = state_processor
-        self.agent_network = agent_network_instance # Store the provided instance
+        self._agent_network = agent_network_instance # Store the provided instance
         self._agent_ids = agent_ids
         self._goal_ids = goal_ids
         self.agent_reward_processing_mode = agent_reward_processing_mode # Store the new argument
@@ -55,8 +58,16 @@ class BaseMasterAgent(ABC):
         self.num_channels = self.agent_network.num_channels
 
         # ターゲットネットワークはメインネットワークのコピーとして作成
-        self.agent_network_target = copy.deepcopy(self.agent_network).to(device)
-        self.agent_network_target.eval()
+        self._agent_network_target = copy.deepcopy(self.agent_network).to(device)
+        self._agent_network_target.eval()
+
+    @property
+    def agent_network(self) -> IAgentNetwork:
+        return self._agent_network
+
+    @property
+    def agent_network_target(self) -> IAgentNetwork:
+        return self._agent_network_target
 
     def _process_rewards_and_dones(
         self,
@@ -112,12 +123,9 @@ class BaseMasterAgent(ABC):
 
         return processed_rewards_for_iql, processed_dones_for_iql, team_reward_scalar, team_done_scalar
 
-    # _process_raw_observations_batch は ReplayBuffer が既にテンソルを扱うようになったため、不要となり削除されます。
-    # _flatten_global_state_dict は StateProcessor に移動したため削除されます。
-
     def _get_agent_q_values(
         self,
-        agent_network_instance: "IAgentNetwork",
+        agent_network_instance: IAgentNetwork,
         agent_obs_batch: torch.Tensor, # (B * N, C, G, G)
         agent_ids_batch: torch.Tensor # (B * N,)
     ) -> torch.Tensor:
@@ -143,7 +151,6 @@ class BaseMasterAgent(ABC):
 
         return q_values_reshaped
 
-    @abstractmethod
     def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
         与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
@@ -155,7 +162,24 @@ class BaseMasterAgent(ABC):
         Returns:
             Dict[str, int]: 各エージェントIDをキー、選択された行動を値とする辞書。
         """
-        pass
+        self.agent_network.eval() # ネットワークを評価モードに設定
+        with torch.no_grad():
+            # agent_obs_tensor は (N, C, G, G) の形状で既に渡される
+            # agent_ids_for_all_agents は (N,) の形状
+            agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
+
+            # AgentNetwork からQ値を計算 (N, action_size)
+            q_values_all_agents = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
+
+            actions: Dict[str, int] = {}
+            for i, aid in enumerate(self._agent_ids):
+                if np.random.rand() < epsilon:
+                    actions[aid] = np.random.randint(self.action_size)
+                else:
+                    actions[aid] = q_values_all_agents[i].argmax().item()
+
+        self.agent_network.train() # ネットワークを学習モードに戻す
+        return actions
 
     @abstractmethod
     def evaluate_q(
@@ -234,4 +258,60 @@ class BaseMasterAgent(ABC):
         """
         オプティマイザが更新すべきネットワークパラメータのリストを返します。
         """
+        pass
+
+class MixerBasedMasterAgent(BaseMasterAgent, ABC):
+    """
+    ミキサーを使用する協調型MARLアルゴリズムのための抽象基底クラス。
+    VDN, QMIX, DICGなどがこのクラスを継承することを想定しています。
+    """
+    def __init__(
+        self,
+        mixer_network_instance: AbstractMixer,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self._mixer_network = mixer_network_instance
+        self._mixer_network_target = copy.deepcopy(self.mixer_network).to(self.device)
+        self._mixer_network_target.eval()
+
+    @property
+    def mixer_network(self) -> AbstractMixer:
+        return self._mixer_network
+
+    @property
+    def mixer_network_target(self) -> AbstractMixer:
+        return self._mixer_network_target
+
+    def sync_target_network(self) -> None:
+        """
+        ターゲットAgentNetwork と ターゲットMixerNetwork をメインネットワークと同期します。
+        """
+        super().sync_target_network() # BaseMasterAgentのAgentNetwork同期を呼び出す
+        self.mixer_network_target.load_state_dict(self.mixer_network.state_dict())
+        self.mixer_network_target.eval()
+
+    def get_optimizer_params(self) -> List[nn.Parameter]:
+        """
+        MasterAgent と MixerNetwork の両方のパラメータを返します。
+        """
+        params = list(self.agent_network.parameters())
+        params.extend(list(self.mixer_network.parameters()))
+        return params
+
+    # get_actions は BaseMasterAgent の実装をそのまま使用
+
+    @abstractmethod
+    def evaluate_q(
+        self,
+        agent_obs_tensor_batch: torch.Tensor,
+        global_state_tensor_batch: torch.Tensor,
+        actions_tensor_batch: torch.Tensor,
+        rewards_tensor_batch: torch.Tensor,
+        dones_tensor_batch: torch.Tensor,
+        all_agents_done_batch: torch.Tensor,
+        next_agent_obs_tensor_batch: torch.Tensor,
+        next_global_state_tensor_batch: torch.Tensor,
+        is_weights_batch: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         pass

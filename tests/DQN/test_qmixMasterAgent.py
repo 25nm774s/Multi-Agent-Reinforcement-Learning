@@ -39,7 +39,7 @@ class TestQMIXMasterAgent(unittest.TestCase):
             goals_number=self.goals_num,
             device=self.device,
             state_processor=self.mock_state_processor,
-            agent_network=self.agent_network,
+            agent_network_instance=self.agent_network,
             gamma=self.gamma,
             agent_ids=self.agent_ids,
             goal_ids=self.goal_ids,
@@ -104,8 +104,8 @@ class TestQMIXMasterAgent(unittest.TestCase):
             mock_main_q_tot = torch.randn(batch_size, 1, device=self.device)
             mock_target_q_tot = torch.randn(batch_size, 1, device=self.device)
 
-            with patch.object(self.qmix_master_agent.mixing_network, 'forward') as mock_mixing_forward:
-                with patch.object(self.qmix_master_agent.mixing_network_target, 'forward') as mock_mixing_target_forward:
+            with patch.object(self.qmix_master_agent.mixer_network, 'forward') as mock_mixing_forward:
+                with patch.object(self.qmix_master_agent.mixer_network_target, 'forward') as mock_mixing_target_forward:
                     mock_mixing_forward.return_value = mock_main_q_tot
                     mock_mixing_target_forward.return_value = mock_target_q_tot
 
@@ -118,7 +118,7 @@ class TestQMIXMasterAgent(unittest.TestCase):
                     self.assertIsInstance(loss, torch.Tensor)
                     self.assertIsInstance(abs_td_errors, torch.Tensor)
                     self.assertEqual(loss.shape, torch.Size(())) # Scalar loss
-                    self.assertEqual(abs_td_errors.shape, (batch_size,)) # pyright: ignore[reportOptionalMemberAccess] # Mean TD error per sample
+                    self.assertEqual(abs_td_errors.shape, (batch_size,)) # type: ignore # Mean TD error per sample
 
                     # Verify mock calls
                     self.assertEqual(mock_get_q_values.call_count, 2)
@@ -127,9 +127,9 @@ class TestQMIXMasterAgent(unittest.TestCase):
 
                     # Verify network modes
                     self.assertTrue(self.qmix_master_agent.agent_network.training)
-                    self.assertTrue(self.qmix_master_agent.mixing_network.training)
+                    self.assertTrue(self.qmix_master_agent.mixer_network.training)
                     self.assertFalse(self.qmix_master_agent.agent_network_target.training)
-                    self.assertFalse(self.qmix_master_agent.mixing_network_target.training)
+                    self.assertFalse(self.qmix_master_agent.mixer_network_target.training)
 
                     # Check basic loss calculation
                     self.assertFalse(torch.isnan(loss))
@@ -150,9 +150,9 @@ class TestQMIXMasterAgent(unittest.TestCase):
     def test_sync_target_network(self):
         # Modify main network weights by accessing the first Linear layer of the Sequential module
         self.qmix_master_agent.agent_network.fc1.weight.data.fill_(0.5) # type: ignore
-        self.qmix_master_agent.mixing_network.hyper_w1[0].weight.data.fill_(0.5) # type: ignore
-        self.qmix_master_agent.mixing_network.hyper_w2[0].weight.data.fill_(0.5) # pyright: ignore[reportCallIssue]
-        self.qmix_master_agent.mixing_network.hyper_b2[0].weight.data.fill_(0.5) # pyright: ignore[reportCallIssue]
+        self.qmix_master_agent.mixer_network.hyper_w1.weight.data.fill_(0.5) # type: ignore
+        self.qmix_master_agent.mixer_network.hyper_w2.weight.data.fill_(0.5) # type: ignore
+        self.qmix_master_agent.mixer_network.hyper_b2.weight.data.fill_(0.5) # type: ignore
 
         # Before sync, target weights should be different (initial state)
         self.assertFalse(torch.equal(
@@ -160,16 +160,16 @@ class TestQMIXMasterAgent(unittest.TestCase):
             self.qmix_master_agent.agent_network_target.fc1.weight.data # type: ignore
         ))
         self.assertFalse(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_w1[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_w1[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_w1.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_w1.weight.data # type: ignore
         ))
         self.assertFalse(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_w2[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_w2[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_w2.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_w2.weight.data # type: ignore
         ))
         self.assertFalse(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_b2[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_b2[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_b2.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_b2.weight.data # type: ignore
         ))
 
         self.qmix_master_agent.sync_target_network()
@@ -180,14 +180,14 @@ class TestQMIXMasterAgent(unittest.TestCase):
             self.qmix_master_agent.agent_network_target.fc1.weight.data # type: ignore
         ))
         self.assertTrue(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_w1[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_w1[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_w1.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_w1.weight.data # type: ignore
         ))
         self.assertTrue(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_w2[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_w2[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_w2.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_w2.weight.data # type: ignore
         ))
         self.assertTrue(torch.equal(
-            self.qmix_master_agent.mixing_network.hyper_b2[0].weight.data, # type: ignore
-            self.qmix_master_agent.mixing_network_target.hyper_b2[0].weight.data # type: ignore
+            self.qmix_master_agent.mixer_network.hyper_b2.weight.data, # type: ignore
+            self.qmix_master_agent.mixer_network_target.hyper_b2.weight.data # type: ignore
         ))

@@ -1,8 +1,12 @@
+import torch
+import torch.nn as nn
+from typing import Dict
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.DQN.VDNMasterAgent import VDNMasterAgent, IAgentNetwork, torch, ObsToTensorWrapper, nn, Dict
+from src.DQN.VDNMasterAgent import VDNMasterAgent
 from src.DQN.network import IAgentNetwork, AgentNetwork
+from src.Environments.StateProcesser import ObsToTensorWrapper
 
 # Dummy concrete subclass for testing BaseMasterAgent
 class DummyAgent(IAgentNetwork):
@@ -65,7 +69,7 @@ class TestVDNMasterAgent(unittest.TestCase):
             goals_number=self.goals_num,
             device=self.device,
             state_processor=self.mock_state_processor,
-            agent_network=self.agent_network,
+            agent_network_instance=self.agent_network,
             gamma=self.gamma,
             agent_ids=self.agent_ids,
             goal_ids=self.goal_ids,
@@ -75,8 +79,11 @@ class TestVDNMasterAgent(unittest.TestCase):
     def test_get_optimizer_params(self):
         params_from_method = set(self.vdn_master_agent.get_optimizer_params())
         expected_params = set(self.agent_network.parameters())
+        expected_params.update(set(self.vdn_master_agent.mixer_network.parameters())) # VDN mixer has no parameters, so it should be empty and not affect the check if it's there.
 
+        # Convert to sets of parameter objects to compare them effectively
         self.assertEqual(params_from_method, expected_params)
+
 
     def test_get_actions_greedy(self):
         agent_obs_tensor = torch.randn(self.n_agents, self.agent_network.num_channels, self.grid_size, self.grid_size, device=self.device)
@@ -152,7 +159,7 @@ class TestVDNMasterAgent(unittest.TestCase):
 
     def test_sync_target_network(self):
         # Modify main network weights
-        self.vdn_master_agent.agent_network.fc1.weight.data.fill_(0.5)  # type: ignore
+        self.vdn_master_agent.agent_network.fc1.weight.data.fill_(0.5) # type: ignore
 
         # Before sync, target weights should be different (initial state)
         self.assertFalse(torch.equal(

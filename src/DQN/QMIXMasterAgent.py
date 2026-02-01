@@ -1,89 +1,36 @@
 import torch
-import torch.nn as nn
-import numpy as np
-from typing import List, Optional, Tuple, Dict
+from typing import Optional, Tuple
 
-from Base.Agent_Base import IAgentNetwork, BaseMasterAgent, ObsToTensorWrapper
+from Base.Agent_Base import MixerBasedMasterAgent
 
 from .network import MixingNetwork
 
-class QMIXMasterAgent(BaseMasterAgent):
+class QMIXMasterAgent(MixerBasedMasterAgent):
     """
     QMIX (Q-value Mixing Network) の Master Agent クラス.
     各エージェントは共有の AgentNetwork を使用してQ値を学習し,
     MixingNetwork を介してチーム全体のQ値 (Q_tot) を協調的に学習します。
     """
-    def __init__(self,
-                 n_agents: int,
-                 action_size: int,
-                 grid_size: int,
-                 goals_number: int,
-                 device: torch.device,
-                 state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork,
-                 gamma: float,
-                 agent_ids: List[str],
-                 goal_ids: List[str],
-                 agent_reward_processing_mode: str): # Add new argument
+    def __init__(
+        self,
+        gamma: float,
+        **kwargs
+    ):
+        # MixingNetworkのstate_dimを計算: グローバル状態のフラット化されたサイズ
+        # (目標数 + エージェント数) * 各位置の次元 (x, y)
+        mixing_network_state_dim = (kwargs['goals_number'] + kwargs['n_agents']) * 2
+        mixer_network_instance = MixingNetwork(kwargs['n_agents'], mixing_network_state_dim).to(kwargs['device'])
+
         super().__init__(
-            n_agents=n_agents,
-            action_size=action_size,
-            grid_size=grid_size,
-            goals_number=goals_number,
-            device=device,
-            state_processor=state_processor,
-            agent_network_instance=agent_network,
-            agent_ids=agent_ids,
-            goal_ids=goal_ids,
-            agent_reward_processing_mode=agent_reward_processing_mode # Pass to base
+            mixer_network_instance=mixer_network_instance,
+            **kwargs
         )
         self.gamma = gamma
 
-        # MixingNetworkのstate_dimを計算: グローバル状態のフラット化されたサイズ
-        # (目標数 + エージェント数) * 各位置の次元 (x, y)
-        mixing_network_state_dim = (self.goals_num + self.n_agents) * 2
-        self.mixing_network = MixingNetwork(n_agents, mixing_network_state_dim).to(device)
-        self.mixing_network_target = MixingNetwork(n_agents, mixing_network_state_dim).to(device)
-        self.mixing_network_target.load_state_dict(self.mixing_network.state_dict())
-        self.mixing_network_target.eval() # ターゲットネットワークは推論モード
 
-    def get_optimizer_params(self) -> List[nn.Parameter]:
-        """
-        QMIXMasterAgent の場合は、agent_network と mixing_network の両方のパラメータを返します。
-        """
-        params = list(self.agent_network.parameters())
-        params.extend(list(self.mixing_network.parameters()))
-        return params
+    # get_optimizer_params は MixerBasedMasterAgent の実装をそのまま使用
 
-    def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
-        """
-        与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
-
-        Args:
-            agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
-            epsilon (float): 探索率。
-
-        Returns:
-            Dict[str, int]: 各エージェントIDをキー、選択された行動を値とする辞書。
-        """
-        self.agent_network.eval() # ネットワークを評価モードに設定
-        with torch.no_grad():
-            # agent_obs_tensor は (N, C, G, G) の形状で既に渡される
-            # agent_ids_for_all_agents は (N,) の形状
-            agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
-
-            # AgentNetwork からQ値を計算 (N, action_size)
-            q_values_all_agents = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
-
-            actions: Dict[str, int] = {}
-            for i, aid in enumerate(self._agent_ids):
-                if np.random.rand() < epsilon:
-                    actions[aid] = np.random.randint(self.action_size)
-                else:
-                    actions[aid] = q_values_all_agents[i].argmax().item()
-
-        self.agent_network.train() # ネットワークを学習モードに戻す
-        return actions
+    # get_actions は BaseMasterAgent の実装をそのまま使用
 
     def evaluate_q(
         self,
@@ -101,9 +48,9 @@ class QMIXMasterAgent(BaseMasterAgent):
         QMIXモードにおけるQ値の評価と損失計算を行います。
         """
         self.agent_network.train()
-        self.mixing_network.train()
+        self.mixer_network.train()
         self.agent_network_target.eval()
-        self.mixing_network_target.eval()
+        self.mixer_network_target.eval()
 
         batch_size = agent_obs_tensor_batch.size(0)
 
@@ -131,7 +78,9 @@ class QMIXMasterAgent(BaseMasterAgent):
 
         # STEP 3: MixingNetwork への入力整形と Q_tot の算出 (メインネットワーク)
         # global_state_tensor_batch has shape (batch_size, state_dim)
-        Q_tot = self.mixing_network(chosen_q_values_masked, global_state_tensor_batch) # (batch_size, 1)
+        # ミキサーへの入力Q値の定義: (batch_size, n_agents, 1)に統一済み
+        # ミキサーへのグローバル状態の入力: 引数として受け取りつつ、内部で無視する実装を維持。QMIXは使用。
+        Q_tot = self.mixer_network(chosen_q_values_masked, global_state_tensor_batch) # (batch_size, 1)
 
         # ターゲットQ_totの計算 (ターゲットネットワーク)
         with torch.no_grad():
@@ -154,7 +103,9 @@ class QMIXMasterAgent(BaseMasterAgent):
 
             # ターゲットMixingNetwork を介して target_Q_tot_unmasked を算出
             # next_global_state_tensor_batch has shape (batch_size, state_dim)
-            target_Q_tot_unmasked = self.mixing_network_target(next_max_q_values_target_masked, next_global_state_tensor_batch) # (batch_size, 1)
+            # ミキサーへの入力Q値の定義: (batch_size, n_agents, 1)に統一済み
+            # ミキサーへのグローバル状態の入力: 引数として受け取りつつ、内部で無視する実装を維持。QMIXは使用。
+            target_Q_tot_unmasked = self.mixer_network_target(next_max_q_values_target_masked, next_global_state_tensor_batch) # (batch_size, 1)
 
             # Bellman方程式による最終的なターゲットQ_tot
             # The team_reward_scalar is already (B, 1) and processed according to agent_reward_processing_mode
@@ -166,10 +117,5 @@ class QMIXMasterAgent(BaseMasterAgent):
 
         return loss, abs_td_errors.detach()
 
-    def sync_target_network(self) -> None:
-        """
-        ターゲットAgentNetwork と ターゲットMixingNetwork をメインネットワークと同期します。
-        """
-        super().sync_target_network() # BaseMasterAgentのAgentNetwork同期を呼び出す
-        self.mixing_network_target.load_state_dict(self.mixing_network.state_dict())
-        self.mixing_network_target.eval()
+    # sync_target_network は MixerBasedMasterAgent の実装をそのまま使用
+

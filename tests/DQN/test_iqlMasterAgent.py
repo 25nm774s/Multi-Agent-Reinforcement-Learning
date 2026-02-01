@@ -38,7 +38,7 @@ class TestIQLMasterAgent(unittest.TestCase):
             goals_number=self.goals_num,
             device=self.device,
             state_processor=self.mock_state_processor,
-            agent_network=self.agent_network,
+            agent_network_instance=self.agent_network,
             gamma=self.gamma,
             agent_ids=self.agent_ids,
             goal_ids=self.goal_ids,

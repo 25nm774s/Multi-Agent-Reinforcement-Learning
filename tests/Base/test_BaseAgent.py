@@ -44,9 +44,7 @@ class DummyMasterAgent(BaseMasterAgent):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
-        # Dummy implementation for abstract method
-        return {aid: 0 for aid in self._agent_ids}
+    # get_actions は BaseMasterAgent に移動したため、ここでは再定義しない
 
     def evaluate_q(
         self,

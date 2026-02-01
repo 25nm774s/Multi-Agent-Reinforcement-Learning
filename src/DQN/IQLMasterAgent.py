@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple
 
-from Base.Agent_Base import BaseMasterAgent, ObsToTensorWrapper, IAgentNetwork
+from Base.Agent_Base import BaseMasterAgent
 
 class IQLMasterAgent(BaseMasterAgent):
     """
@@ -11,30 +10,12 @@ class IQLMasterAgent(BaseMasterAgent):
     各エージェントは共有の AgentNetwork を使用してQ値を学習しますが,
     Q値の評価と行動選択は独立して行われます。
     """
-    def __init__(self,
-                 n_agents: int,
-                 action_size: int,
-                 grid_size: int,
-                 goals_number: int,
-                 device: torch.device,
-                 state_processor: ObsToTensorWrapper,
-                 agent_network: IAgentNetwork,
-                 gamma: float,
-                 agent_ids: List[str],
-                 goal_ids: List[str],
-                 agent_reward_processing_mode: str): # Add new argument
-        super().__init__(
-            n_agents=n_agents,
-            action_size=action_size,
-            grid_size=grid_size,
-            goals_number=goals_number,
-            device=device,
-            state_processor=state_processor,
-            agent_network_instance=agent_network,
-            agent_ids=agent_ids,
-            goal_ids=goal_ids,
-            agent_reward_processing_mode=agent_reward_processing_mode # Pass to base
-        )
+    def __init__(
+        self,
+        gamma: float,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
         self.gamma = gamma
 
     def get_optimizer_params(self) -> List[nn.Parameter]:
@@ -43,35 +24,7 @@ class IQLMasterAgent(BaseMasterAgent):
         """
         return list(self.agent_network.parameters())
 
-    def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
-        """
-        与えられた現在のステップの観測とイプシロンに基づいて、各エージェントのアクションを選択します。
-
-        Args:
-            agent_obs_tensor (torch.Tensor): 各エージェントのグリッド観測 (n_agents, num_channels, grid_size, grid_size)。
-            epsilon (float): 探索率。
-
-        Returns:
-            Dict[str, int]: 各エージェントIDをキー、選択された行動を値とする辞書。
-        """
-        self.agent_network.eval() # ネットワークを評価モードに設定
-        with torch.no_grad():
-            # agent_obs_tensor は (N, C, G, G) の形状で既に渡される
-            # agent_ids_for_all_agents は (N,) の形状
-            agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
-
-            # AgentNetwork からQ値を計算 (N, action_size)
-            q_values_all_agents = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
-
-            actions: Dict[str, int] = {}
-            for i, aid in enumerate(self._agent_ids):
-                if np.random.rand() < epsilon:
-                    actions[aid] = np.random.randint(self.action_size)
-                else:
-                    actions[aid] = q_values_all_agents[i].argmax().item()
-
-        self.agent_network.train() # ネットワークを学習モードに戻す
-        return actions
+    # get_actions は BaseMasterAgent の実装を使用するので、ここでは再定義しない
 
     def evaluate_q(
         self,
@@ -117,6 +70,7 @@ class IQLMasterAgent(BaseMasterAgent):
             next_max_q_values = next_q_values_all_agents_target.max(dim=2)[0] # (batch_size, n_agents)
 
             # --- Reward and Done processing for IQL using the new helper ---
+            # IQLは個別の報酬と完了フラグを使用します。
             processed_rewards_for_iql, processed_dones_for_iql, _, _ = self._process_rewards_and_dones(
                 rewards_tensor_batch, dones_tensor_batch, all_agents_done_batch
             )

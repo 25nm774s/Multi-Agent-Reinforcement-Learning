@@ -90,7 +90,7 @@ class MARLTrainer:
                 goals_number=self.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
-                agent_network=shared_agent_network,
+                agent_network_instance=shared_agent_network,
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
                 goal_ids=self._goal_ids,
@@ -104,7 +104,7 @@ class MARLTrainer:
                 goals_number=self.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
-                agent_network=shared_agent_network,
+                agent_network_instance=shared_agent_network,
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
                 goal_ids=self._goal_ids,
@@ -119,7 +119,7 @@ class MARLTrainer:
                 goals_number=self.goals_number,
                 device=args.device,
                 state_processor=shared_state_processor,
-                agent_network=shared_agent_network,
+                agent_network_instance=shared_agent_network,
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
                 goal_ids=self._goal_ids,
@@ -401,7 +401,7 @@ class MARLTrainer:
         # If QMIX, save MixingNetwork weights
         if isinstance(self.master_agent, QMIXMasterAgent):
             mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
-            model_io.save(mixing_net_path, self.master_agent.mixing_network.state_dict())
+            model_io.save(mixing_net_path, self.master_agent.mixer_network.state_dict())
         # If VDN, no mixing network to save
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network to save for VDN
@@ -423,8 +423,8 @@ class MARLTrainer:
         if isinstance(self.master_agent, QMIXMasterAgent):
             mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
             loaded_mixing_net_state_dict = model_io.load(mixing_net_path)
-            self.master_agent.mixing_network.load_state_dict(loaded_mixing_net_state_dict)
-            self.master_agent.mixing_network.eval()
+            self.master_agent.mixer_network.load_state_dict(loaded_mixing_net_state_dict)
+            self.master_agent.mixer_network.eval()
         # If VDN, no mixing network to load
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network to load for VDN
@@ -450,7 +450,7 @@ class MARLTrainer:
         # Set all networks to eval mode for simulation
         self.master_agent.agent_network.eval()
         if isinstance(self.master_agent, QMIXMasterAgent):
-            self.master_agent.mixing_network.eval()
+            self.master_agent.mixer_network.eval()
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network for VDN
 
@@ -545,11 +545,11 @@ class MARLTrainer:
             self.master_agent.agent_network_target.eval() # Ensure target network is in eval mode
 
             if isinstance(self.master_agent, QMIXMasterAgent):
-                self.master_agent.mixing_network.train()
-                self.master_agent.mixing_network_target.eval() # Ensure target network is in eval mode
+                self.master_agent.mixer_network.train()
+                self.master_agent.mixer_network_target.eval() # Ensure target network is in eval mode
                 mixing_net_checkpoint_data = model_io.load_checkpoint(mixing_net_checkpoint_path)
-                self.master_agent.mixing_network.load_state_dict(mixing_net_checkpoint_data['model_state'])
-                self.master_agent.mixing_network_target.load_state_dict(mixing_net_checkpoint_data['target_state'])
+                self.master_agent.mixer_network.load_state_dict(mixing_net_checkpoint_data['model_state'])
+                self.master_agent.mixer_network_target.load_state_dict(mixing_net_checkpoint_data['target_state'])
             # For VDN, no mixing network to load
             elif isinstance(self.master_agent, VDNMasterAgent):
                 pass # No mixing network for VDN
@@ -561,8 +561,8 @@ class MARLTrainer:
             self.master_agent.agent_network.train()
             self.master_agent.agent_network_target.eval()
             if isinstance(self.master_agent, QMIXMasterAgent):
-                self.master_agent.mixing_network.train()
-                self.master_agent.mixing_network_target.eval()
+                self.master_agent.mixer_network.train()
+                self.master_agent.mixer_network_target.eval()
             elif isinstance(self.master_agent, VDNMasterAgent):
                 pass # No mixing network for VDN
 
@@ -601,8 +601,8 @@ class MARLTrainer:
             mixing_net_file_path_episode = os.path.join(model_dir, f"checkpoint_episode[{episode}]_mixing_network.pth")
             model_io.save_checkpoint(
                 mixing_net_file_path,
-                self.master_agent.mixing_network.state_dict(),
-                self.master_agent.mixing_network_target.state_dict(),
+                self.master_agent.mixer_network.state_dict(),
+                self.master_agent.mixer_network_target.state_dict(),
                 None, # Optimizer state already saved with agent_network, or needs separate handling for mixing network optimizer
                 episode,
                 epsilon=self.epsilon,
@@ -610,8 +610,8 @@ class MARLTrainer:
             )
             model_io.save_checkpoint(
                 mixing_net_file_path_episode,
-                self.master_agent.mixing_network.state_dict(),
-                self.master_agent.mixing_network_target.state_dict(),
+                self.master_agent.mixer_network.state_dict(),
+                self.master_agent.mixer_network_target.state_dict(),
                 None,
                 episode,
                 epsilon=self.epsilon,

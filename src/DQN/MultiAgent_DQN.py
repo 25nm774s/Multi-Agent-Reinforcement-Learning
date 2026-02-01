@@ -12,6 +12,7 @@ from utils.Saver import Saver
 from .IQLMasterAgent import IQLMasterAgent
 from .QMIXMasterAgent import QMIXMasterAgent
 from .VDNMasterAgent import VDNMasterAgent
+from .DICGMasterAgent import DICGMasterAgent
 from .network import AgentNetwork 
 from .IO_Handler import Model_IO
 
@@ -125,8 +126,23 @@ class MARLTrainer:
                 goal_ids=self._goal_ids,
                 agent_reward_processing_mode=args.agent_reward_processing_mode
             )
+        # Add DICG mode instantiation
+        elif mode == 'DICG':
+            self.master_agent = DICGMasterAgent(
+                n_agents=self.agents_number,
+                action_size=self.action_space_size,
+                grid_size=self.grid_size,
+                goals_number=self.goals_number,
+                device=args.device,
+                state_processor=shared_state_processor,
+                agent_network_instance=shared_agent_network,
+                gamma=args.gamma,
+                agent_ids=self._agent_ids,
+                goal_ids=self._goal_ids,
+                agent_reward_processing_mode=args.agent_reward_processing_mode
+            )
         else:
-            raise ValueError(f"Unknown mode: {mode}. Must be 'IQL', 'QMIX', or 'VDN'.")
+            raise ValueError(f"Unknown mode: {mode}. Must be 'IQL', 'QMIX', 'VDN', or 'DICG'.")
 
         # ReplayBufferの割り当て - MARLTrainer内で初期化
         self.replay_buffer = ReplayBuffer(
@@ -182,7 +198,7 @@ class MARLTrainer:
         visited_coordinates_path = os.path.join(self.save_dir, "visited_coordinates.npy")
 
         self.saver = Saver(score_sammary_path,visited_coordinates_path,self.grid_size)
-        self.saver.CALCULATION_PERIOD = 20
+        self.saver.CALCULATION_PERIOD = 10
 
         # saverクラスで保存されたデータを使ってグラフを作るクラス
         self.plot_results = PlotResults(score_sammary_path,visited_coordinates_path)
@@ -214,7 +230,7 @@ class MARLTrainer:
             sys.exit()
 
         # 学習開始メッセージ
-        print(f"{GREEN}MARLTrainer{RESET} で学習中..." + (f" ({GREEN}PER enabled{RESET})") + "\n")
+        print(f"{GREEN}MARLTrainer{RESET}" + " で学習中..." + (f" ({GREEN}PER enabled{RESET})") + "\n")
         # goals_number の直接参照からenv_wrapper経由に変更
         # これはMultiAgentGridEnvの内部実装に依存しない方法を模索すべき
         # 現在はenv_wrapper._env.get_goal_positions()に依存するが、IEnvWrapperにはゴール位置取得メソッドがない
@@ -235,8 +251,8 @@ class MARLTrainer:
 
             print(f'{GREEN if done_counts and done_counts[-1] else ""}■{RESET}', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 
-            # 10エピソードごとに集計結果を出力
-            CONSOLE_LOG_FREQ = 10
+            # 50エピソードごとに集計結果を出力
+            CONSOLE_LOG_FREQ = 50
 
             # 各エピソード開始時に環境をリセット
             iap = [(0,i) for i in range(self.agents_number)]
@@ -405,6 +421,10 @@ class MARLTrainer:
         # If VDN, no mixing network to save
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network to save for VDN
+        # If DICG, save MixingNetwork weights
+        elif isinstance(self.master_agent, DICGMasterAgent):
+            mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
+            model_io.save(mixing_net_path, self.master_agent.mixer_network.state_dict())
 
     def load_model_weights(self):
         model_io = Model_IO()
@@ -428,6 +448,12 @@ class MARLTrainer:
         # If VDN, no mixing network to load
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network to load for VDN
+        # If DICG, load MixingNetwork weights
+        elif isinstance(self.master_agent, DICGMasterAgent):
+            mixing_net_path = os.path.join(model_dir, "mixing_network.pth")
+            loaded_mixing_net_state_dict = model_io.load(mixing_net_path)
+            self.master_agent.mixer_network.load_state_dict(loaded_mixing_net_state_dict)
+            self.master_agent.mixer_network.eval()
 
 
     def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
@@ -453,6 +479,8 @@ class MARLTrainer:
             self.master_agent.mixer_network.eval()
         elif isinstance(self.master_agent, VDNMasterAgent):
             pass # No mixing network for VDN
+        elif isinstance(self.master_agent, DICGMasterAgent):
+            self.master_agent.mixer_network.eval()
 
         for episode_idx in range(1, num_simulation_episodes + 1):
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
@@ -520,7 +548,7 @@ class MARLTrainer:
                 if os.path.exists(agent_net_checkpoint_path_ep):
                     agent_net_checkpoint_path = agent_net_checkpoint_path_ep
 
-                if isinstance(self.master_agent, QMIXMasterAgent):
+                if isinstance(self.master_agent, QMIXMasterAgent) or isinstance(self.master_agent, DICGMasterAgent):
                     mixing_net_checkpoint_path_ep = os.path.join(model_dir, f"checkpoint_episode[{episode}]_mixing_network.pth")
                     if os.path.exists(mixing_net_checkpoint_path_ep):
                         mixing_net_checkpoint_path = mixing_net_checkpoint_path_ep
@@ -544,7 +572,7 @@ class MARLTrainer:
             self.master_agent.agent_network.train()
             self.master_agent.agent_network_target.eval() # Ensure target network is in eval mode
 
-            if isinstance(self.master_agent, QMIXMasterAgent):
+            if isinstance(self.master_agent, QMIXMasterAgent) or isinstance(self.master_agent, DICGMasterAgent):
                 self.master_agent.mixer_network.train()
                 self.master_agent.mixer_network_target.eval() # Ensure target network is in eval mode
                 mixing_net_checkpoint_data = model_io.load_checkpoint(mixing_net_checkpoint_path)
@@ -560,7 +588,7 @@ class MARLTrainer:
             # If loading fails, ensure networks are in a consistent state (e.g., train mode)
             self.master_agent.agent_network.train()
             self.master_agent.agent_network_target.eval()
-            if isinstance(self.master_agent, QMIXMasterAgent):
+            if isinstance(self.master_agent, QMIXMasterAgent) or isinstance(self.master_agent, DICGMasterAgent):
                 self.master_agent.mixer_network.train()
                 self.master_agent.mixer_network_target.eval()
             elif isinstance(self.master_agent, VDNMasterAgent):
@@ -596,7 +624,7 @@ class MARLTrainer:
         )
 
         # If QMIX, save MixingNetwork checkpoint (latest and episode-specific)
-        if isinstance(self.master_agent, QMIXMasterAgent):
+        if isinstance(self.master_agent, QMIXMasterAgent) or isinstance(self.master_agent, DICGMasterAgent):
             mixing_net_file_path = os.path.join(model_dir, "checkpoint_mixing_network.pth")
             mixing_net_file_path_episode = os.path.join(model_dir, f"checkpoint_episode[{episode}]_mixing_network.pth")
             model_io.save_checkpoint(

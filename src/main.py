@@ -59,7 +59,7 @@ def parse_args():
     parser.add_argument('-g','--grid_size', default=4, type=int)
     parser.add_argument('-A','--agents_number', default=2, type=int)
     parser.add_argument('-G','--goals_number', default=2, type=int)
-    parser.add_argument('-l','--learning_mode', choices=['Q', 'QMIX','IQL', 'VDN'], default='IQL')
+    parser.add_argument('-l','--learning_mode', choices=['Q', 'QMIX','IQL', 'VDN', 'DICG'], default='IQL')
     parser.add_argument('--optimizer', choices=['Adam', 'RMSProp'], default='Adam')
     parser.add_argument('--neighbor_distance', default=256, type=int)# 大きい値にしておくことで全観測になる。
     parser.add_argument('--reward_mode', choices=[0, 1, 2, 3], default=2, type=int)
@@ -204,7 +204,7 @@ if __name__ == '__main__':
         else:
             q_learning()
 
-    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX" or config.learning_mode == "VDN":
+    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX" or config.learning_mode == "VDN" or config.learning_mode == "DICG":
         dqn_process(config)
     else:
         print("未実装\n")

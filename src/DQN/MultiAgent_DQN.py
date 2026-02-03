@@ -24,9 +24,6 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-# MAX_EPSILON = 1.0
-# MIN_EPSILON = 0.01
-
 class MARLTrainer:
     """
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
@@ -53,7 +50,7 @@ class MARLTrainer:
         self.reward_mode = args.reward_mode
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
-        self.max_ts = args.max_timestep
+        self.max_ts      = args.max_timestep
         self.MAX_EPSILON = args.max_epsilon
         self.MIN_EPSILON = args.min_epsilon
 
@@ -97,7 +94,7 @@ class MARLTrainer:
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
                 goal_ids=self._goal_ids,
-                agent_reward_processing_mode=args.agent_reward_processing_mode # Pass new argument
+                agent_reward_processing_mode=args.agent_reward_processing_mode
             )
         elif mode == 'QMIX':
             self.master_agent = QMIXMasterAgent(
@@ -111,7 +108,7 @@ class MARLTrainer:
                 gamma=args.gamma,
                 agent_ids=self._agent_ids,
                 goal_ids=self._goal_ids,
-                agent_reward_processing_mode=args.agent_reward_processing_mode # Pass new argument
+                agent_reward_processing_mode=args.agent_reward_processing_mode
             )
         # Added VDN mode instantiation as per the plan
         elif mode == 'VDN':
@@ -179,7 +176,7 @@ class MARLTrainer:
         else:
             folder_name += f"_観測径[{args.neighbor_distance}]"
 
-        folder_name += f"_報酬[{self.reward_mode}]_ARPM[{args.agent_reward_processing_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
+        folder_name += f"_報酬[{self.reward_mode}_{args.agent_reward_processing_mode}]_[{self.grid_size}x{self.grid_size}]_T[{self.max_ts}]_A-G[{self.agents_number}-{self.goals_number}]"
 
         # PERを使用している場合、PERパラメータを追加
         if args.use_per:
@@ -350,12 +347,8 @@ class MARLTrainer:
                 step_count += 1
                 total_step += 1
 
-                if step_info['all_agents_done']: # もしエピソードが成功したら
+                if step_info['all_agents_done']: # エピソード成功
                     episode_done = True
-                    # print(f"DEBUG: Episode {episode} finished successfully at step: {step_count}")
-                elif step_count == self.max_ts: # もし最大ステップ数に達したら
-                    # print(f"DEBUG: Episode {episode} timed out at step: {step_count}")
-                    pass
 
             # ---------------------------
             # エピソード終了後の処理

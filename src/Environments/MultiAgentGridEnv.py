@@ -6,10 +6,9 @@ from itertools import product
 
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver
+from .RewardCalculator import RewardCalculator
 
 from Base.Constant import PosType, GlobalState
-
-# GlobalState = Dict[str,PosType]
 
 class IEnvWrapper(ABC):
     """
@@ -116,7 +115,7 @@ class MultiAgentGridEnv:
         self.grid_size: int = args.grid_size
         self.agents_number: int = args.agents_number
         self.goals_number: int = args.goals_number
-        self.reward_mode: int = args.reward_mode
+        # self.reward_mode: int = args.reward_mode
         self.neighbor_distance: float = args.neighbor_distance
         self.done_mode = 2
 
@@ -127,6 +126,8 @@ class MultiAgentGridEnv:
 
         self._agent_ids: list[str] = [f'agent_{i}' for i in range(self.agents_number)]
         self._goal_ids: list[str] = [f'goal_{i}' for i in range(self.goals_number)]
+
+        self.reward_calculator = RewardCalculator(self.grid_size, args.reward_mode, self._agent_ids, self.agents_number, self.goals_number)
 
         self.distance_fn = distance_fn
         self.prev_distances: Dict[str, float] = {}
@@ -185,7 +186,8 @@ class MultiAgentGridEnv:
             self._grid.add_object(self._agent_ids[i], pos)
 
         # 初回の距離を計算して保持（報酬計算の基準点）
-        self.prev_distances = self._calculate_total_distance_to_goals()
+        # self.prev_distances = self._calculate_total_distance_to_goals()
+        # self.reward_calculator.prev_distances(self.get_agent_positions(), self.get_goal_positions())
 
         # 観測 (例: グローバル状態タプル) を返します
         return self._get_observation()
@@ -211,12 +213,12 @@ class MultiAgentGridEnv:
         # このメソッド内で Grid インスタンスの_object_positionsが更新されます
         self.collision_resolver.resolve_agent_movements(actions)
 
-        # 4. 報酬を計算します
-        # 報酬計算は Grid の更新後の位置に基づいて行います
-        reward = self._calculate_reward(self.done_mode)
-
-        # 5. 終了条件をチェックします
+        # 4. 終了条件をチェックします
         dones = self._check_done_condition(self.done_mode)
+
+        # 5. 報酬を計算します
+        # 報酬計算は Grid の更新後の位置に基づいて行います
+        reward = self.reward_calculator._calculate_reward(dones['__all__'], self.get_agent_positions(), self.get_goal_positions())
 
         # 6. 次の観測を取得します
         # Grid が既に更新されているので、_get_observation は現在のグリッド状態を反映します
@@ -329,7 +331,6 @@ class MultiAgentGridEnv:
 
         return goal_pos_dict
 
-
     def get_agent_positions(self) -> dict[str, PosType]:
         """現在のエージェント位置を取得するヘルパーメソッド。"""
         # グリッドから agent_ids の位置を取得します
@@ -342,139 +343,6 @@ class MultiAgentGridEnv:
                 print(f"Warning: エージェント '{agent_id}' がグリッドに見つかりませんでした。")
                 pass # または適切にエラー処理
         return agent_pos_dict
-
-
-    # def _calculate_total_distance_to_goals_LEGACY(self) -> float:
-    #     """
-    #     各ゴールから最も近いエージェントまでのマンハッタン距離の合計を計算します。
-    #     """
-    #     # print("このメソッドの代わりに_calculate_total_distance_to_goalsを使うことを検討。")
-
-    #     goal_positions = list(self.get_goal_positions().values())
-    #     agent_positions = list(self.get_agent_positions().values())
-
-    #     if not agent_positions:
-    #         # エージェントが配置されていない場合 (リセット後には起こらないはず)、距離は無限大です。
-    #         # これは密な報酬で処理されない場合、問題を引き起こす可能性があります。
-    #         # agents_num > 0 で、エージェントがリセットで配置されることを想定しています。
-    #         # print("Warning: _calculate_total_distance_to_goals がエージェントなしで呼び出されました。") # デバッグが必要な場合は残す
-    #         return float('inf') # または非常に大きな数
-
-    #     total_distance = 0
-    #     for goal in goal_positions:
-    #         # min() を呼び出す前に agent_positions が空でないことを確認します
-    #         if agent_positions: # リセット時に agents_pos が空でないことを確認済みですが、念のため
-    #             min_dist = min(abs(goal[0] - ag[0]) + abs(goal[1] - ag[1]) for ag in agent_positions)
-    #             total_distance += min_dist
-    #         else:
-    #             # ゴールは存在するがエージェントがいない場合の処理 (到達不可能)
-    #             total_distance += self.grid_size * 2 # 最大距離などを加算 (適当な大きな値)
-
-    #     return float(total_distance)
-
-    def _calculate_total_distance_to_goals(self) -> Dict[str, float]:
-        """
-        エージェントとゴールの最適なペアリングを行い、
-        エージェントIDをキーとしたマンハッタン距離の辞書を返します。
-        """
-        # 1. 計算量のチェック
-        if self.agents_number * self.goals_number > 400:
-            raise Exception(f"[警告] 計算量のオーバーヘッドが懸念されます。ペア数: {self.agents_number * self.goals_number}")
-
-        agent_positions = self.get_agent_positions()
-        goal_positions = self.get_goal_positions()
-
-        # 初期値として全エージェントを inf で埋めた辞書を作成
-        distances = {aid: float('inf') for aid in self._agent_ids}
-
-        if not agent_positions or not goal_positions:
-            return distances
-
-        # 2. 全ペアの距離を計算（IDを保持したままリスト化）
-        # (dist, aid, gid) のタプルのリストを作る
-        all_pairs = []
-        for (aid, a_pos), (gid, g_pos) in product(agent_positions.items(), goal_positions.items()):
-            dist = abs(a_pos[0] - g_pos[0]) + abs(a_pos[1] - g_pos[1])
-            all_pairs.append((dist, aid, gid))
-
-        # 3. 距離が近い順にソート
-        all_pairs.sort(key=lambda x: x[0])
-
-        # 4. 近いペアから順に確定
-        used_agents = set()
-        used_goals = set()
-        limit = min(len(agent_positions), len(goal_positions))
-
-        for dist, aid, gid in all_pairs:
-            if aid not in used_agents and gid not in used_goals:
-                distances[aid] = float(dist)
-                used_agents.add(aid)
-                used_goals.add(gid)
-
-                if len(used_agents) == limit:
-                    break
-
-        return distances    
-    
-    def _calculate_reward(self,done_mode) -> Dict[str,float]:
-        """
-        現在の状態と報酬モードに基づいて報酬を計算します。
-        """
-        reward_dict: Dict[str, float] = {}
-        dones = self._check_done_condition(done_mode)
-        done = dones["__all__"]
-        
-        # 共通設定
-        max_penalty_dist = float(self.grid_size * 2) # inf時のクリッピング用
-
-        if self.reward_mode == 0:
-            # モード 0: 完了条件を満たしていれば +10、それ以外 0
-            # reward_dict = 10.0 if done else 0.0
-            for aid in self._agent_ids:
-                reward_dict[aid] = 10.0 if done else 0.0
-
-        elif self.reward_mode == 1:
-            # モード 2: 完了条件を満たしていれば +10、それ以外 -0.02
-            for aid in self._agent_ids:
-                reward_dict[aid] = 10.0 if done else -0.02
-
-        elif self.reward_mode == 2:
-            distances_dict = self._calculate_total_distance_to_goals()
-            for aid in self._agent_ids:
-                dist = distances_dict.get(aid, float('inf'))
-                reward_dict[aid] = -min(dist, max_penalty_dist)
-
-        elif self.reward_mode == 3:
-            # --- モード 3: Potential-based Reward Shaping ---
-            current_distances = self._calculate_total_distance_to_goals()
-            
-            for aid in self._agent_ids:
-                # 1. 距離の取得とクリッピング (inf対策)
-                prev_d = min(self.prev_distances.get(aid, max_penalty_dist), max_penalty_dist)
-                curr_d = min(current_distances.get(aid, max_penalty_dist), max_penalty_dist)
-                
-                # 2. ポテンシャル報酬: (前回の距離 - 今回の距離) 
-                # 近づけばプラス、遠ざかればマイナス
-                shaping_reward = float(prev_d - curr_d)
-                
-                # 3. ステップペナルティ (早く全員揃うことを促す)
-                step_penalty = -0.01
-                
-                # 4. 完了ボーナス (全員同時にゴールにいる場合)
-                completion_bonus = 10.0 if done else 0.0
-                
-                reward_dict[aid] = shaping_reward + step_penalty + completion_bonus
-            
-            # 5. prev_distances を更新 (次のステップ用)
-            self.prev_distances = current_distances
-
-        else:
-            print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")
-            reward_dict = {}
-            for aid in self._agent_ids:
-                reward_dict[aid] = 0.0
-
-        return reward_dict
 
     def _check_done_condition(self,done_mode) -> Dict[str, bool]:
         """
@@ -509,9 +377,9 @@ class MultiAgentGridEnv:
         dones["__all__"] = overall_done
         return dones
 
-    def get_all_object(self):
-        r = self._grid.get_all_object_positions()
-        return r
+    # def get_all_object(self):
+    #     r = self._grid.get_all_object_positions()
+    #     return r
 
 from Environments.StateProcesser import ObsToTensorWrapper
 class GridEnvWrapper(IEnvWrapper):

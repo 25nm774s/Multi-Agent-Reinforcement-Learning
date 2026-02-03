@@ -101,6 +101,28 @@ class RewardCalculator:
             
             # 5. prev_distances を更新 (次のステップ用)
             self.prev_distances = current_distances
+        elif self.reward_mode == 4:
+            # --- モード 3: Potential-based Reward Shaping ---
+            current_distances = self._calculate_total_distance_to_goals(agent_pos, goal_pos)
+            
+            for aid in self._agent_ids:
+                # 1. 距離の取得とクリッピング (inf対策)
+                prev_d = min(self.prev_distances.get(aid, max_penalty_dist), max_penalty_dist)
+                curr_d = min(current_distances.get(aid, max_penalty_dist), max_penalty_dist)
+                
+                # 2. ポテンシャル報酬: (前回の距離 - 今回の距離) 
+                # 近づけばプラス、遠ざかればマイナス
+                shaping_reward = float(prev_d - curr_d)
+                
+                # 3. ステップペナルティ (早く全員揃うことを促す)
+                step_penalty = -0.1
+                
+                # 4. 完了ボーナス (全員同時にゴールにいる場合)
+                
+                reward_dict[aid] = shaping_reward + step_penalty
+            
+            # 5. prev_distances を更新 (次のステップ用)
+            self.prev_distances = current_distances
 
         else:
             print(f"Warning: 未知の報酬モード: {self.reward_mode}。報酬は 0 です。")

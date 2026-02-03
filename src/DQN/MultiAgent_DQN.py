@@ -24,8 +24,8 @@ RED = '\033[91m'
 GREEN = '\033[92m'
 RESET = '\033[0m'
 
-MAX_EPSILON = 1.0
-MIN_EPSILON = 0.01
+# MAX_EPSILON = 1.0
+# MIN_EPSILON = 0.01
 
 class MARLTrainer:
     """
@@ -54,6 +54,8 @@ class MARLTrainer:
         self.render_mode = args.render_mode
         self.episode_num = args.episode_number
         self.max_ts = args.max_timestep
+        self.MAX_EPSILON = args.max_epsilon
+        self.MIN_EPSILON = args.min_epsilon
 
         # 環境ラッパーからプロパティを取得
         self.action_space_size = self.env_wrapper.action_space_size
@@ -70,7 +72,7 @@ class MARLTrainer:
         self.start_episode = 1
 
         # Epsilon decay parameters
-        self.epsilon = 1.0
+        self.epsilon = self.MAX_EPSILON
         self.epsilon_decay = args.epsilon_decay
 
         # PER beta annealing parameters
@@ -212,8 +214,8 @@ class MARLTrainer:
             step (int): 現在のステップ数（またはエピソード数）。
         """
         lambda_ = 0.0001
-        self.epsilon *= MAX_EPSILON * (self.epsilon_decay ** (lambda_))
-        self.epsilon = max(MIN_EPSILON, self.epsilon)
+        self.epsilon *= self.MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+        self.epsilon = max(self.MIN_EPSILON, self.epsilon)
 
     def result_save(self):
         self.plot_results.draw_heatmap()

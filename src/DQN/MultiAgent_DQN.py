@@ -211,7 +211,7 @@ class MARLTrainer:
             step (int): 現在のステップ数（またはエピソード数）。
         """
         lambda_ = 0.0001
-        self.epsilon *= self.MAX_EPSILON * (self.epsilon_decay ** (lambda_))
+        self.epsilon *= (self.epsilon_decay ** (lambda_))
         self.epsilon = max(self.MIN_EPSILON, self.epsilon)
 
     def result_save(self):

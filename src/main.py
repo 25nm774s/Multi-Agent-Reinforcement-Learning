@@ -108,36 +108,22 @@ def parse_args():
     
     return args
 
-if __name__ == '__main__':
-    config = parse_args()
-    print(f"Loaded config: {config}")
-
-    # auto選択時のデバイス決定ロジックを追加
-    if config.device == 'auto':
-        if torch.cuda.is_available():
-            config.device = 'cuda'
-        elif torch.backends.mps.is_available():
-            config.device = 'mps'
-        else:
-            config.device = 'cpu'
-        print(f"自動選択されたデバイス: {GREEN}{config.device}{RESET}\n")
-
-    def q_learning():
-        from Q_learn.MultiAgent_Q import MultiAgent_Q
-        from Q_learn.Agent_Q import Agent
-        agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
-        simulation = MultiAgent_Q(config,agents)
-        
-        simulation.train(config.episode_number)
-
-        simulation.result_save()
-
-        simulation.render_anime(config.episode_number)
-        #print("reward:",r, "done:",done)
-        #print("GET: trajectry")
-        #for tr in traj: print(tr)
+def q_learning():
+    from Q_learn.MultiAgent_Q import MultiAgent_Q
+    from Q_learn.Agent_Q import Agent
+    agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
+    simulation = MultiAgent_Q(config,agents)
     
-    def q_play():
+    simulation.train(config.episode_number)
+
+    simulation.result_save()
+
+    simulation.render_anime(config.episode_number)
+    #print("reward:",r, "done:",done)
+    #print("GET: trajectry")
+    #for tr in traj: print(tr)
+
+def q_play():
         from Q_learn.MultiAgent_Q import MultiAgent_Q
         from Q_learn.Agent_Q import Agent
         agents:list[Agent] = [Agent(config, id) for id in range(config.agents_number)]
@@ -145,8 +131,8 @@ if __name__ == '__main__':
 
         #simulation.render_anime(config.episode_number)
         # simulation.log_disp()
-            
-    def dqn_process(current_conf, run_id=None):
+
+def dqn_process(current_conf, run_id=None):
         # Shared components
         device = torch.device(current_conf.device)
 
@@ -190,24 +176,107 @@ if __name__ == '__main__':
         trainer.train() # Comment out the full training
 
         print(f"--- {current_conf.learning_mode} mode test finished successfully ---")    
-    
-    def dimensions_estimater(grid_size:int, agent_number:int)->int:
-        res = 1
-        for i in range(agent_number):
-            res *= (grid_size * grid_size - i)
 
-        return res
+base_config = {
+    "grid_size": 12,
+    "episode_number": 100,
+    "max_timestep": 250,
+    "batch_size": 32,
+    "agents_number": 2,
+    "goals_number": 2,
+    "agent_reward_processing_mode": "individual",
+    "learning_late": 0.0004,
+    "use_per": 0,
+    "grad_norm_clip": 10.0,
+    "reward_mode": 3,
+    "buffer_size": 10000,
+    "gamma": 0.95,
+}
+queue = {
+    "IQL": {
+        "learning_mode": "IQL",
+        "epsilon_decay": 0.65,
+        "target_update_frequency": 900,
+    },
+    # "QMIX": {
+    #     "learning_mode": "QMIX",
+    #     "epsilon_decay": 0.65,
+    #     "gamma": 0.99,
+    #     "target_update_frequency": 500,
+    # },
+    "VDN": {
+        "learning_mode": "VDN",
+        "epsilon_decay": 0.65,
+        "target_update_frequency": 900,
+    },
+    "DICG": {
+        "learning_mode": "DICG",
+        "epsilon_decay": 0.65,
+        "target_update_frequency": 900,
 
-    if config.learning_mode == "Q":
-        if dimensions_estimater(config.grid_size, config.agents_number)>1e6: 
-            raise ValueError(f"警告:推定空間サイズ({dimensions_estimater(config.grid_size, config.agents_number)})が大きすぎます")
-        
-        if config.episode_number == -1:
-            q_play()
+    }
+}
+
+if __name__ == '__main__':
+    config = parse_args()
+    print(f"Loaded config: {config}")
+
+    # auto選択時のデバイス決定ロジックを追加
+    if config.device == 'auto':
+        if torch.cuda.is_available():
+            config.device = 'cuda'
+        elif torch.backends.mps.is_available():
+            config.device = 'mps'
         else:
-            q_learning()
+            config.device = 'cpu'
+        print(f"自動選択されたデバイス: {GREEN}{config.device}{RESET}\n")
 
-    elif config.learning_mode == "IQL" or config.learning_mode == "QMIX" or config.learning_mode == "VDN" or config.learning_mode == "DICG":
-        dqn_process(config)
-    else:
-        print("未実装\n")
+
+    import argparse
+    import copy # Need to import copy for deepcopy
+
+    N = 2
+
+    # Get the initial parsed arguments once. This will contain defaults and any presets from presets.json.
+    initial_parsed_args = parse_args()
+
+    for i in range(N):
+        for j, (exp_name, exp_args_dict) in enumerate(queue.items()):
+            print(f"--- {i+1}週目/{N} ー 実験 {j}: {exp_name}/{len(queue)} ---")
+
+            # Create a deep copy of the initial parsed arguments to ensure a clean slate for each experiment
+            current_conf = copy.deepcopy(initial_parsed_args)
+
+            # Apply values from base_config (dictionary)
+            for key, value in base_config.items():
+                if key == "learning_late":
+                    setattr(current_conf, "learning_rate", value)
+                else:
+                    setattr(current_conf, key, value)
+
+            # Apply experiment-specific values from exp_args_dict (dictionary)
+            # These will override base_config values if keys overlap
+            for key, value in exp_args_dict.items():
+                if key == "learning_late": # This case might not happen if queue uses learning_rate
+                    setattr(current_conf, "learning_rate", value)
+                else:
+                    setattr(current_conf, key, value)
+
+            # The device setting based on 'auto' is already handled by the parse_args() function if it's called
+            # once at the beginning, but since I am using initial_parsed_args and then updating,
+            # the device might revert to 'auto' if not explicitly set in base_config or exp_args_dict.
+            # Let's re-run the device auto-detection if it's still 'auto' after combining configs.
+            if current_conf.device == 'auto':
+                if torch.cuda.is_available():
+                    current_conf.device = 'cuda'
+                elif torch.backends.mps.is_available():
+                    current_conf.device = 'mps'
+                else:
+                    current_conf.device = 'cpu'
+                print(f"    自動選択されたデバイス: {GREEN}{current_conf.device}{RESET}")
+
+            print(f"    最終的な設定: {current_conf}")
+
+            # Call dqn_process with the prepared configuration
+            dqn_process(current_conf, i)
+            print("-----------------------------------")

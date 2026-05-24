@@ -179,8 +179,8 @@ def dqn_process(current_conf, run_id=None):
 
 base_config = {
     "grid_size": 12,
-    "episode_number": 100,
-    "max_timestep": 250,
+    "episode_number": 2000,
+    "max_timestep": 200,
     "batch_size": 32,
     "agents_number": 2,
     "goals_number": 2,
@@ -235,7 +235,7 @@ if __name__ == '__main__':
     import argparse
     import copy # Need to import copy for deepcopy
 
-    N = 2
+    N = 50
 
     # Get the initial parsed arguments once. This will contain defaults and any presets from presets.json.
     initial_parsed_args = parse_args()
@@ -243,6 +243,12 @@ if __name__ == '__main__':
     for i in range(N):
         for j, (exp_name, exp_args_dict) in enumerate(queue.items()):
             print(f"--- {i+1}週目/{N} ー 実験 {j}: {exp_name}/{len(queue)} ---")
+            
+            # シード固定
+            torch.manual_seed(42)
+            torch.cuda.manual_seed(42)
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
 
             # Create a deep copy of the initial parsed arguments to ensure a clean slate for each experiment
             current_conf = copy.deepcopy(initial_parsed_args)

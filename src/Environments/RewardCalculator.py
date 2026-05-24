@@ -69,8 +69,10 @@ class RewardCalculator:
 
         elif self.reward_mode == 1:
             # モード 2: 完了条件を満たしていれば +10、それ以外 -0.02
+            distances_dict = self._calculate_total_distance_to_goals(agent_pos, goal_pos)
             for aid in self._agent_ids:
-                reward_dict[aid] = 10.0 if done else -0.02
+                dist = distances_dict.get(aid, float('inf'))
+                reward_dict[aid] = 10.0 if done else -min(dist, max_penalty_dist)
 
         elif self.reward_mode == 2:
             distances_dict = self._calculate_total_distance_to_goals(agent_pos, goal_pos)

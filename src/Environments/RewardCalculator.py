@@ -72,7 +72,7 @@ class RewardCalculator:
             distances_dict = self._calculate_total_distance_to_goals(agent_pos, goal_pos)
             for aid in self._agent_ids:
                 dist = distances_dict.get(aid, float('inf'))
-                reward_dict[aid] = 10.0 if done else -min(dist, max_penalty_dist)
+                reward_dict[aid] = 10.0 if done else -min(dist, max_penalty_dist)*0.001
 
         elif self.reward_mode == 2:
             distances_dict = self._calculate_total_distance_to_goals(agent_pos, goal_pos)

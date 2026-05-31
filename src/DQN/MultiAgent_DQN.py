@@ -390,7 +390,7 @@ class MARLTrainer:
             episode_step:int = step_count
 
             # Saverでエピソードごとのスコアをログに記録
-            self.saver.log_episode_data(episode, step_count, episode_reward, episode_loss, step_info['all_agents_done'])
+            self.saver.log_episode_data(episode, total_step, step_count, episode_reward, episode_loss, step_info['all_agents_done'])
 
             # 集計期間内の平均計算のための累積 (avg_reward_temp accumulation)
             episode_losses.append(episode_loss)

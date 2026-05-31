@@ -68,6 +68,7 @@ def parse_args():
                         help='IQL agent reward processing mode: how environment rewards are aggregated or scaled.')
     parser.add_argument('--device', choices=['auto', 'cpu', 'cuda', 'mps'], default='auto')
     parser.add_argument('-e','--episode_number', default=1200, type=int)
+    parser.add_argument('--max_step', default=1_000_000, type=int)
     parser.add_argument('-T','--max_timestep', default=150, type=int)
     parser.add_argument('--epsilon_decay', default=0.50, type=float)
     parser.add_argument('--max_epsilon', default=1.00, type=float)

@@ -53,6 +53,7 @@ class MARLTrainer:
         self.max_ts      = args.max_timestep
         self.MAX_EPSILON = args.max_epsilon
         self.MIN_EPSILON = args.min_epsilon
+        self.max_step    = args.max_step
 
         # 環境ラッパーからプロパティを取得
         self.action_space_size = self.env_wrapper.action_space_size
@@ -247,6 +248,7 @@ class MARLTrainer:
         # メインループ（各エピソード）
         # ----------------------------------
         for episode in range(self.start_episode, self.episode_num + 1):
+            if(total_step>self.max_step): break # ステップで打ち切り
 
             print(f'{GREEN if done_counts and done_counts[-1] else ""}■{RESET}', end='',flush=True)  # 進捗表示 (エピソード100回ごとに改行)
 

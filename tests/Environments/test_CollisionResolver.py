@@ -102,11 +102,11 @@ class TestCollisionResolver(unittest.TestCase):
         }
         resolved_pos = resolver.resolve_agent_movements(agent_actions)
 
-        # Check return value (both should stay at initial position due to collision)
-        self.assertEqual(resolved_pos, {'agent_0': (1, 2), 'agent_1': (3, 2)})
+        # Check return value (both should move to the same position)
+        self.assertEqual(resolved_pos, {'agent_0': (2, 2), 'agent_1': (2, 2)})
         # Check grid state update
-        self.assertEqual(grid.get_object_position('agent_0'), (1, 2))
-        self.assertEqual(grid.get_object_position('agent_1'), (3, 2))
+        self.assertEqual(grid.get_object_position('agent_0'), (2, 2))
+        self.assertEqual(grid.get_object_position('agent_1'), (2, 2))
 
     def test_resolve_agent_movements_two_agents_swap_collision(self):
         """Test two agents attempting to swap positions."""
@@ -123,11 +123,11 @@ class TestCollisionResolver(unittest.TestCase):
         }
         resolved_pos = resolver.resolve_agent_movements(agent_actions)
 
-        # Check return value (both should stay at initial position due to collision)
-        self.assertEqual(resolved_pos, {'agent_0': (1, 2), 'agent_1': (2, 2)})
+        # Check return value (both should move to their intended positions)
+        self.assertEqual(resolved_pos, {'agent_0': (2, 2), 'agent_1': (1, 2)})
         # Check grid state update
-        self.assertEqual(grid.get_object_position('agent_0'), (1, 2))
-        self.assertEqual(grid.get_object_position('agent_1'), (2, 2))
+        self.assertEqual(grid.get_object_position('agent_0'), (2, 2))
+        self.assertEqual(grid.get_object_position('agent_1'), (1, 2))
 
     def test_resolve_agent_movements_agent_move_to_occupied_by_static(self):
         """Test agent attempting to move to a position occupied by a static object."""

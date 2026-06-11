@@ -31,11 +31,11 @@ class CollisionResolver:
         x, y = current_pos
         if action == 0: # UP (上方向はy座標が減少)
             y -= 1
-        elif action == 1: # DOWN (下方向はy座標が増加)
+        elif action == 1: # DOWN (下方向はyが増加)
             y += 1
-        elif action == 2: # LEFT (左方向はx座標が減少)
+        elif action == 2: # LEFT (左方向はxが減少)
             x -= 1
-        elif action == 3: # RIGHT (右方向はx座標が増加)
+        elif action == 3: # RIGHT (右方向はxが増加)
             x += 1
         # action == 4 (STAY) の場合、(x, y) はそのままになります。
 
@@ -78,35 +78,8 @@ class CollisionResolver:
             # 境界チェック
             if not self._grid.is_valid_position(potential_pos):
                 final_positions[agent_id] = current_pos # 境界に当たった場合は静止
-                continue
-
-            # 他のエージェントとの衝突をチェックします
-            collision_detected = False
-            for other_agent_id in agent_ids:
-                if agent_id == other_agent_id:
-                    continue
-
-                # 自分の潜在的な位置が、他のエージェントの意図する位置と衝突するか
-                if potential_pos == potential_positions[other_agent_id]:
-                    collision_detected = True
-                    break
-
-                # 自分の潜在的な位置が、他のエージェントの現在の位置と衝突するか (他のエージェントが静止または自分に向かってくる場合など)
-                # シンプルなルールとして、移動先が他のエージェントの「現在の」位置と一致する場合も衝突とみなす
-                if potential_pos == current_agent_positions[other_agent_id]:
-                    collision_detected = True
-                    break
-
-            # ゴール位置との衝突は許容されるため、ここではチェックしません。
-            # 障害物（もしあれば）との衝突は is_position_occupied などを使ってここでチェックできますが、
-            # 現状はエージェントとゴールのみなので、エージェント間衝突のみ考慮します。
-
-
-            if collision_detected:
-                final_positions[agent_id] = current_pos # 衝突が検出された場合は静止
             else:
-                final_positions[agent_id] = potential_pos # 潜在的な位置に移動
-
+                final_positions[agent_id] = potential_pos # 衝突を許容して潜在的な位置に移動
 
         # Grid内のエージェント位置を更新します
         for agent_id, new_pos in final_positions.items():

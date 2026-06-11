@@ -117,7 +117,7 @@ class MultiAgentGridEnv:
         self.goals_number: int = args.goals_number
         # self.reward_mode: int = args.reward_mode
         self.neighbor_distance: float = args.neighbor_distance
-        self.done_mode = 2
+        self.done_mode = 4# 完遂モード
 
         # 新しい Grid クラスを使用した内部状態管理
         self._grid: Grid = Grid(self.grid_size)
@@ -350,6 +350,7 @@ class MultiAgentGridEnv:
         - done_mode 0: 全てのゴールが少なくとも1つのエージェントによって占有されているか。
         - done_mode 1: 誰か一人でもゴール。
         - done_mode 2: 全員がゴール。
+        - done_mode 4: エピソードを完遂する。
         """
         agent_positions = self.get_agent_positions()
         goal_positions_set = set(self.get_goal_positions().values())
@@ -369,6 +370,9 @@ class MultiAgentGridEnv:
         elif done_mode == 2:
             # Rule 3: 全員がゴールしたらエピソード終了
             overall_done = all(dones.values())
+
+        elif done_mode == 4:
+            overall_done = False
 
         else:
             print(f"Warning: 未知の完了条件モード: {done_mode}。done_mode=2にフォールバック。")

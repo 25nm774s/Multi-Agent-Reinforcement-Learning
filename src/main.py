@@ -175,6 +175,7 @@ def dqn_process(current_conf, run_id=None):
 
         # Run training
         trainer.train() # Comment out the full training
+        trainer.save_model_weights()
 
         print(f"--- {current_conf.learning_mode} mode test finished successfully ---")    
 

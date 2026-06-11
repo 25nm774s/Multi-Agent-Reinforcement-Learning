@@ -178,45 +178,45 @@ def dqn_process(current_conf, run_id=None):
 
         print(f"--- {current_conf.learning_mode} mode test finished successfully ---")    
 
-base_config = {
-    "grid_size": 12,
-    "episode_number": 2000,
-    "max_timestep": 200,
-    "batch_size": 32,
-    "agents_number": 2,
-    "goals_number": 2,
-    "agent_reward_processing_mode": "individual",
-    "learning_late": 0.0004,
-    "use_per": 0,
-    "grad_norm_clip": 10.0,
-    "reward_mode": 3,
-    "buffer_size": 10000,
-    "gamma": 0.95,
-}
-queue = {
-    "IQL": {
-        "learning_mode": "IQL",
-        "epsilon_decay": 0.65,
-        "target_update_frequency": 900,
-    },
-    # "QMIX": {
-    #     "learning_mode": "QMIX",
-    #     "epsilon_decay": 0.65,
-    #     "gamma": 0.99,
-    #     "target_update_frequency": 500,
-    # },
-    "VDN": {
-        "learning_mode": "VDN",
-        "epsilon_decay": 0.65,
-        "target_update_frequency": 900,
-    },
-    "DICG": {
-        "learning_mode": "DICG",
-        "epsilon_decay": 0.65,
-        "target_update_frequency": 900,
+# base_config = {
+#     "grid_size": 12,
+#     "episode_number": 2000,
+#     "max_timestep": 200,
+#     "batch_size": 32,
+#     "agents_number": 2,
+#     "goals_number": 2,
+#     "agent_reward_processing_mode": "individual",
+#     "learning_late": 0.0004,
+#     "use_per": 0,
+#     "grad_norm_clip": 10.0,
+#     "reward_mode": 3,
+#     "buffer_size": 10000,
+#     "gamma": 0.95,
+# }
+# queue = {
+#     "IQL": {
+#         "learning_mode": "IQL",
+#         "epsilon_decay": 0.65,
+#         "target_update_frequency": 900,
+#     },
+#     # "QMIX": {
+#     #     "learning_mode": "QMIX",
+#     #     "epsilon_decay": 0.65,
+#     #     "gamma": 0.99,
+#     #     "target_update_frequency": 500,
+#     # },
+#     "VDN": {
+#         "learning_mode": "VDN",
+#         "epsilon_decay": 0.65,
+#         "target_update_frequency": 900,
+#     },
+#     "DICG": {
+#         "learning_mode": "DICG",
+#         "epsilon_decay": 0.65,
+#         "target_update_frequency": 900,
 
-    }
-}
+#     }
+# }
 
 if __name__ == '__main__':
     config = parse_args()
@@ -234,56 +234,18 @@ if __name__ == '__main__':
 
 
     import argparse
-    import copy # Need to import copy for deepcopy
-
-    N = 50
+    N = 10
 
     # Get the initial parsed arguments once. This will contain defaults and any presets from presets.json.
     initial_parsed_args = parse_args()
 
-    for i in range(N):
-        for j, (exp_name, exp_args_dict) in enumerate(queue.items()):
-            print(f"--- {i+1}週目/{N} ー 実験 {j}: {exp_name}/{len(queue)} ---")
-            
-            # シード固定
-            torch.manual_seed(42)
-            torch.cuda.manual_seed(42)
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.benchmark = False
+    for i in range(N):        
+        # シード固定
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-            # Create a deep copy of the initial parsed arguments to ensure a clean slate for each experiment
-            current_conf = copy.deepcopy(initial_parsed_args)
-
-            # Apply values from base_config (dictionary)
-            for key, value in base_config.items():
-                if key == "learning_late":
-                    setattr(current_conf, "learning_rate", value)
-                else:
-                    setattr(current_conf, key, value)
-
-            # Apply experiment-specific values from exp_args_dict (dictionary)
-            # These will override base_config values if keys overlap
-            for key, value in exp_args_dict.items():
-                if key == "learning_late": # This case might not happen if queue uses learning_rate
-                    setattr(current_conf, "learning_rate", value)
-                else:
-                    setattr(current_conf, key, value)
-
-            # The device setting based on 'auto' is already handled by the parse_args() function if it's called
-            # once at the beginning, but since I am using initial_parsed_args and then updating,
-            # the device might revert to 'auto' if not explicitly set in base_config or exp_args_dict.
-            # Let's re-run the device auto-detection if it's still 'auto' after combining configs.
-            if current_conf.device == 'auto':
-                if torch.cuda.is_available():
-                    current_conf.device = 'cuda'
-                elif torch.backends.mps.is_available():
-                    current_conf.device = 'mps'
-                else:
-                    current_conf.device = 'cpu'
-                print(f"    自動選択されたデバイス: {GREEN}{current_conf.device}{RESET}")
-
-            print(f"    最終的な設定: {current_conf}")
-
-            # Call dqn_process with the prepared configuration
-            dqn_process(current_conf, i)
-            print("-----------------------------------")
+        # Call dqn_process with the prepared configuration
+        dqn_process(config, i)
+        print("-----------------------------------")

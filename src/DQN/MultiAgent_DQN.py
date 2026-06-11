@@ -211,58 +211,6 @@ class MARLTrainer:
 
         self.load_checkpoint(None)
 
-    def _get_current_state_for_render(self, goals_data, agents_data):
-        """
-        現在の環境の状態をRenderクラスが期待する形式で取得するヘルパーメソッド.
-        Returns:
-            list: ゴール位置とエージェント位置のリストのリスト.
-                  例: [[goal1_x, goal1_y], ..., [agent1_x, agent1_y], ...]
-        """
-        state_for_render = goals_data + agents_data
-        return state_for_render
-
-    def run_episode(self, goals_data, agents_data):
-        """
-        単一のエピソードを実行し、レンダリングデータを収集する（例示用）.訓練ループの中で呼び出すことを想定しています。
-        """
-        print("Starting a dummy episode for rendering demonstration.")
-        trajectory_data = []
-
-        # 環境をリセット
-        initial_obs = self.env_wrapper.reset()
-        # 初期の状態を trajectory_data に追加
-        trajectory_data.append(self._get_current_state_for_render(goals_data, agents_data))
-
-        done = False
-        step = 0
-        # max_timestepはargsオブジェクトに含まれていることを想定
-        while not done and step < self.args.max_timestep:
-            # ここでエージェントのアクションを計算し、環境を進めるロジックが入る
-            # 例: ダミーのアクション（実際の環境とのインタラクションに置き換える必要があります）
-            dummy_actions = [0] * self.args.agents_number # 全エージェントが0番目のアクションを取る仮定
-
-            # 環境をステップ
-            next_obs, next_global_state_tensor, rewards, done, info = self.env_wrapper.step(dummy_actions)
-
-            # 各ステップの状態を記録
-            trajectory_data.append(self._get_current_state_for_render(goals_data, agents_data))
-
-            step += 1
-            if done:
-                print(f"Episode finished at step {step}")
-                break
-
-        # エピソード終了後にレンダリング
-        if self.renderer:
-            print("Rendering trajectory...")
-            # output_filename = f"episode_trajectory_{self.run_id}.gif" # Removed as render method seems not to accept it
-            self.renderer.render(trajectory_data)
-            print(f"Rendering complete. Saved to trajectory.gif (default filename).")
-        else:
-            print("Renderer is not enabled for this run.")
-
-        print("Dummy episode finished.")
-
     def decay_epsilon_power(self):
         """
         ステップ数に基づき、探索率εを指数的に減衰させる関数。

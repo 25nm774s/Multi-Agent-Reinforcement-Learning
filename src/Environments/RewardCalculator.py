@@ -97,7 +97,7 @@ class RewardCalculator:
                 step_penalty = 0.0 #-0.01
                 
                 # 4. 完了ボーナス (全員同時にゴールにいる場合)
-                completion_bonus = 1.0 if done else 0.0
+                completion_bonus = 0.05 if agent_pos[aid] in goal_pos else 0.0
                 
                 reward_dict[aid] = shaping_reward + step_penalty + completion_bonus
             

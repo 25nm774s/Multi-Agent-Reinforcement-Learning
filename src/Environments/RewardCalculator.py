@@ -94,7 +94,7 @@ class RewardCalculator:
                 shaping_reward = float(prev_d - curr_d) * 0.05
                 
                 # 3. ステップペナルティ (早く全員揃うことを促す)
-                step_penalty = -0.01
+                step_penalty = 0.0 #-0.01
                 
                 # 4. 完了ボーナス (全員同時にゴールにいる場合)
                 completion_bonus = 1.0 if done else 0.0

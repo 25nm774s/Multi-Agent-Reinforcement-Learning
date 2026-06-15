@@ -386,11 +386,12 @@ class MARLTrainer:
                 episode_steps  = []
                 done_counts = []
 
-            if episode % 100 == 0:
+            if episode % 1000 == 0:
                 self.save_checkpoint(episode)
+            if episode % 400 == 0:
                 self.save_model_weights()
                 traj = self.simulate_agent_behavior()
-                print(traj)# [{'goal_0': (x,y), 'agent_0': (x,y)}, ]
+                # print(traj)# [{'goal_0': (x,y), 'agent_0': (x,y)}, ]
                 out = os.path.join(self.save_dir, f'traj_{episode}.gif')
                 self.renderer.render_anime(trajectory_data=traj, output_filename=out)
 
@@ -480,8 +481,8 @@ class MARLTrainer:
                 各状態はゴール位置とエージェント位置のタプル。
                 Renderクラスのrender_animeメソッドで利用可能です。
         """
-        print(f"{GREEN}--- シミュレーション開始 (学習済みモデル使用) ---{RESET}\n")
-        print(f"シミュレーションエピソード数: {num_simulation_episodes}\n")
+        # print(f"{GREEN}--- シミュレーション開始 (学習済みモデル使用) ---{RESET}\n")
+        # print(f"シミュレーションエピソード数: {num_simulation_episodes}\n")
         if max_simulation_timestep ==-1:
             max_simulation_timestep = self.max_ts
         self.load_model_weights()
@@ -499,7 +500,7 @@ class MARLTrainer:
         all_episodes_trajectory_data = []
 
         for episode_idx in range(1, num_simulation_episodes + 1):
-            print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
+            # print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
             # 現在のエピソードの軌跡データを初期化
             current_episode_trajectory_data = []
 
@@ -529,7 +530,7 @@ class MARLTrainer:
 
                 ep_reward += rewards_tensor.sum().item()
                 episode_done = step_info['all_agents_done']
-                print(f"  報酬: {rewards_tensor.sum().item():.2f}, 完了: {episode_done}")
+                # print(f"  報酬: {rewards_tensor.sum().item():.2f}, 完了: {episode_done}")
                 step_count += 1
                 if episode_done:
                     print(f"エピソード {episode_idx} 完了. 最終ステップ: {step_count}, 累積報酬: {ep_reward:.2f}")

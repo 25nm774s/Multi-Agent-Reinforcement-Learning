@@ -104,8 +104,6 @@ class Render:
             # ****非推奨であるが先頭のみ****
             goal_positions.append(trajectory_data[0][f'goal_{i}'])
 
-        print("ゴール場所:", goal_positions)
-
         fig, ax = plt.subplots(figsize=(6, 6))
 
         # Draw grid lines

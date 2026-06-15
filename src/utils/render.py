@@ -82,7 +82,7 @@ class Render:
         plt.gca().set_aspect('equal', adjustable='box') # Ensure square grid cells
         plt.show()
 
-    def render_anime(self, trajectory_data, output_filename="agent_trajectory_animation.gif", interval=200):
+    def render_anime(self, trajectory_data:list[dict], output_filename="agent_trajectory_animation.gif", interval=200):
         """
         trajectory_data (状態のリスト) からエージェントの軌跡のアニメーションを生成し、GIFとして保存します。
 
@@ -96,8 +96,15 @@ class Render:
             return
 
         # Extract initial goal positions (assuming they are fixed)
-        initial_state = trajectory_data[0]
-        goal_positions = initial_state[:self.goals_number]
+        # initial_state = trajectory_data[0]
+        # goal_positions = initial_state[:self.goals_number]
+
+        goal_positions:list[tuple[int,int]] = []
+        for i in range(self.goals_number):
+            # ****非推奨であるが先頭のみ****
+            goal_positions.append(trajectory_data[0][f'goal_{i}'])
+
+        print("ゴール場所:", goal_positions)
 
         fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -145,7 +152,10 @@ class Render:
         def update(frame):
             """Update function for the animation."""
             current_state = trajectory_data[frame]
-            current_agent_positions = current_state[self.goals_number:]
+            # current_agent_positions = current_state[self.goals_number:]
+            current_agent_positions = []
+            for i in range(self.agents_number):
+                current_agent_positions.append(current_state[f'agent_{i}'])
 
             for i in range(self.agents_number):
                 # Update marker position

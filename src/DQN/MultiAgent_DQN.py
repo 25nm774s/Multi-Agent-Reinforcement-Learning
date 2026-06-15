@@ -386,8 +386,13 @@ class MARLTrainer:
                 episode_steps  = []
                 done_counts = []
 
-            if episode % 1000 == 0:
+            if episode % 100 == 0:
                 self.save_checkpoint(episode)
+                self.save_model_weights()
+                traj = self.simulate_agent_behavior()
+                print(traj)# [{'goal_0': (x,y), 'agent_0': (x,y)}, ]
+                out = os.path.join(self.save_dir, f'traj_{episode}.gif')
+                self.renderer.render_anime(trajectory_data=traj, output_filename=out)
 
             # エピソードが完了 (episode_done == True) した場合、達成エピソード数カウンタをインクリメント
             if step_info['all_agents_done']:
@@ -466,20 +471,20 @@ class MARLTrainer:
     def simulate_agent_behavior(self, num_simulation_episodes: int = 1, max_simulation_timestep:int =-1):
         """
         学習済みモデルを使ってエージェントの行動をシミュレーションします。
-
         Args:
             num_simulation_episodes (int): シミュレーションを実行するエピソード数。
             max_simulation_timestep (Optional[int]): 各シミュレーションエピソードの最大ステップ数。
-                                                     Noneの場合、MultiAgent_DQNのmax_tsが使用されます。
+                                                    Noneの場合、MultiAgent_DQNのmax_tsが使用されます。
+        Returns:
+            list: シミュレーション中の環境状態のリスト (trajectory_data)。
+                各状態はゴール位置とエージェント位置のタプル。
+                Renderクラスのrender_animeメソッドで利用可能です。
         """
-        print(f"{GREEN}--- シミュレーション開始 (学習済みモデル使用) ---" + f"{RESET}\n")
+        print(f"{GREEN}--- シミュレーション開始 (学習済みモデル使用) ---{RESET}\n")
         print(f"シミュレーションエピソード数: {num_simulation_episodes}\n")
-
         if max_simulation_timestep ==-1:
             max_simulation_timestep = self.max_ts
-
         self.load_model_weights()
-
         # Set all networks to eval mode for simulation
         self.master_agent.agent_network.eval()
         if isinstance(self.master_agent, QMIXMasterAgent):
@@ -489,52 +494,55 @@ class MARLTrainer:
         elif isinstance(self.master_agent, DICGMasterAgent):
             self.master_agent.mixer_network.eval()
 
+        # シミュレーション結果の軌跡データを格納するリスト
+        # render_animeは単一のエピソードの軌跡を想定しているため、最後のエピソードの軌跡を返します。
+        all_episodes_trajectory_data = []
+
         for episode_idx in range(1, num_simulation_episodes + 1):
             print(f"--- シミュレーションエピソード {episode_idx} / {num_simulation_episodes} ---")
+            # 現在のエピソードの軌跡データを初期化
+            current_episode_trajectory_data = []
 
             # エージェントの初期位置を設定
-            # current_partial_observations は agent_obs_tensor, global_state_tensor, info を返します。
             agent_obs_tensor, global_state_tensor, info = self.env_wrapper.reset(initial_agent_positions=[(0,i) for i in range(self.agents_number)])
             current_global_state_for_logging = info['raw_global_state'] # Reset後の真のグローバル状態を取得
+            current_episode_trajectory_data.append(current_global_state_for_logging) # 最初の状態を記録
 
             episode_done = False
             step_count = 0
             ep_reward = 0.0
-
             while not episode_done and step_count < max_simulation_timestep:
-                print(f"\nステップ {step_count}:")
-                print(f"  現在の全体状態: {current_global_state_for_logging}")
-
+                # print(f"\nステップ {step_count}:")
+                # print(f"  現在の全体状態: {current_global_state_for_logging}")
                 # Get actions from master_agent (epsilon=0 for greedy actions)
                 actions_dict = self.master_agent.get_actions(agent_obs_tensor, epsilon=0.0)
-
                 # Display Q-values (This part requires MasterAgent to expose a way to get all Q-values, or replicate logic)
                 # For now, let's just display the chosen actions
-                print(f"  選択された行動: {actions_dict}")
-
+                # print(f"  選択された行動: {actions_dict}")
                 # 環境にステップを与えて状態を更新し、結果を取得
                 next_agent_obs_tensor, next_global_state_tensor, rewards_tensor, dones_tensor, step_info = self.env_wrapper.step(actions_dict)
-
                 # 次のステップの観測を current にコピー
                 agent_obs_tensor = next_agent_obs_tensor
                 global_state_tensor = next_global_state_tensor
                 current_global_state_for_logging = step_info['raw_global_state'] # ログのためにグローバル状態も更新
+                current_episode_trajectory_data.append(current_global_state_for_logging) # 各ステップの状態を記録
 
                 ep_reward += rewards_tensor.sum().item()
                 episode_done = step_info['all_agents_done']
-
                 print(f"  報酬: {rewards_tensor.sum().item():.2f}, 完了: {episode_done}")
-
                 step_count += 1
-
                 if episode_done:
                     print(f"エピソード {episode_idx} 完了. 最終ステップ: {step_count}, 累積報酬: {ep_reward:.2f}")
                 elif step_count == max_simulation_timestep:
                     print(f"エピソード {episode_idx} タイムアウト. 最終ステップ: {step_count}, 累積報酬: {ep_reward:.2f}")
+            # print("\n" + "-" * 50 + "\n")
+            all_episodes_trajectory_data.append(current_episode_trajectory_data)
 
-            print("\n" + "-" * 50 + "\n")
-
-        print(f"{GREEN}--- シミュレーション終了 ---" + f"{RESET}")
+        print(f"{GREEN}--- シミュレーション終了 ---{RESET}")
+        
+        if all_episodes_trajectory_data:
+            return all_episodes_trajectory_data[-1] # 最後のエピソードの軌跡を返す
+        return [] # シミュレーションが実行されなかった場合は空のリストを返す
 
     def load_checkpoint(self, episode:int|None=None):
         model_io = Model_IO()

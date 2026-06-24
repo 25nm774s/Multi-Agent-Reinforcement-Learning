@@ -3,6 +3,130 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def state_to_map(
+    global_state: torch.Tensor,
+    grid_size: int,
+    goals_num: int,
+    agents_num: int
+) -> torch.Tensor:
+    """
+    flat state を CNN用マップへ変換
+
+    Input:
+        global_state: (B, state_dim)
+
+    Output:
+        state_map: (B, 2, G, G)
+
+    channel 0 : goals
+    channel 1 : agents
+    """
+
+    B = global_state.size(0)
+    device = global_state.device
+
+    state_map = torch.zeros(
+        B,
+        2,
+        grid_size,
+        grid_size,
+        device=device,
+        dtype=torch.float32
+    )
+
+    # -------------------------
+    # goals
+    # -------------------------
+    for i in range(goals_num):
+
+        x = global_state[:, 2 * i].long()
+        y = global_state[:, 2 * i + 1].long()
+
+        valid = (
+            (x >= 0)
+            & (x < grid_size)
+            & (y >= 0)
+            & (y < grid_size)
+        )
+
+        batch_idx = torch.arange(B, device=device)
+
+        state_map[
+            batch_idx[valid],
+            0,
+            x[valid],
+            y[valid]
+        ] += 1.0
+
+    # -------------------------
+    # agents
+    # -------------------------
+
+    offset = goals_num * 2
+    batch_idx = torch.arange(B, device=device)
+
+    for i in range(agents_num):
+
+        x = global_state[:, offset + 2 * i].long()
+        y = global_state[:, offset + 2 * i + 1].long()
+
+        valid = (
+            (x >= 0)
+            & (x < grid_size)
+            & (y >= 0)
+            & (y < grid_size)
+        )
+
+        state_map[
+            batch_idx[valid],
+            1,
+            x[valid],
+            y[valid]
+        ] += 1.0
+
+    return state_map
+
+class StateEncoder(nn.Module):
+
+    def __init__(
+        self,
+        grid_size,
+        state_feature_dim=32
+    ):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(
+            2,
+            16,
+            kernel_size=3,
+            padding=1
+        )
+
+        self.conv2 = nn.Conv2d(
+            16,
+            16,
+            kernel_size=3,
+            padding=1
+        )
+
+        self.pool = nn.AdaptiveAvgPool2d(1)
+
+        self.fc = nn.Linear(
+            16,
+            state_feature_dim
+        )
+
+    def forward(self, state_map):
+
+        x = F.relu(self.conv1(state_map))
+        x = F.relu(self.conv2(x))
+
+        x = self.pool(x)
+
+        x = x.flatten(1)
+
+        return F.relu(self.fc(x))
+
 class IAgentNetwork(nn.Module, ABC):
     """
     Abstract Base Class for AgentNetwork.

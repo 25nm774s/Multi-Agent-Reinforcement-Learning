@@ -90,7 +90,6 @@ class StateEncoder(nn.Module):
 
     def __init__(
         self,
-        grid_size,
         state_feature_dim=32
     ):
         super().__init__()
@@ -289,167 +288,245 @@ class SumMixer(AbstractMixer):
         Q_tot = agent_q_values.sum(dim=1) # (batch_size, 1)
         return Q_tot
 
-class MixingNetwork(AbstractMixer): # AbstractMixerを継承するように変更
-    """
-    QMIXで使用されるMixing Network.
-    各エージェントのQ値とグローバル状態を入力として受け取り、チーム全体のQ_totを出力する.
-    """
-    def __init__(self, n_agents: int, state_dim: int, hidden_dim: int = 32):
-        """
-        MixingNetwork クラスのコンストラクタ.
 
-        Args:
-            n_agents (int): エージェントの数.
-            state_dim (int): グローバル状態の次元.
-            hidden_dim (int): 隠れ層の次元 (HyperNetwork内部で使用).
-        """
+class MixingNetwork(AbstractMixer):
+    """
+    QMIX Mixing Network (corrected version)
+
+    - monotonic mixing enforced via softplus weights
+    - proper per-agent contribution mixing
+    - stable tensor shapes
+    """
+
+    def __init__(
+        self,
+        n_agents: int,
+        state_dim: int,
+        grid_size: int,
+        n_goals: int,
+        hidden_dim: int = 32
+    ):
         super().__init__()
+
         self.n_agents = n_agents
         self.state_dim = state_dim
         self.hidden_dim = hidden_dim
+        self.grid_size = grid_size
+        self.n_goals = n_goals
 
-        # HyperNetwork for weights W1 (state_dim -> n_agents * hidden_dim)
-        self.hyper_w1 = nn.Linear(state_dim, self.n_agents * hidden_dim)
-        # HyperNetwork for biases B1 (state_dim -> hidden_dim)
-        self.hyper_b1 = nn.Linear(state_dim, hidden_dim)
+        # =========================================================
+        # State encoder (CNN)
+        # =========================================================
+        self.state_encoder = nn.Sequential(
+            nn.Conv2d(2, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+        )
 
-        # HyperNetwork for weights W2 (state_dim -> hidden_dim * 1)
-        self.hyper_w2 = nn.Linear(state_dim, hidden_dim * 1)
-        # HyperNetwork for biases B2 (state_dim -> 1)
-        self.hyper_b2 = nn.Linear(state_dim, 1)
+        self.state_fc = nn.Linear(16, hidden_dim)
 
-        # Hidden layer for the mixing network itself (shared for all batches)
-        # Removed as it's not part of the standard QMIX Mixing Network, and its purpose is unclear.
-        # self.mix_hidden = nn.Linear(self.n_agents, hidden_dim)
+        # =========================================================
+        # Hyper networks
+        # =========================================================
+        # first layer weights: (hidden_dim * n_agents)
+        self.hyper_w1 = nn.Linear(hidden_dim, n_agents * hidden_dim)
+        self.hyper_b1 = nn.Linear(hidden_dim, hidden_dim)
 
-    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+        # second layer weights
+        self.hyper_w2 = nn.Linear(hidden_dim, hidden_dim)
+        self.hyper_b2 = nn.Linear(hidden_dim, 1)
+
+    # =============================================================
+    # forward
+    # =============================================================
+    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor):
         """
-        順伝播処理.
-
         Args:
-            agent_q_values (torch.Tensor): 各エージェントが選択した行動のQ値 (形状: (batch_size, n_agents, 1)).
-            global_state (torch.Tensor): グローバル状態のテンソル (形状: (batch_size, state_dim)).
+            agent_q_values: (B, n_agents, 1)
+            global_state:   (B, state_dim)
 
         Returns:
-            torch.Tensor: チーム全体のQ値 (形状: (batch_size, 1)).
+            Q_tot: (B, 1)
         """
-        batch_size = agent_q_values.size(0)
 
-        # hyper_w1とhyper_b1からW1とB1を生成
-        # W1: (batch_size, state_dim) -> (batch_size, n_agents * hidden_dim)
-        # W1を(batch_size, n_agents, hidden_dim)に再成形し、agent_q_valuesとの行列乗算を行う
-        w1 = self.hyper_w1(global_state)
-        w1 = w1.view(batch_size, self.n_agents, self.hidden_dim)
+        B = agent_q_values.size(0)
 
-        # 単調性制約を適用: 重みが非負であることを保証
-        # w1 = torch.exp(w1)
-        w1 = F.softplus(w1)
+        # ---------------------------------------------------------
+        # 1. state → map → embedding
+        # ---------------------------------------------------------
+        state_map = state_to_map(
+            global_state,
+            self.grid_size,
+            self.n_goals,
+            self.n_agents
+        )  # (B, 2, G, G)
 
-        # B1: (batch_size, state_dim) -> (batch_size, hidden_dim)
-        b1 = self.hyper_b1(global_state)
-        b1 = b1.view(batch_size, 1, self.hidden_dim) # Reshape for broadcasting
+        x = self.state_encoder(state_map)     # (B, 16, 1, 1)
+        x = x.flatten(1)                      # (B, 16)
+        state_emb = F.relu(self.state_fc(x))  # (B, H)
 
-        # 混合ネットワークの最初の層の出力を計算する
-        # (batch_size, n_agents, 1) @ (batch_size, n_agents, hidden_dim) -> (batch_size, 1, hidden_dim)
-        hidden = F.elu(torch.bmm(agent_q_values.transpose(1,2), w1) + b1)
+        # ---------------------------------------------------------
+        # 2. hypernetwork weights
+        # ---------------------------------------------------------
+        w1 = torch.abs(self.hyper_w1(state_emb))  # monotonic constraint
+        w1 = w1.view(B, self.n_agents, self.hidden_dim)
 
-        # hyper_w2 および hyper_b2 から W2 および B2 を生成
-        # W2: (batch_size, state_dim) -> (batch_size, hidden_dim * 1)
-        # Reshape W2 to (batch_size, hidden_dim, 1)
-        w2 = self.hyper_w2(global_state)
-        w2 = w2.view(batch_size, self.hidden_dim, 1)
+        b1 = self.hyper_b1(state_emb).view(B, 1, self.hidden_dim)
 
-        # 単調性制約を適用
-        # w2 = torch.exp(w2)
-        w2 = F.softplus(w2)
+        # ---------------------------------------------------------
+        # 3. first mixing layer (IMPORTANT FIX)
+        # ---------------------------------------------------------
+        # element-wise mixing per agent (NO bmm compression)
+        # (B, N, 1) * (B, N, H) → (B, N, H)
+        hidden = F.elu(agent_q_values * w1 + b1)
 
-        # B2: (batch_size, state_dim) -> (batch_size, 1)
-        b2 = self.hyper_b2(global_state)
-        b2 = b2.view(batch_size, 1, 1) # Reshape for broadcasting
+        # sum over agents → (B, H)
+        hidden = hidden.sum(dim=1)
 
-        # 第2層の出力を計算 (Q_tot)
-        # (batch_size, 1, hidden_dim) @ (batch_size, hidden_dim, 1) -> (batch_size, 1, 1)
-        Q_tot = torch.bmm(hidden, w2) + b2
+        # ---------------------------------------------------------
+        # 4. second layer hypernetwork
+        # ---------------------------------------------------------
+        w2 = torch.abs(self.hyper_w2(state_emb)).view(B, self.hidden_dim, 1)
+        b2 = self.hyper_b2(state_emb).view(B, 1, 1)
 
-        return Q_tot.view(batch_size, 1) # Reshape to (batch_size, 1)
+        # ---------------------------------------------------------
+        # 5. final Q_tot
+        # ---------------------------------------------------------
+        hidden = hidden.unsqueeze(1)  # (B, 1, H)
 
+        Q_tot = torch.bmm(hidden, w2) + b2  # (B, 1, 1)
+
+        return Q_tot.view(B, 1)
+    
 class DICGMixer(AbstractMixer):
     """
-    DICG (Difference Inidividual Contribution Global) で使用されるミキサー。
-    グローバル状態からクエリを生成し、各エージェントのQ値からキーを生成するアテンションメカニズムを導入します。
-    アテンションスコアを計算し、softmaxで正規化されたアテンション重みを各エージェントのQ値に適用することで、
-    より動的で状況に応じたQ値の混合を実現します。
-    """
-    def __init__(self, n_agents: int, state_dim: int, hidden_dim: int = 32):
-        """
-        DICGMixer クラスのコンストラクタ。
+    DICG (Attention-based QMIX-style Mixer)
 
-        Args:
-            n_agents (int): エージェントの数。
-            state_dim (int): グローバル状態の次元。
-            hidden_dim (int): アテンション機構の隠れ層の次元（クエリとキーの次元）。
-        """
+    - global state → CNN encoder → query
+    - agent Q (or features) → key/value
+    - attention-based mixing
+    """
+
+    def __init__(
+        self,
+        n_agents: int,
+        grid_size: int,
+        n_goals: int,
+        state_feature_dim: int = 32,
+        hidden_dim: int = 32,
+        agent_feat_dim: int = 1
+    ):
         super().__init__()
+
         self.n_agents = n_agents
-        self.state_dim = state_dim
+        self.grid_size = grid_size
+        self.n_goals = n_goals
         self.hidden_dim = hidden_dim
 
-        # グローバル状態からクエリを生成するネットワーク
-        # クエリは各エージェントの寄与度を評価するためのグローバルな「質問」
-        self.query_network = nn.Linear(state_dim, hidden_dim)
+        # -------------------------
+        # State encoder (CNN)
+        # -------------------------
+        self.state_encoder = nn.Sequential(
+            nn.Conv2d(2, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d(1),
+        )
 
-        # 各エージェントのQ値からキーを生成するネットワーク
-        # キーは各エージェントのQ値が持つ「情報」
-        # agent_q_valuesの最後の次元が1なので、入力次元は1
-        self.key_network = nn.Linear(1, hidden_dim)
+        self.state_fc = nn.Linear(16, state_feature_dim)
 
-        # 全体のバイアスを生成するネットワーク (以前のhyper_bに相当)
-        self.bias_network = nn.Linear(state_dim, 1)
+        # -------------------------
+        # Query (global context)
+        # -------------------------
+        self.query_net = nn.Linear(state_feature_dim, hidden_dim)
 
-    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+        # -------------------------
+        # Key (agent-dependent)
+        # ※ここを改善：Q値だけでなく拡張可能
+        # -------------------------
+        self.key_net = nn.Linear(agent_feat_dim, hidden_dim)
+
+        # -------------------------
+        # Value projection (optional but stabilizes mixing)
+        # -------------------------
+        self.value_net = nn.Linear(1, hidden_dim)
+
+        # -------------------------
+        # Bias from global state
+        # -------------------------
+        self.bias_net = nn.Linear(state_feature_dim, 1)
+
+    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor):
         """
-        順伝播処理。
-
         Args:
-            agent_q_values (torch.Tensor): 各エージェントが選択した行動のQ値 (形状: (batch_size, n_agents, 1)).
-            global_state (torch.Tensor): グローバル状態のテンソル (形状: (batch_size, state_dim)).
+            agent_q_values: (B, n_agents, 1)
+            global_state:   (B, state_dim)
 
         Returns:
-            torch.Tensor: チーム全体のQ値 (形状: (batch_size, 1)).
+            Q_tot: (B, 1)
         """
-        batch_size = agent_q_values.size(0)
 
-        # 1. グローバル状態からクエリを生成
-        # (batch_size, state_dim) -> (batch_size, hidden_dim)
-        query = F.relu(self.query_network(global_state))
+        B = agent_q_values.size(0)
 
-        # 2. 各エージェントのQ値からキーを生成
-        # agent_q_valuesの形状は (batch_size, n_agents, 1)
-        # key_networkはnn.Linear(1, hidden_dim)なので、各エージェントのQ値(1次元)をhidden_dimに変換
-        # (batch_size, n_agents, 1) -> (batch_size, n_agents, hidden_dim)
-        keys = F.relu(self.key_network(agent_q_values))
+        # =========================================================
+        # 1. global state → map → CNN
+        # =========================================================
+        state_map = state_to_map(
+            global_state,
+            self.grid_size,
+            self.n_goals,
+            self.n_agents
+        )  # (B, 2, G, G)
 
-        # 3. クエリとキーのドット積によりアテンションスコアを計算
-        # query: (batch_size, hidden_dim) -> unsqueezeで (batch_size, hidden_dim, 1)
-        # keys: (batch_size, n_agents, hidden_dim)
-        # bmm((batch_size, n_agents, hidden_dim), (batch_size, hidden_dim, 1)) -> (batch_size, n_agents, 1)
-        attention_scores = torch.bmm(keys, query.unsqueeze(-1))
+        x = self.state_encoder(state_map)      # (B, 16, 1, 1)
+        x = x.view(B, 16)                      # flatten
+        state_feat = F.relu(self.state_fc(x)) # (B, state_feature_dim)
 
-        # 4. softmaxで正規化されたアテンション重みを計算
-        # dim=1でエージェント軸に沿ってsoftmaxを適用
-        # (batch_size, n_agents, 1)
-        attention_weights = F.softmax(attention_scores, dim=1)
+        # =========================================================
+        # 2. query / bias
+        # =========================================================
+        query = self.query_net(state_feat)    # (B, H)
+        bias = self.bias_net(state_feat)      # (B, 1)
 
-        # 5. 各エージェントのQ値にアテンション重みを適用し、合計
-        # (batch_size, n_agents, 1) * (batch_size, n_agents, 1) -> (batch_size, n_agents, 1)
-        # .sum(dim=1) -> (batch_size, 1)
-        weighted_q_values_sum = (agent_q_values * attention_weights).sum(dim=1)
+        # =========================================================
+        # 3. agent embeddings
+        # =========================================================
 
-        # 6. グローバルなバイアスを加算
-        # (batch_size, state_dim) -> (batch_size, 1)
-        bias = self.bias_network(global_state)
+        # key: (B, N, H)
+        keys = self.key_net(agent_q_values)
 
-        # 最終的なチームの総Q値
-        Q_tot = weighted_q_values_sum + bias
+        # value: (B, N, H)
+        values = self.value_net(agent_q_values)
 
-        return Q_tot
+        # =========================================================
+        # 4. attention scores
+        # =========================================================
+
+        # (B, N, H) @ (B, H, 1) → (B, N, 1)
+        scores = torch.bmm(keys, query.unsqueeze(-1))
+
+        # scale
+        scores = scores / (self.hidden_dim ** 0.5)
+
+        # softmax over agents
+        attn = F.softmax(scores, dim=1)  # (B, N, 1)
+
+        # =========================================================
+        # 5. weighted aggregation
+        # =========================================================
+
+        # value-based mixing (more stable than raw Q)
+        mixed = (attn * values).sum(dim=1)  # (B, H)
+
+        # project to scalar Q
+        q_tot = mixed.mean(dim=-1, keepdim=True)  # (B, 1)
+
+        # =========================================================
+        # 6. bias
+        # =========================================================
+        q_tot = q_tot + bias
+
+        return q_tot

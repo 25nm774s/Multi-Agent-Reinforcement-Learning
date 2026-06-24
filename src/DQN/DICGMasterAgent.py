@@ -18,7 +18,13 @@ class DICGMasterAgent(MixerBasedMasterAgent):
         # DICGMixerのstate_dimを計算: グローバル状態のフラット化されたサイズ
         # (目標数 + エージェント数) * 各位置の次元 (x, y)
         mixing_network_state_dim = (kwargs['goals_number'] + kwargs['n_agents']) * 2
-        mixer_network_instance = DICGMixer(kwargs['n_agents'], mixing_network_state_dim).to(kwargs['device'])
+        mixer_network_instance = DICGMixer(
+            kwargs['n_agents'], 
+            mixing_network_state_dim,
+            kwargs['grid_size'],
+            kwargs['goals_number'],
+            3,
+            ).to(kwargs['device'])
 
         super().__init__(
             mixer_network_instance=mixer_network_instance,

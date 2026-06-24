@@ -24,7 +24,8 @@ class DICGMasterAgent(MixerBasedMasterAgent):
             kwargs['grid_size'],
             kwargs['goals_number'],
             3,
-            ).to(kwargs['device'])
+            hidden_dim=16# 32はやや過剰らしい。
+        ).to(kwargs['device'])
 
         super().__init__(
             mixer_network_instance=mixer_network_instance,

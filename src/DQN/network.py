@@ -334,9 +334,16 @@ class DICGMixer(AbstractMixer):
                 hidden_dim
             )
         )
-        self.head_projection = nn.Linear(
-            self.num_heads,
-            1
+        self.head_projection = nn.Sequential(
+            nn.Linear(
+                self.num_heads,
+                hidden_dim
+            ),
+            nn.ReLU(),
+            nn.Linear(
+                hidden_dim,
+                1
+            )
         )
 
         # 全体のバイアスを生成するネットワーク (以前のhyper_bに相当)
@@ -419,14 +426,12 @@ class DICGMixer(AbstractMixer):
         # (B,H)
 
 
-        Q_tot = self.head_projection(
-            weighted_q
-        )
+        mixed_q = self.head_projection(weighted_q)
         # (B,1)
 
 
         bias = self.bias_network(global_state)
 
-        Q_tot = Q_tot + bias
+        Q_tot = mixed_q + bias
 
         return Q_tot

@@ -323,6 +323,8 @@ class DICGMixer(AbstractMixer):
             nn.Linear(hidden_dim, 1)
         )
 
+        self.norm = nn.LayerNorm(self.hidden_dim)
+
         # 全体のバイアスを生成するネットワーク
         self.bias_network = nn.Linear(state_dim, 1)
 
@@ -350,28 +352,41 @@ class DICGMixer(AbstractMixer):
 
         # 3. コンテキストベクトルの計算と変形
         # context: (B, num_heads, N, head_dim) -> (B, N, hidden_dim)
-        context = torch.matmul(weights, V).transpose(1, 2).contiguous().view(batch_size, self.n_agents, self.hidden_dim)
-        
-        # 【追加】元の特徴量を投影して形状を合わせ、Residual Connection を適用
-        # residual: (B, N, agent_hidden_dim) -> (B, N, hidden_dim)
-        residual = self.residual_projection(agent_hidden)
-        context = context + residual # (B, N, hidden_dim)
+        context = torch.matmul(weights, V)
 
-        # エージェント次元で平均を取り、全体のコンテキストとする -> (B, hidden_dim)
+        context = (
+            context
+            .transpose(1,2)
+            .contiguous()
+            .view(
+                batch_size,
+                self.n_agents,
+                self.hidden_dim
+            )
+        )
+
+        residual = self.residual_projection(agent_hidden)
+
+        context = self.norm(
+            context + residual
+        )
+
         agent_context = context.mean(dim=1)
 
-        # 4. Q値に対するアテンション重みの適用
-        # (B, N, N) x (B, N, 1) -> (B, N, 1) -> mean -> (B, 1)
-        attn_weighted_q_per_agent = torch.matmul(weights.mean(dim=1), agent_q_values) 
-        weighted_q = attn_weighted_q_per_agent.mean(dim=1)
+        weighted_q = agent_q_values.mean(dim=1)
 
-        # 5. 特徴量の結合と出力の計算
-        # mixed_input: (B, 1 + hidden_dim)
-        mixed_input = torch.cat([weighted_q, agent_context], dim=-1)
-        mixed_q = self.head_projection(mixed_input) # (B, 1)
+        mixed_input = torch.cat(
+            [
+                weighted_q,
+                agent_context
+            ],
+            dim=-1
+        )
 
-        # 6. グローバル状態からのバイアス加算
-        bias = self.bias_network(global_state) # (B, 1)
+        mixed_q = self.head_projection(mixed_input)
+
+        bias = self.bias_network(global_state)
+
         Q_tot = mixed_q + bias
 
         return Q_tot

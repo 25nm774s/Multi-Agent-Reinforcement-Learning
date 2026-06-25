@@ -61,7 +61,7 @@ class DICGMasterAgent(MixerBasedMasterAgent):
         agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size)
 
         # STEP 1: 各エージェントの全アクションQ値の算出 (メインネットワーク)
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
+        current_q_values_all_agents, current_hidden = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
 
         # STEP 2: 選択されたアクションのQ値抽出 (メインネットワーク)
         chosen_q_values = current_q_values_all_agents.gather(2, actions_tensor_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
@@ -70,12 +70,16 @@ class DICGMasterAgent(MixerBasedMasterAgent):
         chosen_q_values_masked = chosen_q_values * (1 - dones_tensor_batch.unsqueeze(-1)) # (batch_size, n_agents, 1)
 
         # STEP 3: DICGMixer を介した Q_tot の算出 (メインネットワーク)
-        Q_tot = self.mixer_network(chosen_q_values_masked, global_state_tensor_batch) # (batch_size, 1)
+        Q_tot = self.mixer_network(
+            chosen_q_values_masked,
+            current_hidden,
+            global_state_tensor_batch
+        ) # (batch_size, 1)
 
         # ターゲットQ_totの計算 (ターゲットネットワーク)
         with torch.no_grad():
             # 次の状態の各エージェントのQ値 (ターゲットAgentNetwork)
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
+            next_q_values_all_agents_target, next_hidden = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
 
             # 各エージェントの次の状態での最大Q値 (ターゲットAgentNetwork)
             next_max_q_values_target = next_q_values_all_agents_target.max(dim=2, keepdim=True)[0] # keepdim=True for (B, N, 1)
@@ -89,7 +93,11 @@ class DICGMasterAgent(MixerBasedMasterAgent):
             )
 
             # ターゲットDICGMixer を介して target_Q_tot_unmasked を算出
-            target_Q_tot_unmasked = self.mixer_network_target(next_max_q_values_target_masked, next_global_state_tensor_batch) # (batch_size, 1)
+            target_Q_tot_unmasked = self.mixer_network_target(
+                next_max_q_values_target_masked,
+                next_hidden,
+                next_global_state_tensor_batch
+            ) # (batch_size, 1)
 
             # Bellman方程式による最終的なターゲットQ_tot
             target_Q_tot = team_reward_scalar + self.gamma * target_Q_tot_unmasked * (1 - team_done_scalar) # (batch_size, 1)

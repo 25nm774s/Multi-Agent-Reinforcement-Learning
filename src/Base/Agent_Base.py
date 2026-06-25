@@ -128,7 +128,7 @@ class BaseMasterAgent(ABC):
         agent_network_instance: IAgentNetwork,
         agent_obs_batch: torch.Tensor, # (B * N, C, G, G)
         agent_ids_batch: torch.Tensor # (B * N,)
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         与えられたAgentNetworkインスタンス（メインまたはターゲット）から、
         バッチ内の全エージェントの全アクションに対するQ値を計算します。
@@ -139,17 +139,29 @@ class BaseMasterAgent(ABC):
             agent_ids_batch (torch.Tensor): バッチ内の各エージェントのID (形状: (batch_size * n_agents,)).
 
         Returns:
-            torch.Tensor: 各エージェントの各アクションに対するQ値 (形状: (batch_size, n_agents, action_size)).
+            Tuple[
+                torch.Tensor,  各エージェントの各アクションに対するQ値 (B,N,A)
+                torch.Tensor   隠れ層 (B,N,H)
+            ]
         """
         # AgentNetworkからQ値を計算
         # agent_network_instance((B*N, C, G, G), (B*N,)) -> (B*N, A)
-        q_values_flat = agent_network_instance(agent_obs_batch, agent_ids_batch)
+        q_values_flat, hidden_features = agent_network_instance(agent_obs_batch, agent_ids_batch)
 
         # 結果を元の形状 (B, N, A) に戻す
         batch_size = agent_obs_batch.size(0) // self.n_agents
         q_values_reshaped = q_values_flat.view(batch_size, self.n_agents, self.action_size)
 
-        return q_values_reshaped
+        hidden_features_reshaped = hidden_features.view(
+            batch_size,
+            self.n_agents,
+            -1
+        )
+
+        return (
+            q_values_reshaped,
+            hidden_features_reshaped
+        )
 
     def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:
         """
@@ -169,7 +181,7 @@ class BaseMasterAgent(ABC):
             agent_ids_for_all_agents = torch.arange(self.n_agents, dtype=torch.long, device=self.device)
 
             # AgentNetwork からQ値を計算 (N, action_size)
-            q_values_all_agents = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
+            q_values_all_agents, _ = self.agent_network(agent_obs_tensor, agent_ids_for_all_agents)
 
             actions: Dict[str, int] = {}
             for i, aid in enumerate(self._agent_ids):

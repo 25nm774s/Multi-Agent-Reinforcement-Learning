@@ -59,7 +59,8 @@ class VDNMasterAgent(MixerBasedMasterAgent):
         agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size) # (batch_size * n_agents,)
 
         # 5. Calculate current_q_values_all_agents.
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
+        # 契約に沿うため
+        current_q_values_all_agents, _= self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
 
         # 6. Extract the chosen_q_values (Q-values for the actions actually taken).
         # actions_tensor_batch (B, N) -> (B, N, 1) for gather
@@ -76,7 +77,7 @@ class VDNMasterAgent(MixerBasedMasterAgent):
         # 9. Inside a torch.no_grad() context:
         with torch.no_grad():
             # a. Calculate next_q_values_all_agents_target.
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
+            next_q_values_all_agents_target, _ = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
 
             # b. Determine next_max_q_values_target.
             next_max_q_values_target = next_q_values_all_agents_target.max(dim=2, keepdim=True)[0] # keepdim=True for (B, N, 1)

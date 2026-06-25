@@ -56,7 +56,7 @@ class IQLMasterAgent(BaseMasterAgent):
 
         # Current Q-values from main network
         # (batch_size, n_agents, action_size)
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
+        current_q_values_all_agents, _ = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
 
         # Q-values for the actions actually taken by each agent
         # actions_tensor_batch (B, N) -> (B, N, 1) for gather
@@ -64,7 +64,7 @@ class IQLMasterAgent(BaseMasterAgent):
 
         # Next Q-values from target network
         with torch.no_grad():
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
+            next_q_values_all_agents_target, _ = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
 
             # Max Q-values for next states, for each agent
             next_max_q_values = next_q_values_all_agents_target.max(dim=2)[0] # (batch_size, n_agents)

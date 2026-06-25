@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Optional
 
 class IAgentNetwork(nn.Module, ABC):
     """
@@ -38,7 +39,7 @@ class IAgentNetwork(nn.Module, ABC):
         pass
 
     @abstractmethod
-    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Computes Q-values for given observations and agent IDs.
         Args:
@@ -106,10 +107,14 @@ class AgentNetwork(IAgentNetwork):
         return self._total_agents
 
     @property
+    def hidden_dim(self) -> int:
+        return 128
+    
+    @property
     def action_size(self) -> int:
         return self._action_size
 
-    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
         batch_size = x.size(0)
 
         # --- CNNによる特徴抽出 ---
@@ -127,10 +132,16 @@ class AgentNetwork(IAgentNetwork):
 
         # 全結合層の順伝播
         x = F.relu(self.fc1(combined_input))
-        x = F.relu(self.fc2(x))
-        q_values = self.fc3(x)
 
-        return q_values
+        hidden_features = F.relu(
+            self.fc2(x)
+        )
+
+        q_values = self.fc3(
+            hidden_features
+        )
+
+        return q_values, hidden_features
 
 class AbstractMixer(nn.Module, ABC):
     """
@@ -138,7 +149,12 @@ class AbstractMixer(nn.Module, ABC):
     チーム全体のQ値を計算するインターフェースを定義します。
     """
     @abstractmethod
-    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        agent_q_values: torch.Tensor,
+        agent_hidden: Optional[torch.Tensor] = None,
+        global_state: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         チーム全体のQ値を計算します。
         Args:
@@ -158,7 +174,12 @@ class SumMixer(AbstractMixer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        agent_q_values,
+        agent_hidden=None,
+        global_state=None
+    ):
         """
         各エージェントのQ値を合計してチーム全体のQ値を計算します。
         global_stateは引数として受け取りますが、ここでは使用しません。
@@ -266,7 +287,7 @@ class DICGMixer(AbstractMixer):
     アテンションスコアを計算し、softmaxで正規化されたアテンション重みを各エージェントのQ値に適用することで、
     より動的で状況に応じたQ値の混合を実現します。
     """
-    def __init__(self, n_agents: int, n_goals: int, grid_size: int, state_dim: int, hidden_dim: int = 32):
+    def __init__(self, n_agents: int, n_goals: int, grid_size: int, state_dim: int, agent_hidden_dim=128, hidden_dim: int = 32):
         """
         DICGMixer クラスのコンストラクタ。
 
@@ -286,19 +307,30 @@ class DICGMixer(AbstractMixer):
         # クエリは各エージェントの寄与度を評価するためのグローバルな「質問」
         self.query_network = nn.Linear(state_dim, hidden_dim)
 
-        # 各エージェントのQ値からキーを生成するネットワーク
+        # 各エージェントの特徴表現(hidden state)からキーを生成
         # キーは各エージェントのQ値が持つ「情報」
         # agent_q_valuesの最後の次元が1なので、入力次元は1
         self.key_network = nn.Sequential(
-            nn.Linear(state_dim + 1, hidden_dim),
+            nn.Linear(
+                agent_hidden_dim,
+                hidden_dim
+            ),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim)
+            nn.Linear(
+                hidden_dim,
+                hidden_dim
+            )
         )
 
         # 全体のバイアスを生成するネットワーク (以前のhyper_bに相当)
         self.bias_network = nn.Linear(state_dim, 1)
 
-    def forward(self, agent_q_values: torch.Tensor, global_state: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        agent_q_values: torch.Tensor,
+        agent_hidden  : torch.Tensor,
+        global_state  : torch.Tensor
+    ):
         """
         順伝播処理。
 
@@ -309,31 +341,17 @@ class DICGMixer(AbstractMixer):
         Returns:
             torch.Tensor: チーム全体のQ値 (形状: (batch_size, 1)).
         """
-        batch_size = agent_q_values.size(0)
 
-        # 1. グローバル状態からクエリを生成
+        # 1.
         # (batch_size, state_dim) -> (batch_size, hidden_dim)
         query = F.relu(self.query_network(global_state))
         # (B, state_dim)
         # -> (B, 1, state_dim)
         # -> (B, n_agents, state_dim)
-        expanded_state = (
-            global_state
-            .unsqueeze(1)
-            .expand(-1, self.n_agents, -1)
+        #  各エージェントの特徴表現からキーを生成
+        keys = self.key_network(
+            agent_hidden
         )
-
-        # 2. 各エージェントのQ値からキーを生成
-        # agent_q_valuesの形状は (batch_size, n_agents, 1)
-        # key_networkはnn.Linear(1, hidden_dim)なので、各エージェントのQ値(1次元)をhidden_dimに変換
-        # (B, n_agents, 1 + state_dim)
-        key_input = torch.cat(
-            [agent_q_values, expanded_state],
-            dim=-1
-        )
-
-        # (B, n_agents, hidden_dim)
-        keys = self.key_network(key_input)
 
         # 3. クエリとキーのドット積によりアテンションスコアを計算
         # query: (batch_size, hidden_dim) -> unsqueezeで (batch_size, hidden_dim, 1)

@@ -69,7 +69,8 @@ class QMIXMasterAgent(MixerBasedMasterAgent):
 
         # STEP 1: 各エージェントの全アクションQ値の算出 (メインネットワーク)
         # Returns (batch_size, n_agents, action_size)
-        current_q_values_all_agents = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
+        # QMIXでは隠れ層は使っていない。契約に沿うため。
+        current_q_values_all_agents, _ = self._get_agent_q_values(self.agent_network, current_agent_obs_flat, agent_ids_for_q_values)
 
         # STEP 2: 選択されたアクションのQ値抽出 (メインネットワーク)
         # actions_tensor_batch (B, N) -> (B, N, 1) for gather
@@ -91,7 +92,7 @@ class QMIXMasterAgent(MixerBasedMasterAgent):
         with torch.no_grad():
             # 次の状態の各エージェントのQ値 (ターゲットAgentNetwork)
             # Returns (batch_size, n_agents, action_size)
-            next_q_values_all_agents_target = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
+            next_q_values_all_agents_target, _ = self._get_agent_q_values(self.agent_network_target, next_agent_obs_flat, agent_ids_for_q_values)
 
             # 各エージェントの次の状態での最大Q値 (ターゲットAgentNetwork)
             # (batch_size, n_agents, 1)

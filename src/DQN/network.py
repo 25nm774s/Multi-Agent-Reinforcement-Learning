@@ -289,7 +289,11 @@ class DICGMixer(AbstractMixer):
         # 各エージェントのQ値からキーを生成するネットワーク
         # キーは各エージェントのQ値が持つ「情報」
         # agent_q_valuesの最後の次元が1なので、入力次元は1
-        self.key_network = nn.Linear(1, hidden_dim)
+        self.key_network = nn.Sequential(
+            nn.Linear(state_dim + 1, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        )
 
         # 全体のバイアスを生成するネットワーク (以前のhyper_bに相当)
         self.bias_network = nn.Linear(state_dim, 1)
@@ -310,12 +314,26 @@ class DICGMixer(AbstractMixer):
         # 1. グローバル状態からクエリを生成
         # (batch_size, state_dim) -> (batch_size, hidden_dim)
         query = F.relu(self.query_network(global_state))
+        # (B, state_dim)
+        # -> (B, 1, state_dim)
+        # -> (B, n_agents, state_dim)
+        expanded_state = (
+            global_state
+            .unsqueeze(1)
+            .expand(-1, self.n_agents, -1)
+        )
 
         # 2. 各エージェントのQ値からキーを生成
         # agent_q_valuesの形状は (batch_size, n_agents, 1)
         # key_networkはnn.Linear(1, hidden_dim)なので、各エージェントのQ値(1次元)をhidden_dimに変換
-        # (batch_size, n_agents, 1) -> (batch_size, n_agents, hidden_dim)
-        keys = F.relu(self.key_network(agent_q_values))
+        # (B, n_agents, 1 + state_dim)
+        key_input = torch.cat(
+            [agent_q_values, expanded_state],
+            dim=-1
+        )
+
+        # (B, n_agents, hidden_dim)
+        keys = self.key_network(key_input)
 
         # 3. クエリとキーのドット積によりアテンションスコアを計算
         # query: (batch_size, hidden_dim) -> unsqueezeで (batch_size, hidden_dim, 1)

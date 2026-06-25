@@ -287,7 +287,16 @@ class DICGMixer(AbstractMixer):
     アテンションスコアを計算し、softmaxで正規化されたアテンション重みを各エージェントのQ値に適用することで、
     より動的で状況に応じたQ値の混合を実現します。
     """
-    def __init__(self, n_agents: int, n_goals: int, grid_size: int, state_dim: int, agent_hidden_dim=128, hidden_dim: int = 32):
+    def __init__(
+            self, 
+            n_agents: int, 
+            n_goals: int, 
+            grid_size: int, 
+            state_dim: int, 
+            agent_hidden_dim=128, 
+            hidden_dim: int = 32, 
+            num_heads=4
+        ):
         """
         DICGMixer クラスのコンストラクタ。
 
@@ -302,6 +311,10 @@ class DICGMixer(AbstractMixer):
         self.n_agents = n_agents
         self.state_dim = state_dim
         self.hidden_dim = hidden_dim
+
+        self.num_heads = num_heads
+        self.head_dim = hidden_dim // num_heads
+        assert hidden_dim % num_heads == 0
 
         # グローバル状態からクエリを生成するネットワーク
         # クエリは各エージェントの寄与度を評価するためのグローバルな「質問」
@@ -320,6 +333,10 @@ class DICGMixer(AbstractMixer):
                 hidden_dim,
                 hidden_dim
             )
+        )
+        self.head_projection = nn.Linear(
+            self.num_heads,
+            1
         )
 
         # 全体のバイアスを生成するネットワーク (以前のhyper_bに相当)
@@ -341,39 +358,75 @@ class DICGMixer(AbstractMixer):
         Returns:
             torch.Tensor: チーム全体のQ値 (形状: (batch_size, 1)).
         """
+        batch_size = agent_q_values.size(0)
 
-        # 1.
-        # (batch_size, state_dim) -> (batch_size, hidden_dim)
-        query = F.relu(self.query_network(global_state))
-        # (B, state_dim)
-        # -> (B, 1, state_dim)
-        # -> (B, n_agents, state_dim)
-        #  各エージェントの特徴表現からキーを生成
-        keys = self.key_network(
-            agent_hidden
+        # query
+        query = self.query_network(global_state)
+
+        query = query.view(
+            batch_size,
+            self.num_heads,
+            self.head_dim
         )
 
-        # 3. クエリとキーのドット積によりアテンションスコアを計算
-        # query: (batch_size, hidden_dim) -> unsqueezeで (batch_size, hidden_dim, 1)
-        # keys: (batch_size, n_agents, hidden_dim)
-        # bmm((batch_size, n_agents, hidden_dim), (batch_size, hidden_dim, 1)) -> (batch_size, n_agents, 1)
-        attention_scores = torch.bmm(keys, query.unsqueeze(-1))
+        query = query.unsqueeze(1)
+        # (B,1,H,D)
 
-        # 4. softmaxで正規化されたアテンション重みを計算
-        # dim=1でエージェント軸に沿ってsoftmaxを適用
-        # (batch_size, n_agents, 1)
-        attention_weights = F.softmax(attention_scores, dim=1)
 
-        # 5. 各エージェントのQ値にアテンション重みを適用し、合計
-        # (batch_size, n_agents, 1) * (batch_size, n_agents, 1) -> (batch_size, n_agents, 1)
-        # .sum(dim=1) -> (batch_size, 1)
-        weighted_q_values_sum = (agent_q_values * attention_weights).sum(dim=1)
+        # key
+        keys = self.key_network(agent_hidden)
 
-        # 6. グローバルなバイアスを加算
-        # (batch_size, state_dim) -> (batch_size, 1)
+        keys = keys.view(
+            batch_size,
+            self.n_agents,
+            self.num_heads,
+            self.head_dim
+        )
+        # (B,N,H,D)
+
+
+        # attention score
+        attention_scores = (
+            keys * query
+        ).sum(dim=-1)
+        # (B,N,H)
+
+
+        attention_weights = F.softmax(
+            attention_scores,
+            dim=1
+        )
+        # (B,N,H)
+
+
+        attention_weights = attention_weights.unsqueeze(-1)
+        # (B,N,H,1)
+
+
+        q = agent_q_values.unsqueeze(2)
+        # (B,N,1,1)
+
+
+        weighted_q = q * attention_weights
+        # (B,N,H,1)
+
+
+        weighted_q = weighted_q.sum(dim=1)
+        # (B,H,1)
+
+
+        weighted_q = weighted_q.squeeze(-1)
+        # (B,H)
+
+
+        Q_tot = self.head_projection(
+            weighted_q
+        )
+        # (B,1)
+
+
         bias = self.bias_network(global_state)
 
-        # 最終的なチームの総Q値
-        Q_tot = weighted_q_values_sum + bias
+        Q_tot = Q_tot + bias
 
         return Q_tot

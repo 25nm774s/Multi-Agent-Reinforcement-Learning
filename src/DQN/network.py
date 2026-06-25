@@ -66,18 +66,28 @@ class AgentNetwork(IAgentNetwork):
         super().__init__(grid_size, output_size, total_agents)
 
         self._grid_size = grid_size
-        self._num_channels = 3 # Concrete value
+        # num_channelsは環境から取得するか、確定した値を使用
+        self._num_channels = 3 
         self._total_agents = total_agents
         self._action_size = output_size
 
-        # 状態入力の次元 (グリッドマップのフラット化されたサイズ)
-        state_input_size = self.num_channels * self.grid_size**2
+        # --- CNN層の定義 (プーリングなし) ---
+        # Conv層1: in_channelsは環境の観測チャネル数, out_channels=32, kernel=3x3, stride=1, padding='same'
+        self.conv1 = nn.Conv2d(in_channels=self.num_channels, out_channels=32, kernel_size=3, stride=1, padding=1)
+        # Conv層2: in_channelsは前層のout_channels, out_channels=64, kernel=3x3, stride=1, padding='same'
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
 
-        # Agent ID埋め込み層は削除し、ワンホットエンコーディングを使用するため不要
-
-        # 状態入力とエージェントワンホットベクトルを結合した後の最終的な入力サイズ
-        # Agent IDはワンホットベクトルとして扱われるため、そのサイズは total_agents となる
-        combined_input_size = state_input_size + self.total_agents
+        # CNN出力のサイズ計算
+        # ダミーデータを使ってCNN層の出力サイズを計算するのが最も確実です。
+        with torch.no_grad():
+            dummy_input = torch.zeros(1, self.num_channels, self.grid_size, self.grid_size)
+            x = F.relu(self.conv1(dummy_input))
+            x = F.relu(self.conv2(x))
+            flattened_cnn_output_size = x.view(1, -1).size(1)
+            
+        # --- 全結合層の定義 ---
+        # 結合入力サイズ = フラット化されたCNN出力サイズ + ワンホットエンコードされたエージェントIDのサイズ
+        combined_input_size = flattened_cnn_output_size + self.total_agents
 
         self.fc1 = nn.Linear(combined_input_size, 128)
         self.fc2 = nn.Linear(128, 128)
@@ -100,30 +110,27 @@ class AgentNetwork(IAgentNetwork):
         return self._action_size
 
     def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> torch.Tensor:
-        """
-        順伝播処理.
+        batch_size = x.size(0)
 
-        Args:
-            x (torch.Tensor): 入力状態のテンソル (形状: (batch_size, num_channels, grid_size, grid_size)).
-            agent_ids (torch.Tensor): エージェントIDのテンソル (形状: (batch_size,)).
+        # --- CNNによる特徴抽出 ---
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        
+        # CNNの出力をフラット化
+        x = x.view(batch_size, -1) 
 
-        Returns:
-            torch.Tensor: 各行動に対するQ値のテンソル (形状: (batch_size, output_size)).
-        """
-        # 状態をフラット化
-        x = x.flatten(start_dim=1)
+        # Agent IDをワンホットエンコーディング
+        agent_one_hot = F.one_hot(agent_ids, num_classes=self.total_agents).float()
 
-        # Agent IDをワンホットベクトルに変換
-        # agent_ids は (batch_size,) 形状の整数IDを想定
-        agent_id_one_hot = F.one_hot(agent_ids, num_classes=self.total_agents).float() # (batch_size, total_agents)
+        # CNN特徴とワンホットエンコーディングされたAgent IDを結合
+        combined_input = torch.cat([x, agent_one_hot], dim=1)
 
-        # 状態とエージェントワンホットベクトルを結合
-        x = torch.cat((x, agent_id_one_hot), dim=1)
-
-        x = F.relu(self.fc1(x))
+        # 全結合層の順伝播
+        x = F.relu(self.fc1(combined_input))
         x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        q_values = self.fc3(x)
+
+        return q_values
 
 class AbstractMixer(nn.Module, ABC):
     """

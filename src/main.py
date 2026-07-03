@@ -138,7 +138,14 @@ def dqn_process(current_conf, run_id=None):
         device = torch.device(current_conf.device)
 
         # 1. MultiAgentGridEnv のインスタンス化
-        fix_goal_pool = [(current_conf.grid_size-1,current_conf.grid_size-1),(current_conf.grid_size//4,current_conf.grid_size//3),(current_conf.grid_size-1,0),(current_conf.grid_size//4,current_conf.grid_size//6)]
+        fix_goal_pool = [
+            (current_conf.grid_size-1,current_conf.grid_size-1),
+            (current_conf.grid_size//4,current_conf.grid_size//3),
+            (current_conf.grid_size-1,0),
+            (current_conf.grid_size//4,current_conf.grid_size//6),
+            (current_conf.grid_size//2,current_conf.grid_size-1),
+            (current_conf.grid_size-1,current_conf.grid_size*7//10),
+        ]
         _fix_goal_from_goal_number = fix_goal_pool[:min(current_conf.goals_number, len(fix_goal_pool))]
 
         multi_agent_env = MultiAgentGridEnv(current_conf, fixrd_goals=_fix_goal_from_goal_number)

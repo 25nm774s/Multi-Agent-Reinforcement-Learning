@@ -2,7 +2,6 @@ import random
 from abc import ABC, abstractmethod
 import torch
 from typing import Tuple, Dict, List, Optional, Any
-from itertools import product
 
 from .Grid import Grid
 from .CollisionResolver import CollisionResolver

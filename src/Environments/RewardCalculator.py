@@ -1,5 +1,7 @@
 from itertools import product
 from typing import Dict
+from collections import defaultdict
+from Base.Constant import PosType
 
 class RewardCalculator:
     def __init__(self, grid_size, reward_mode, agent_ids, agents_number, goals_number) -> None:
@@ -9,9 +11,11 @@ class RewardCalculator:
         self.agents_number = agents_number
         self.goals_number = goals_number
 
+        self.collision_penalty = -1.0
+
         self.prev_distances: Dict[str, float] = {aid: float('inf') for aid in self._agent_ids}
 
-    def _calculate_total_distance_to_goals(self, agent_positions, goal_positions) -> Dict[str, float]:
+    def _calculate_total_distance_to_goals(self, agent_positions:dict, goal_positions:dict) -> Dict[str, float]:
         """
         エージェントとゴールの最適なペアリングを行い、
         エージェントIDをキーとしたマンハッタン距離の辞書を返します。
@@ -51,8 +55,24 @@ class RewardCalculator:
                     break
 
         return distances    
-    
-    def _calculate_reward(self, done, agent_pos, goal_pos) -> Dict[str,float]:
+
+    def _apply_collision_penalty(self, reward_dict:dict, agent_pos:dict):
+        """
+        同じセルにいるエージェント全員にペナルティを与える。
+        """
+        pos_to_agents = defaultdict(list)
+
+        for aid, pos in agent_pos.items():
+            pos_to_agents[tuple(pos)].append(aid)
+
+        for agents in pos_to_agents.values():
+            if len(agents) >= 2:
+                for aid in agents:
+                    reward_dict[aid] += self.collision_penalty
+        
+        return reward_dict
+
+    def _calculate_reward(self, done, agent_pos:Dict[str, PosType], goal_pos:Dict[str, PosType]) -> Dict[str,float]:
         """
         現在の状態と報酬モードに基づいて報酬を計算します。
         """
@@ -97,7 +117,7 @@ class RewardCalculator:
                 step_penalty = 0.0 #-0.01
                 
                 # 4. 完了ボーナス (全員同時にゴールにいる場合)
-                completion_bonus = 0.05 if agent_pos[aid] in goal_pos else 0.0
+                completion_bonus = 0.05 if agent_pos[aid] in goal_pos.values() else 0.0
                 
                 reward_dict[aid] = shaping_reward + step_penalty + completion_bonus
             
@@ -110,4 +130,5 @@ class RewardCalculator:
             for aid in self._agent_ids:
                 reward_dict[aid] = 0.0
 
+        reward_dict = self._apply_collision_penalty(reward_dict, agent_pos)
         return reward_dict

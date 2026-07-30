@@ -54,8 +54,8 @@ class DICGMasterAgent(MixerBasedMasterAgent):
         batch_size = agent_obs_tensor_batch.size(0)
 
         # AgentNetworkに渡すために(B*N, C, G, G)にreshape
-        current_agent_obs_flat = agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
-        next_agent_obs_flat = next_agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
+        current_agent_obs_flat = self._reshape_agent_obs(agent_obs_tensor_batch)
+        next_agent_obs_flat = self._reshape_agent_obs(next_agent_obs_tensor_batch)
 
         # Agent IDs for batch processing
         agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size)

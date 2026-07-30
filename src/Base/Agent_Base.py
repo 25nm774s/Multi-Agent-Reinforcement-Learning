@@ -55,7 +55,7 @@ class BaseMasterAgent(ABC):
         self.agent_reward_processing_mode = agent_reward_processing_mode # Store the new argument
 
         # num_channels は IAgentNetwork のプロパティから取得
-        self.num_channels = self.agent_network.num_channels
+        self.num_channels = self.agent_network.input_channels
 
         # ターゲットネットワークはメインネットワークのコピーとして作成
         self._agent_network_target = copy.deepcopy(self.agent_network).to(device)
@@ -161,6 +161,15 @@ class BaseMasterAgent(ABC):
         return (
             q_values_reshaped,
             hidden_features_reshaped
+        )
+
+    def _reshape_agent_obs(self, agent_obs_tensor_batch:torch.Tensor):
+        b = agent_obs_tensor_batch.size(0)
+        return agent_obs_tensor_batch.view(
+            b * self.n_agents,
+            self.agent_network.obs_channels,
+            self.grid_size,
+            self.grid_size
         )
 
     def get_actions(self, agent_obs_tensor: torch.Tensor, epsilon: float) -> Dict[str, int]:

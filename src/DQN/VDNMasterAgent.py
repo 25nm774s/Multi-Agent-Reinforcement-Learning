@@ -52,8 +52,8 @@ class VDNMasterAgent(MixerBasedMasterAgent):
         batch_size = agent_obs_tensor_batch.size(0)
 
         # 3. Reshape agent_obs_tensor_batch and next_agent_obs_tensor_batch into a flat tensor.
-        current_agent_obs_flat = agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
-        next_agent_obs_flat = next_agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
+        current_agent_obs_flat = self._reshape_agent_obs(agent_obs_tensor_batch)
+        next_agent_obs_flat = self._reshape_agent_obs(next_agent_obs_tensor_batch)
 
         # 4. Create a tensor agent_ids_for_q_values.
         agent_ids_for_q_values = torch.arange(self.n_agents, dtype=torch.long, device=self.device).repeat(batch_size) # (batch_size * n_agents,)

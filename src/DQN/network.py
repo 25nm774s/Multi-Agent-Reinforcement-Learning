@@ -22,12 +22,6 @@ class IAgentNetwork(nn.Module, ABC):
 
     @property
     @abstractmethod
-    def num_channels(self) -> int:
-        """Returns the number of input channels for the network."""
-        pass
-
-    @property
-    @abstractmethod
     def total_agents(self) -> int:
         """Returns the total number of agents the network is configured for."""
         pass
@@ -37,14 +31,33 @@ class IAgentNetwork(nn.Module, ABC):
     def action_size(self) -> int:
         """Returns the size of the action space the network outputs for."""
         pass
+    
+    @property
+    @abstractmethod
+    def obs_channels(self) -> int:
+        """
+        Returns the raw observation channels before preprocessing.
+        """
+        pass
 
+    @property
+    @abstractmethod
+    def input_channels(self) -> int:
+        """
+        Returns the channels actually fed into the neural network layers.
+        """
+        pass
+    
     @abstractmethod
     def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Computes Q-values for given observations and agent IDs.
         Args:
-            x (torch.Tensor): Transformed observations (B*N, C, G, G).
-            agent_ids (torch.Tensor): Agent IDs (B*N,).
+            x (torch.Tensor):
+                Raw observations before agent-specific preprocessing.
+                Shape: (B*N, obs_channels, G, G)
+            agent_ids (torch.Tensor): 
+                Agent IDs (B*N,).
         Returns:
             torch.Tensor: Q-values for each action (B*N, action_size).
         """
@@ -68,43 +81,89 @@ class CNNAgentNetworkBase(IAgentNetwork):
 
         self._grid_size = grid_size
         # num_channelsは環境から取得するか、確定した値を使用
-        self._num_channels = 3 
+        self._obs_channels = 3
+        self._num_channels = 4
         self._total_agents = total_agents
         self._action_size = output_size
 
         # --- CNN層の定義 ---
         # Conv層1: in_channelsは環境の観測チャネル数, out_channels=32, kernel=3x3, stride=1, padding='same'
-        self.conv1 = nn.Conv2d(in_channels=self.num_channels, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=self.input_channels, out_channels=32, kernel_size=3, stride=1, padding=1)
         # Conv層2: in_channelsは前層のout_channels, out_channels=64, kernel=3x3, stride=1, padding='same'
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
 
         self.pool = pool_layer
         # CNN出力のサイズ計算
-        # ダミーデータを使ってCNN層の出力サイズを計算するのが最も確実です。
         with torch.no_grad():
-            dummy_input = torch.zeros(1, self.num_channels, self.grid_size, self.grid_size)
-            x = F.relu(self.conv1(dummy_input))
+            dummy_input = torch.zeros(
+                1,
+                self._obs_channels,
+                self.grid_size,
+                self.grid_size
+            )
+
+            x = self._append_agent_id_channel(
+                dummy_input,
+                torch.zeros(1, dtype=torch.long)
+            )
+
+            x = F.relu(self.conv1(x))
             x = F.relu(self.conv2(x))
 
             if self.pool is not None:
                 x = self.pool(x)
-            
+
             flattened_cnn_output_size = torch.flatten(x, 1).size(1)
             
         # --- 全結合層の定義 ---
-        # 結合入力サイズ = フラット化されたCNN出力サイズ + ワンホットエンコードされたエージェントIDのサイズ
-        combined_input_size = flattened_cnn_output_size + self.total_agents
+        # Agent IDはCNN入力チャネルとして付与済み
+        combined_input_size = flattened_cnn_output_size
 
         self.fc1 = nn.Linear(combined_input_size, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, output_size)
+
+    def _append_agent_id_channel(
+        self,
+        x: torch.Tensor,
+        agent_ids: torch.Tensor
+    )->torch.Tensor:
+        """
+        x:
+            (batch, 3, H, W)
+
+        agent_ids:
+            (batch,)
+        """
+
+        batch_size, _, h, w = x.shape
+
+        # 正規化したAgent ID
+        agent_id_value = (
+            agent_ids.float()
+            / max(self.total_agents - 1, 1)
+        )
+
+        # (batch,1) -> (batch,1,H,W)
+        agent_channel = (
+            agent_id_value
+            .view(batch_size, 1, 1, 1)
+            .expand(batch_size, 1, h, w)
+        )
+
+        x = torch.cat(
+            [x, agent_channel],
+            dim=1
+        )
+
+        return x
 
     @property
     def grid_size(self) -> int:
         return self._grid_size
 
     @property
-    def num_channels(self) -> int:
+    def input_channels(self) -> int:
         return self._num_channels
 
     @property
@@ -120,6 +179,10 @@ class CNNAgentNetworkBase(IAgentNetwork):
         return self._action_size
 
     @property
+    def obs_channels(self) -> int:
+        return self._obs_channels
+
+    @property
     def pooling_name(self):
         if self.pool is None:
             return "None"
@@ -127,6 +190,10 @@ class CNNAgentNetworkBase(IAgentNetwork):
 
     def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
 
+        x = self._append_agent_id_channel(
+            x,
+            agent_ids
+        )
         # --- CNNによる特徴抽出 ---
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
@@ -137,11 +204,7 @@ class CNNAgentNetworkBase(IAgentNetwork):
         # x = x.view(batch_size, -1)
         x = torch.flatten(x, start_dim=1)
 
-        # Agent IDをワンホットエンコーディング
-        agent_one_hot = F.one_hot(agent_ids, num_classes=self.total_agents).float()
-
-        # CNN特徴とワンホットエンコーディングされたAgent IDを結合
-        combined_input = torch.cat([x, agent_one_hot], dim=1)
+        combined_input = x
 
         # 全結合層の順伝播
         x = F.relu(self.fc1(combined_input))

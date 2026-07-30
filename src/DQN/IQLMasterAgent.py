@@ -47,8 +47,21 @@ class IQLMasterAgent(BaseMasterAgent):
         batch_size = agent_obs_tensor_batch.size(0)
 
         # AgentNetworkに渡すために(B*N, C, G, G)にreshape
-        current_agent_obs_flat = agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
-        next_agent_obs_flat = next_agent_obs_tensor_batch.view(batch_size * self.n_agents, self.num_channels, self.grid_size, self.grid_size)
+        # current_agent_obs_flat = agent_obs_tensor_batch.view(
+        #     batch_size * self.n_agents,
+        #     self.agent_network.obs_channels,
+        #     self.grid_size,
+        #     self.grid_size
+        # )
+        
+        # next_agent_obs_flat = next_agent_obs_tensor_batch.view(
+        #     batch_size * self.n_agents,
+        #     self.agent_network.obs_channels,
+        #     self.grid_size,
+        #     self.grid_size
+        # )
+        current_agent_obs_flat = self._reshape_agent_obs(agent_obs_tensor_batch)
+        next_agent_obs_flat = self._reshape_agent_obs(next_agent_obs_tensor_batch)
 
         # Agent IDs for current and next state processing
         # This needs to be (B*N,) for the _get_agent_q_values method

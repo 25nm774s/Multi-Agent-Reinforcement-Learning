@@ -82,7 +82,7 @@ class CNNAgentNetworkBase(IAgentNetwork):
         self._grid_size = grid_size
         # num_channelsは環境から取得するか、確定した値を使用
         self._obs_channels = 3
-        self._num_channels = 4
+
         self._total_agents = total_agents
         self._action_size = output_size
 
@@ -164,8 +164,12 @@ class CNNAgentNetworkBase(IAgentNetwork):
 
     @property
     def input_channels(self) -> int:
-        return self._num_channels
+        return self._obs_channels + self.agent_id_channels
 
+    @property
+    def agent_id_channels(self):
+        return 1
+    
     @property
     def total_agents(self) -> int:
         return self._total_agents
@@ -231,6 +235,44 @@ class AgentNetworkAdaptivePool(CNNAgentNetworkBase):
     def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
         super().__init__(grid_size, output_size, total_agents, pool_layer=nn.AdaptiveAvgPool2d((3,3)))
 
+class CNNAgentIdChannelNetworkBase(CNNAgentNetworkBase):
+
+    @property
+    def agent_id_channels(self):
+        return self.total_agents
+
+    def _append_agent_id_channel(
+        self,
+        x,
+        agent_ids
+    ):
+        batch_size, _, h, w = x.shape
+
+        one_hot = F.one_hot(
+            agent_ids,
+            num_classes=self.total_agents
+        ).float()
+
+        agent_channels = (
+            one_hot
+            .view(
+                batch_size,
+                self.total_agents,
+                1,
+                1
+            )
+            .expand(
+                batch_size,
+                self.total_agents,
+                h,
+                w
+            )
+        )
+
+        return torch.cat(
+            [x, agent_channels],
+            dim=1
+        )
 
 class AbstractMixer(nn.Module, ABC):
     """

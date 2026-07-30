@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 
-from DQN.network import AgentNetwork, AgentNetworkAdaptivePool, AgentNetworkMaxPool
+from DQN.network import AgentNetwork, AgentNetworkAdaptivePool, AgentNetworkMaxPool, CNNAgentIdChannelNetworkBase
 from Environments.StateProcesser import ObsToTensorWrapper
 from Environments.MultiAgentGridEnv import MultiAgentGridEnv, GridEnvWrapper
 from DQN.MultiAgent_DQN import MARLTrainer
@@ -164,7 +164,7 @@ def dqn_process(current_conf, run_id=None):
         # 3. GridEnvWrapper をインスタンス化
         env_wrapper_instance = GridEnvWrapper(env_instance=multi_agent_env, state_processor_instance=shared_state_processor)
 
-        shared_agent_network = AgentNetworkAdaptivePool(
+        shared_agent_network = CNNAgentIdChannelNetworkBase(
             grid_size=current_conf.grid_size,
             output_size=env_wrapper_instance.action_space_size, # Use the dynamically retrieved action_space_size
             total_agents=current_conf.agents_number

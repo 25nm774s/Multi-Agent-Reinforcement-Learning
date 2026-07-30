@@ -223,18 +223,6 @@ class CNNAgentNetworkBase(IAgentNetwork):
 
         return q_values, hidden_features
 
-class AgentNetwork(CNNAgentNetworkBase):
-    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
-        super().__init__(grid_size, output_size, total_agents, pool_layer=None)
-
-class AgentNetworkMaxPool(CNNAgentNetworkBase):
-    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
-        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.MaxPool2d(2))
-
-class AgentNetworkAdaptivePool(CNNAgentNetworkBase):
-    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
-        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.AdaptiveAvgPool2d((3,3)))
-
 class CNNAgentIdChannelNetworkBase(CNNAgentNetworkBase):
 
     @property
@@ -274,6 +262,19 @@ class CNNAgentIdChannelNetworkBase(CNNAgentNetworkBase):
             dim=1
         )
 
+class AgentNetwork(CNNAgentNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=None)
+
+class AgentNetworkMaxPool(CNNAgentNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.MaxPool2d(2))
+
+class AgentNetworkAdaptivePool(CNNAgentIdChannelNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.AdaptiveAvgPool2d((3,3)))
+
+# ----ミキサー定義 -------
 class AbstractMixer(nn.Module, ABC):
     """
     ミキサーネットワークの抽象基底クラス.

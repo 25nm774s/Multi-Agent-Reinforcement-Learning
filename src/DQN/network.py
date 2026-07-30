@@ -262,11 +262,11 @@ class CNNAgentIdChannelNetworkBase(CNNAgentNetworkBase):
             dim=1
         )
 
-class AgentNetwork(CNNAgentNetworkBase):
+class AgentNetwork(CNNAgentIdChannelNetworkBase):
     def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
         super().__init__(grid_size, output_size, total_agents, pool_layer=None)
 
-class AgentNetworkMaxPool(CNNAgentNetworkBase):
+class AgentNetworkMaxPool(CNNAgentIdChannelNetworkBase):
     def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
         super().__init__(grid_size, output_size, total_agents, pool_layer=nn.MaxPool2d(2))
 

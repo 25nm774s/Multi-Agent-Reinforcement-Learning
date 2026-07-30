@@ -180,10 +180,12 @@ def dqn_process(current_conf, run_id=None):
             run_id=run_id
         )
 
+        print(f"ネットワーク構成名: {shared_agent_network.pooling_name}")
+        
         # Run training
         trainer.train() # Comment out the full training
 
-        print(f"--- {current_conf.learning_mode} mode test finished successfully ---")    
+        print(f"--- {current_conf.learning_mode} mode test finished successfully ---")
 
 # base_config = {
 #     "grid_size": 12,
@@ -246,7 +248,7 @@ if __name__ == '__main__':
     # Get the initial parsed arguments once. This will contain defaults and any presets from presets.json.
     initial_parsed_args = parse_args()
 
-    for i in range(N):        
+    for i in range(N):
         # シード固定
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)

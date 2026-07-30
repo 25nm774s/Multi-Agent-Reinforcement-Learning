@@ -14,7 +14,7 @@ from .IQLMasterAgent import IQLMasterAgent
 from .QMIXMasterAgent import QMIXMasterAgent
 from .VDNMasterAgent import VDNMasterAgent
 from .DICGMasterAgent import DICGMasterAgent
-from .network import AgentNetwork 
+from .network import CNNAgentNetworkBase 
 from .IO_Handler import Model_IO
 
 from Base.Constant import GlobalState
@@ -30,7 +30,7 @@ class MARLTrainer:
     複数のDQNエージェントを用いた強化学習の実行を管理するクラス.
     環境とのインタラクション、エピソードの進行、学習ループ、結果の保存・表示を統括します。
     """
-    def __init__(self, args, mode: str, env_wrapper: IEnvWrapper, shared_agent_network: AgentNetwork, shared_state_processor: ObsToTensorWrapper, run_id=None):
+    def __init__(self, args, mode: str, env_wrapper: IEnvWrapper, shared_agent_network: CNNAgentNetworkBase, shared_state_processor: ObsToTensorWrapper, run_id=None):
         """
         MARLTrainer クラスのコンストラクタ.
 

@@ -50,12 +50,12 @@ class IAgentNetwork(nn.Module, ABC):
         """
         pass
 
-class AgentNetwork(IAgentNetwork):
+class CNNAgentNetworkBase(IAgentNetwork):
     """
     DQNで使用されるQネットワークモデル.
     状態を入力として受け取り、各行動に対するQ値を出力する.
     """
-    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1, pool_layer:nn.Module | None=None):
         """
         AgentNetwork クラスのコンストラクタ.
 
@@ -72,19 +72,24 @@ class AgentNetwork(IAgentNetwork):
         self._total_agents = total_agents
         self._action_size = output_size
 
-        # --- CNN層の定義 (プーリングなし) ---
+        # --- CNN層の定義 ---
         # Conv層1: in_channelsは環境の観測チャネル数, out_channels=32, kernel=3x3, stride=1, padding='same'
         self.conv1 = nn.Conv2d(in_channels=self.num_channels, out_channels=32, kernel_size=3, stride=1, padding=1)
         # Conv層2: in_channelsは前層のout_channels, out_channels=64, kernel=3x3, stride=1, padding='same'
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
 
+        self.pool = pool_layer
         # CNN出力のサイズ計算
         # ダミーデータを使ってCNN層の出力サイズを計算するのが最も確実です。
         with torch.no_grad():
             dummy_input = torch.zeros(1, self.num_channels, self.grid_size, self.grid_size)
             x = F.relu(self.conv1(dummy_input))
             x = F.relu(self.conv2(x))
-            flattened_cnn_output_size = x.view(1, -1).size(1)
+
+            if self.pool is not None:
+                x = self.pool(x)
+            
+            flattened_cnn_output_size = torch.flatten(x, 1).size(1)
             
         # --- 全結合層の定義 ---
         # 結合入力サイズ = フラット化されたCNN出力サイズ + ワンホットエンコードされたエージェントIDのサイズ
@@ -114,15 +119,23 @@ class AgentNetwork(IAgentNetwork):
     def action_size(self) -> int:
         return self._action_size
 
+    @property
+    def pooling_name(self):
+        if self.pool is None:
+            return "None"
+        return self.pool.__class__.__name__
+
     def forward(self, x: torch.Tensor, agent_ids: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
-        batch_size = x.size(0)
 
         # --- CNNによる特徴抽出 ---
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        
-        # CNNの出力をフラット化
-        x = x.view(batch_size, -1) 
+
+        if self.pool is not None:
+            x = self.pool(x)
+
+        # x = x.view(batch_size, -1)
+        x = torch.flatten(x, start_dim=1)
 
         # Agent IDをワンホットエンコーディング
         agent_one_hot = F.one_hot(agent_ids, num_classes=self.total_agents).float()
@@ -142,6 +155,19 @@ class AgentNetwork(IAgentNetwork):
         )
 
         return q_values, hidden_features
+
+class AgentNetwork(CNNAgentNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=None)
+
+class AgentNetworkMaxPool(CNNAgentNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.MaxPool2d(2))
+
+class AgentNetworkAdaptivePool(CNNAgentNetworkBase):
+    def __init__(self, grid_size: int, output_size: int, total_agents: int = 1):
+        super().__init__(grid_size, output_size, total_agents, pool_layer=nn.AdaptiveAvgPool2d((3,3)))
+
 
 class AbstractMixer(nn.Module, ABC):
     """
